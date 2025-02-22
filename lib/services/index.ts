@@ -1,0 +1,18 @@
+export * from './types'
+export * from './auth.service'
+export * from './organization.service'
+export * from './project.service'
+export * from './record.service'
+
+import { AuthService } from './auth.service'
+import { OrganizationService } from './organization.service'
+import { ProjectService } from './project.service'
+import { RecordService } from './record.service'
+
+// 服务实例
+export const services = {
+  auth: new AuthService(),
+  organization: new OrganizationService(),
+  project: new ProjectService(),
+  record: new RecordService(),
+} 

@@ -1,0 +1,158 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  email         String       @unique
+  password      String       // 加密存储
+  organizationId String?
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  role          Role         @default(REPORTER)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([role])
+  @@index([email])
+}
+
+// 角色枚举
+enum Role {
+  ADMIN
+  REPORTER
+  FINANCE
+  AUDITOR
+  OBSERVER
+}
+
+// 机构表
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  code        String       @unique
+  departments Department[]
+  users       User[]
+  projects    Project[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([name])
+  @@index([code])
+}
+
+// 部门表
+model Department {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  projects       Project[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([name])
+}
+
+// 项目表
+model Project {
+  id            String         @id @default(cuid())
+  name          String
+  status        String        // active/archived
+  startYear     Int
+  organizations Organization[]
+  departments   Department[]
+  subProjects   SubProject[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([name])
+  @@index([status])
+  @@index([startYear])
+}
+
+// 子项目表
+model SubProject {
+  id          String      @id @default(cuid())
+  name        String
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id])
+  fundTypes   FundType[]
+  records     Record[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([projectId])
+  @@index([name])
+}
+
+// 资金需求类型表
+model FundType {
+  id          String       @id @default(cuid())
+  name        String
+  subProjects SubProject[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([name])
+}
+
+// 记录表
+model Record {
+  id            String     @id @default(cuid())
+  subProjectId  String
+  subProject    SubProject @relation(fields: [subProjectId], references: [id])
+  year          Int
+  month         Int
+  predicted     Float?     // 预测金额
+  actualUser    Float?     // 填报人实际金额
+  actualFinance Float?     // 财务实际金额
+  auditResult   Float?     // 审核结果
+  status        String     // draft/submitted/approved
+  submittedBy   String     // 提交人ID
+  submittedAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([subProjectId, year, month])
+  @@index([subProjectId])
+  @@index([year])
+  @@index([month])
+  @@index([status])
+  @@index([submittedBy])
+  @@index([submittedAt])
+}
+
+// 审计日志表
+model AuditLog {
+  id          String    @id @default(cuid())
+  userId      String
+  action      String
+  resource    String
+  resourceId  String?
+  permissions String?   // JSON string
+  result      Boolean
+  error       String?
+  duration    Int?      // 毫秒
+  timestamp   DateTime
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource])
+  @@index([timestamp])
+}
