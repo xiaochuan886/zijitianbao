@@ -52,7 +52,7 @@ pnpm dev
 
 2. **目录结构**
 ```
-src/
+funding-system/
   ├── app/             # 页面路由
   ├── components/      # 公共组件
   ├── lib/            # 工具函数
