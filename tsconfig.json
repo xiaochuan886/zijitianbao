@@ -21,16 +21,20 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "baseUrl": ".",
-    "types": ["jest", "node"]
+    "types": [
+      "jest",
+      "@testing-library/jest-dom",
+      "node",
+      "@types/testing-library__jest-dom"
+    ]
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    "jest.setup.ts",
-    "**/*.test.ts"
+    "__tests__/types/*.d.ts",
+    "jest.setup.ts"
   ],
   "exclude": ["node_modules"]
 }
