@@ -34,11 +34,12 @@ export interface QueryParams {
 // 服务错误
 export class ServiceError extends Error {
   constructor(
-    public code: number,
+    public statusCode: number,
     message: string,
     public details?: unknown
   ) {
     super(message);
     this.name = 'ServiceError';
+    Object.setPrototypeOf(this, ServiceError.prototype);
   }
 } 
