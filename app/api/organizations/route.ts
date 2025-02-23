@@ -3,6 +3,7 @@ import { services } from '@/lib/services';
 import { checkPermission } from '@/lib/auth/permission';
 import { createPermissionError } from '@/lib/auth/errors';
 import { parseSession } from '@/lib/auth/session';
+import { ServiceError } from '@/lib/services/types';
 
 // GET /api/organizations - 获取机构列表
 export async function GET(request: NextRequest) {
@@ -24,7 +25,19 @@ export async function GET(request: NextRequest) {
     );
     
     if (!hasPermission) {
-      throw createPermissionError('INSUFFICIENT_PERMISSIONS');
+      return new Response(
+        JSON.stringify({
+          code: 403,
+          message: '权限不足',
+          timestamp: Date.now(),
+        }),
+        { 
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
 
     // 3. 调用服务
@@ -34,20 +47,38 @@ export async function GET(request: NextRequest) {
     );
 
     // 4. 返回结果
-    return Response.json({
-      code: 200,
-      message: '获取成功',
-      data: result,
-      timestamp: Date.now(),
-    });
+    return new Response(
+      JSON.stringify({
+        code: 200,
+        message: '获取成功',
+        data: result,
+        timestamp: Date.now(),
+      }),
+      { 
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   } catch (error: any) {
-    return Response.json({
-      code: error.statusCode || 500,
-      message: error.message || '服务器错误',
-      timestamp: Date.now(),
-    }, {
-      status: error.statusCode || 500,
-    });
+    console.error('GET /api/organizations error:', error);
+    const statusCode = error instanceof ServiceError ? error.statusCode : 500;
+    const message = error instanceof ServiceError ? error.message : '服务器错误';
+    
+    return new Response(
+      JSON.stringify({
+        code: statusCode,
+        message: message,
+        timestamp: Date.now(),
+      }),
+      { 
+        status: statusCode,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   }
 }
 
@@ -65,26 +96,56 @@ export async function POST(request: NextRequest) {
     );
     
     if (!hasPermission) {
-      throw createPermissionError('INSUFFICIENT_PERMISSIONS');
+      return new Response(
+        JSON.stringify({
+          code: 403,
+          message: '权限不足',
+          timestamp: Date.now(),
+        }),
+        { 
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
 
     // 3. 调用服务
     const result = await services.organization.create(data);
 
     // 4. 返回结果
-    return Response.json({
-      code: 200,
-      message: '创建成功',
-      data: result,
-      timestamp: Date.now(),
-    });
+    return new Response(
+      JSON.stringify({
+        code: 200,
+        message: '创建成功',
+        data: result,
+        timestamp: Date.now(),
+      }),
+      { 
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   } catch (error: any) {
-    return Response.json({
-      code: error.statusCode || 500,
-      message: error.message || '服务器错误',
-      timestamp: Date.now(),
-    }, {
-      status: error.statusCode || 500,
-    });
+    console.error('POST /api/organizations error:', error);
+    const statusCode = error instanceof ServiceError ? error.statusCode : 500;
+    const message = error instanceof ServiceError ? error.message : '服务器错误';
+    
+    return new Response(
+      JSON.stringify({
+        code: statusCode,
+        message: message,
+        timestamp: Date.now(),
+      }),
+      { 
+        status: statusCode,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   }
 } 
