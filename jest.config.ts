@@ -4,13 +4,31 @@ const config: Config.InitialOptions = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/$1'
+    '^@/(.*)$': '<rootDir>/$1',
   },
-  setupFiles: ['<rootDir>/jest.setup.ts'],
-  testMatch: ['**/__tests__/**/*.test.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   transform: {
-    '^.+\\.tsx?$': 'ts-jest'
-  }
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: 'tsconfig.json',
+      isolatedModules: true
+    }]
+  },
+  testMatch: ['**/__tests__/**/*.test.ts'],
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  collectCoverage: true,
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov'],
+  verbose: true,
+  testEnvironmentOptions: {
+    url: 'http://localhost'
+  },
+  rootDir: '.',
+  modulePaths: ['<rootDir>'],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+  transformIgnorePatterns: [
+    '/node_modules/',
+    '^.+\\.module\\.(css|sass|scss)$',
+  ]
 };
 
-export default config;
+export default config; 
