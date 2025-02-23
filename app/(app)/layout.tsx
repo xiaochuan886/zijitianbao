@@ -3,6 +3,7 @@ import { AuthProvider } from '@/app/components/auth-provider'
 import { ToastProvider, ToastViewport } from '@/app/components/ui/toast'
 import { MainNav } from '@/components/main-nav'
 import { UserNav } from '@/components/user-nav'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 // 主应用布局：包含所有需要认证和完整UI的页面
 export default function AppLayout({
@@ -21,11 +22,15 @@ export default function AppLayout({
         <ToastProvider>
           <div className="relative min-h-screen">
             {/* 左侧导航 */}
-            <div className="fixed inset-y-0 left-0 w-64 border-r border-border bg-card">
+            <div className="fixed inset-y-0 left-0 w-64 border-r border-border bg-card flex flex-col">
               <div className="flex h-16 items-center px-6 border-b border-border">
                 <h2 className="text-lg font-semibold">资金计划填报系统</h2>
               </div>
-              <MainNav className="px-3 py-4" />
+              <MainNav className="px-3 py-4 flex-1" />
+              {/* 主题切换按钮 */}
+              <div className="p-4 border-t border-border">
+                <ThemeToggle />
+              </div>
             </div>
             
             {/* 主内容区 */}
