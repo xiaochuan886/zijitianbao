@@ -103,8 +103,19 @@ funding-system/
 ## 三、开发中功能
 
 ### 3.1 API路由层
-- [ ] 认证相关API
-- [ ] 机构管理API
+- [x] 认证相关API
+  - [x] POST /api/auth/login - 用户登录
+  - [x] POST /api/auth/register - 用户注册
+  - [x] PUT /api/auth/password - 修改密码
+- [x] 机构管理API
+  - [x] GET /api/organizations - 获取机构列表
+  - [x] POST /api/organizations - 创建机构
+  - [x] GET /api/organizations/[id] - 获取机构详情
+  - [x] PUT /api/organizations/[id] - 更新机构
+  - [x] DELETE /api/organizations/[id] - 删除机构
+  - [x] POST /api/organizations/[id]/departments - 创建部门
+  - [x] PUT /api/organizations/[id]/departments/[departmentId] - 更新部门
+  - [x] DELETE /api/organizations/[id]/departments/[departmentId] - 删除部门
 - [ ] 项目管理API
 - [ ] 记录管理API
 - [ ] 数据分析API
@@ -193,6 +204,22 @@ funding-system/
 - `Dev/TESTING.md`: 测试规范文档
 
 ## 八、更新日志
+
+### 2024-02-23
+- 完成认证相关 API 实现
+  - 用户登录、注册、修改密码功能
+  - JWT 认证集成
+  - 错误处理优化
+  - API 文档完善
+- 完成机构管理 API 测试，7 个测试用例全部通过
+- 完成认证 API 测试，8 个测试用例全部通过
+  - 登录功能测试：成功登录、用户不存在、密码错误
+  - 注册功能测试：成功注册、邮箱已注册
+  - 修改密码测试：成功修改、未登录、原密码错误
+- 测试覆盖率
+  - 认证 API 路由层：100%
+  - 认证服务层：97.56%
+  - 总体覆盖率：59.18%
 
 ### 2024-02-22 (最新)
 - 完成组织架构管理API实现

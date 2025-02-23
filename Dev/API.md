@@ -78,7 +78,18 @@ interface RefreshResponse {
 
 ## 三、机构管理接口
 
-### 1. 创建机构
+### 1. 获取机构列表
+- **路径**: GET /api/organizations
+- **权限**: 已登录用户
+- **查询参数**:
+  - page: 页码
+  - pageSize: 每页数量
+  - search: 搜索关键词
+  - sorting: 排序参数
+    - field: 排序字段
+    - order: 排序方向 (asc/desc)
+
+### 2. 创建机构
 - **路径**: POST /api/organizations
 - **权限**: 管理员
 - **请求体**:
@@ -92,7 +103,11 @@ interface CreateOrgRequest {
 }
 ```
 
-### 2. 更新机构
+### 3. 获取机构详情
+- **路径**: GET /api/organizations/:id
+- **权限**: 已登录用户
+
+### 4. 更新机构
 - **路径**: PUT /api/organizations/:id
 - **权限**: 管理员
 - **请求体**:
@@ -107,13 +122,33 @@ interface UpdateOrgRequest {
 }
 ```
 
-### 3. 获取机构列表
-- **路径**: GET /api/organizations
-- **权限**: 已登录用户
-- **查询参数**:
-  - page: 页码
-  - pageSize: 每页数量
-  - search: 搜索关键词
+### 5. 删除机构
+- **路径**: DELETE /api/organizations/:id
+- **权限**: 管理员
+
+### 6. 创建部门
+- **路径**: POST /api/organizations/:id/departments
+- **权限**: 管理员
+- **请求体**:
+```typescript
+interface CreateDepartmentRequest {
+  name: string;
+}
+```
+
+### 7. 更新部门
+- **路径**: PUT /api/organizations/:id/departments/:departmentId
+- **权限**: 管理员
+- **请求体**:
+```typescript
+interface UpdateDepartmentRequest {
+  name: string;
+}
+```
+
+### 8. 删除部门
+- **路径**: DELETE /api/organizations/:id/departments/:departmentId
+- **权限**: 管理员
 
 ## 四、项目管理接口
 
