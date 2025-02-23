@@ -2,9 +2,10 @@ import { useEffect, useState } from "react"
 
 interface User {
   id: string
-  name: string
+  name: string | null
+  email: string
   role: string
-  organizationId: string
+  organizationId: string | null
 }
 
 interface UseAuthReturn {
@@ -21,7 +22,7 @@ export function useAuth(): UseAuthReturn {
   useEffect(() => {
     async function fetchUser() {
       try {
-        const response = await fetch("/api/auth/me")
+        const response = await fetch("/api/auth/session")
         if (!response.ok) {
           throw new Error("获取用户信息失败")
         }

@@ -1,4 +1,4 @@
-import { ThemeProvider } from '@/components/theme-provider'
+import { ThemeProvider } from '@/app/components/theme-provider'
 
 export default function AuthLayout({
   children,
@@ -11,6 +11,7 @@ export default function AuthLayout({
       defaultTheme="light"
       enableSystem={false}
       forcedTheme="light"
+      disableTransitionOnChange
     >
       {children}
     </ThemeProvider>

@@ -39,11 +39,10 @@ interface DataTableProps {
   data: Organization[]
   onSuccess: () => void
   isAdmin?: boolean
+  router: any
 }
 
-export function createColumns({ onSuccess, isAdmin = false }: DataTableProps): ColumnDef<Organization>[] {
-  const router = useRouter()
-
+export function createColumns({ onSuccess, isAdmin = false, router }: DataTableProps): ColumnDef<Organization>[] {
   return [
     {
       accessorKey: "name",

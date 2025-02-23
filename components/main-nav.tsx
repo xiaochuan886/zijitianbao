@@ -92,11 +92,15 @@ const navigation = [
   },
 ]
 
-export function MainNav() {
+interface MainNavProps {
+  className?: string
+}
+
+export function MainNav({ className }: MainNavProps) {
   const pathname = usePathname()
 
   return (
-    <nav className="space-y-2">
+    <nav className={cn("space-y-2", className)}>
       {navigation.map((item, index) => {
         if (!item.items) {
           return (

@@ -6,7 +6,7 @@ import { TableToolbar } from "@/components/ui/table-toolbar"
 import { useOrgData } from "./hooks/useOrgData"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useEffect, useMemo } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { CreateOrgDialog } from "./components/CreateOrgDialog"
 import {
   Pagination,
@@ -142,6 +142,7 @@ function TablePagination({
 function OrganizationsPage() {
   const { data, isLoading, error, fetchData, currentPage, pageSize, totalCount } = useOrgData()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const search = searchParams.get("search") || ""
   const { user } = useAuth()
   const isAdmin = user?.role === "ADMIN"
@@ -159,8 +160,8 @@ function OrganizationsPage() {
   }
 
   const columns = useMemo(
-    () => createColumns({ data, onSuccess: handleSuccess, isAdmin }),
-    [data, isAdmin]
+    () => createColumns({ data, onSuccess: handleSuccess, isAdmin, router }),
+    [data, isAdmin, router, handleSuccess]
   )
 
   if (isLoading) {
