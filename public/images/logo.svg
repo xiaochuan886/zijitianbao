@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆形 -->
+  <circle cx="24" cy="24" r="22" fill="#1e40af"/>
+  
+  <!-- 金融符号 -->
+  <path d="M24 12V36M17 18L24 12L31 18M16 28H32M16 32H32" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- 装饰环 -->
+  <circle cx="24" cy="24" r="20" stroke="white" stroke-width="1" stroke-opacity="0.3" fill="none"/>
+</svg> 
