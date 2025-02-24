@@ -57,27 +57,63 @@ pnpm dev
 
 ```
 根目录/
-├── app/                # 页面路由
-│   ├── login/         # 登录页面
-│   ├── management/    # 管理页面
-│   ├── funding/       # 资金填报页面
-│   ├── analysis/      # 数据分析页面
-│   ├── dashboard/     # 仪表盘页面
-│   └── api/          # API 路由
-├── components/        # 组件
-│   ├── ui/           # UI 基础组件
-│   ├── user-nav.tsx  # 用户导航组件
-│   ├── main-nav.tsx  # 主导航组件
-│   └── role-based-ui.tsx # 基于角色的UI控制组件
-├── lib/              # 工具函数
-├── hooks/            # 自定义 Hook
-├── styles/           # 样式文件
+├── src/               # 源代码目录
+│   ├── app/          # 页面路由
+│   │   ├── (main)/   # 主布局组（需要侧边栏的页面）
+│   │   │   ├── layout.tsx    # 主布局（包含侧边栏和导航）
+│   │   │   ├── page.tsx      # 根页面（重定向到dashboard）
+│   │   │   ├── dashboard/    # 仪表盘页面
+│   │   │   ├── funding/      # 资金填报页面
+│   │   │   │   ├── page.tsx  # 填报首页
+│   │   │   │   ├── predict/  # 需求预测
+│   │   │   │   ├── actual/   # 实际支付
+│   │   │   │   └── audit/    # 财务审核
+│   │   │   ├── analysis/     # 数据分析页面
+│   │   │   │   ├── page.tsx  # 分析首页
+│   │   │   │   ├── dashboard/# 分析看板
+│   │   │   │   └── query/    # 数据查询
+│   │   │   └── management/   # 管理页面
+│   │   │       ├── page.tsx  # 管理首页
+│   │   │       ├── organizations/ # 机构管理
+│   │   │       ├── projects/     # 项目管理
+│   │   │       └── users/        # 用户管理
+│   │   ├── login/      # 登录页面（独立布局）
+│   │   │   ├── layout.tsx # 登录布局
+│   │   │   └── page.tsx   # 登录页面
+│   │   ├── api/       # API路由
+│   │   │   ├── auth/  # 认证相关API
+│   │   │   └── ...    # 其他API
+│   │   ├── layout.tsx # 根布局
+│   │   └── globals.css # 全局样式
+│   ├── components/    # 组件
+│   │   ├── ui/       # UI基础组件
+│   │   ├── user-nav.tsx  # 用户导航组件
+│   │   ├── main-nav.tsx  # 主导航组件
+│   │   └── role-based-ui.tsx # 基于角色的UI控制组件
+│   ├── lib/          # 工具函数
+│   │   ├── auth/     # 认证相关
+│   │   │   ├── types.ts    # 权限类型定义
+│   │   │   ├── guards.ts   # 权限守卫
+│   │   │   └── utils.ts    # 认证工具函数
+│   │   ├── services/ # 服务层
+│   │   │   ├── auth.service.ts    # 认证服务
+│   │   │   ├── organization.service.ts # 机构服务
+│   │   │   ├── project.service.ts # 项目服务
+│   │   │   └── record.service.ts  # 记录服务
+│   │   ├── prisma.ts # Prisma客户端（单例模式）
+│   │   ├── auth.tsx  # 认证相关工具函数
+│   │   └── utils.ts  # 通用工具函数
+│   ├── hooks/        # 自定义Hook
+│   └── styles/       # 样式文件
 ├── prisma/           # Prisma配置和模型
+│   ├── schema.prisma # 数据库模型定义
+│   └── seed.ts      # 种子数据脚本
 ├── public/           # 静态资源
-└── Dev/              # 开发文档
-    ├── API.md        # API文档
-    ├── DEVELOPMENT.md # 开发指南
-    ├── PROGRESS.md   # 进度文档
+├── __tests__/        # 测试文件
+└── Dev/             # 开发文档
+    ├── API.md       # API文档
+    ├── FEATURES.md  # 功能说明文档
+    ├── PROGRESS.md  # 进度文档
     └── ...          # 其他文档
 ```
 

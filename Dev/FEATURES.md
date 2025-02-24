@@ -1,6 +1,6 @@
 # 资金计划填报系统功能说明文档
-**版本**: 1.1
-**更新日期**: 2025-02-22
+**版本**: 1.2
+**更新日期**: 2024-02-24
 
 ## 一、系统功能地图
 ```mermaid
@@ -8,18 +8,39 @@ mindmap
   root((资金计划填报系统))
     管理功能
       机构管理
+        机构信息维护
+        部门管理
+        用户分配
       项目管理
-      资金需求类型管理
+        项目基本信息
+        子项目管理
+        资金类型关联
       用户权限
-      系统设置
+        用户管理
+        权限分配
+        访问控制
     填报功能
       资金需求预测
+        月度预测
+        年度预测
+        调整申请
       实际支付填报
+        用户填报
+        财务填报
+        差异说明
       财务审核
+        数据审核
+        差异处理
+        审核记录
     数据功能
       数据查询
+        多维查询
+        条件筛选
+        导出功能
       数据看板
-      数据导出
+        预测分析
+        执行分析
+        趋势分析
 ```
 
 ## 二、功能模块说明
@@ -289,4 +310,95 @@ sequenceDiagram
 ### 3. 权限问题
 - 机构数据隔离
 - 角色权限继承
-- 临时权限授予 
+- 临时权限授予
+
+## 用户认证功能
+
+### 1. 登录功能
+#### 1.1 功能描述
+- 用户通过邮箱和密码进行登录
+- 支持表单验证和错误提示
+- 登录成功后获取JWT token
+- 自动跳转到仪表盘页面
+
+#### 1.2 实现细节
+- **前端实现**
+  - 使用React Hook Form进行表单管理
+  - 使用Zod进行表单验证
+  - 使用Sonner显示提示消息
+  - 使用localStorage存储token和用户信息
+
+- **后端实现**
+  - 使用Prisma进行数据库操作
+  - 使用bcryptjs进行密码验证
+  - 使用jsonwebtoken生成token
+  - 实现完整的错误处理
+
+#### 1.3 用户角色
+- 系统管理员 (ADMIN)
+  - 拥有所有权限
+  - 可以管理其他用户
+  - 可以查看所有数据
+
+- 财务人员 (FINANCE)
+  - 可以查看和审核财务数据
+  - 可以导出财务报表
+  - 限定机构范围的数据访问
+
+- 填报人 (REPORTER)
+  - 可以提交资金计划
+  - 可以查看自己的填报记录
+  - 限定个人范围的数据访问
+
+- 审核人员 (AUDITOR)
+  - 可以审核资金计划
+  - 可以查看审核历史
+  - 限定机构范围的数据访问
+
+- 观察者 (OBSERVER)
+  - 只读权限
+  - 可以查看统计数据
+  - 限定机构范围的数据访问
+
+#### 1.4 安全措施
+- 密码加密存储
+- JWT token认证
+- 请求参数验证
+- 错误信息脱敏
+- 登录失败限制
+
+#### 1.5 测试账户
+```typescript
+const testAccounts = [
+  {
+    role: "ADMIN",
+    email: "admin@example.com",
+    password: "admin123",
+    description: "系统管理员账户"
+  },
+  {
+    role: "FINANCE",
+    email: "finance@example.com",
+    password: "finance123",
+    description: "财务主管账户"
+  },
+  {
+    role: "REPORTER",
+    email: "reporter@example.com",
+    password: "reporter123",
+    description: "普通填报员账户"
+  },
+  {
+    role: "AUDITOR",
+    email: "auditor@example.com",
+    password: "auditor123",
+    description: "审核专员账户"
+  },
+  {
+    role: "OBSERVER",
+    email: "observer@example.com",
+    password: "observer123",
+    description: "数据观察员账户"
+  }
+]
+``` 

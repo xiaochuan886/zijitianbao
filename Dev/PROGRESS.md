@@ -22,39 +22,61 @@
 ```
 根目录/
 ├── app/                # 页面路由
-│   ├── login/         # 登录页面
-│   ├── management/    # 管理页面
-│   ├── funding/       # 资金填报页面
-│   ├── analysis/      # 数据分析页面
-│   ├── dashboard/     # 仪表盘页面
-│   └── api/          # API 路由
+│   ├── (main)/        # 主布局组（需要侧边栏的页面）
+│   │   ├── layout.tsx # 主布局（包含侧边栏和导航）
+│   │   ├── page.tsx   # 根页面（重定向到dashboard）
+│   │   ├── dashboard/ # 仪表盘页面
+│   │   ├── funding/   # 资金填报页面
+│   │   │   ├── page.tsx    # 填报首页
+│   │   │   ├── predict/    # 需求预测
+│   │   │   ├── actual/     # 实际支付
+│   │   │   └── audit/      # 财务审核
+│   │   ├── analysis/  # 数据分析页面
+│   │   │   ├── page.tsx    # 分析首页
+│   │   │   ├── dashboard/  # 分析看板
+│   │   │   └── query/      # 数据查询
+│   │   └── management/ # 管理页面
+│   │       ├── page.tsx      # 管理首页
+│   │       ├── organizations/ # 机构管理
+│   │       ├── projects/     # 项目管理
+│   │       └── users/        # 用户管理
+│   ├── login/         # 登录页面（独立布局）
+│   │   ├── layout.tsx # 登录布局
+│   │   └── page.tsx   # 登录页面
+│   ├── api/          # API路由
+│   │   ├── auth/     # 认证相关API
+│   │   └── ...       # 其他API
+│   ├── layout.tsx    # 根布局
+│   └── globals.css   # 全局样式
 ├── components/        # 组件
-│   ├── ui/           # UI 基础组件
+│   ├── ui/           # UI基础组件
 │   ├── user-nav.tsx  # 用户导航组件
 │   ├── main-nav.tsx  # 主导航组件
 │   └── role-based-ui.tsx # 基于角色的UI控制组件
 ├── lib/              # 工具函数
 │   ├── auth/         # 认证相关
 │   │   ├── types.ts  # 权限类型定义
-│   │   ├── permission.ts # 权限检查逻辑
-│   │   └── decorators.ts # 权限装饰器
+│   │   ├── guards.ts # 权限守卫
+│   │   └── utils.ts  # 认证工具函数
 │   ├── services/     # 服务层
-│   │   ├── types.ts  # 服务类型定义
 │   │   ├── auth.service.ts    # 认证服务
 │   │   ├── organization.service.ts # 机构服务
 │   │   ├── project.service.ts # 项目服务
-│   │   ├── record.service.ts  # 记录服务
-│   │   └── index.ts  # 服务导出
-│   └── prisma.ts     # Prisma客户端
-├── hooks/            # 自定义 Hook
+│   │   └── record.service.ts  # 记录服务
+│   ├── prisma.ts     # Prisma客户端（单例模式）
+│   ├── auth.tsx      # 认证相关工具函数
+│   └── utils.ts      # 通用工具函数
+├── hooks/            # 自定义Hook
 ├── styles/           # 样式文件
 ├── prisma/           # Prisma配置和模型
-│   └── schema.prisma # 数据库模型定义
+│   ├── schema.prisma # 数据库模型定义
+│   └── seed.ts      # 种子数据脚本
 ├── public/           # 静态资源
-└── Dev/              # 开发文档
-    ├── API.md        # API文档
-    ├── DEVELOPMENT.md # 开发指南
-    ├── PROGRESS.md   # 进度文档
+├── __tests__/        # 测试文件
+└── Dev/             # 开发文档
+    ├── API.md       # API文档
+    ├── FEATURES.md  # 功能说明文档
+    ├── PROGRESS.md  # 进度文档
     └── ...          # 其他文档
 ```
 
@@ -232,6 +254,51 @@
   - 认证服务层：97.56%
   - 总体覆盖率：59.18%
 
+### 2024-02-24 (最新)
+- 完成登录功能实现
+  - 创建登录页面
+    - 实现表单验证
+    - 添加加载状态
+    - 集成错误提示
+  - 实现登录API
+    - 添加请求体验证
+    - 实现密码验证
+    - 生成JWT token
+    - 返回用户信息
+  - 数据库配置
+    - 初始化数据库
+    - 创建数据迁移
+    - 添加种子数据
+  - 创建测试账户
+    - 系统管理员 (admin@example.com)
+    - 财务主管 (finance@example.com)
+    - 普通填报员 (reporter@example.com)
+    - 审核专员 (auditor@example.com)
+    - 数据观察员 (observer@example.com)
+  - 优化实现
+    - 使用Prisma客户端单例模式
+    - 添加环境变量配置
+    - 完善错误处理
+  - 测试覆盖
+    - 登录成功流程
+    - 密码错误处理
+    - 用户不存在处理
+    - 请求参数验证
+- 优化用户界面
+  - 更新用户导航组件
+    - 添加中文界面支持
+    - 实现用户名拼音首字母头像
+    - 显示用户角色信息
+    - 添加退出登录功能
+  - 优化布局结构
+    - 移除左侧边栏重复的用户信息
+    - 添加主题切换功能
+    - 保留右上角用户信息入口
+  - 改进用户体验
+    - 添加暗色主题支持
+    - 优化界面交互反馈
+    - 完善中文化支持
+
 ### 2024-02-22 (最新)
 - 完成组织架构管理API实现
   - 机构管理API
@@ -301,6 +368,21 @@
   - 导出middleware函数
   - 集成新权限系统
   - 添加性能监控
+
+### 2024-02-25 (最新)
+- 优化用户界面主题支持
+  - 实现主题切换功能
+    - 添加浅色主题、深色主题和跟随系统选项
+    - 使用 next-themes 实现主题持久化
+    - 优化主题切换动画效果
+  - 更新登录页面
+    - 添加深色主题支持
+    - 使用 shadcn/ui Card 组件重构登录表单
+    - 优化响应式样式和主题切换效果
+  - 技术改进
+    - 配置 ThemeProvider 支持系统主题
+    - 更新全局布局使用主题变量
+    - 优化组件样式以适应主题切换
 
 ## 三、近期计划
 ### 2024-03-01 至 2024-03-15

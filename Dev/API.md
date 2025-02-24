@@ -46,20 +46,47 @@ interface ApiResponse<T> {
 - **请求体**:
 ```typescript
 interface LoginRequest {
-  username: string;
-  password: string;
+  username: string;  // 邮箱地址
+  password: string;  // 密码（至少6个字符）
 }
 ```
 - **响应**:
 ```typescript
 interface LoginResponse {
-  token: string;
+  token: string;     // JWT token
   user: {
-    id: string;
-    name: string;
-    role: string;
-    organizationId: string;
+    id: string;      // 用户ID
+    name: string;    // 用户名称
+    role: string;    // 用户角色
+    organizationId: string;  // 所属机构ID
   };
+}
+```
+- **错误码**:
+  - 400: 请求参数错误
+  - 401: 用户名或密码错误
+  - 500: 服务器内部错误
+- **示例**:
+```bash
+# 请求
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin@example.com", "password": "admin123"}'
+
+# 成功响应
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "clrp2x4sg0000qwj591234567",
+    "name": "系统管理员",
+    "role": "ADMIN",
+    "organizationId": ""
+  }
+}
+
+# 错误响应
+{
+  "message": "用户名或密码错误"
 }
 ```
 
