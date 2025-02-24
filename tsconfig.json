@@ -18,10 +18,10 @@
         "name": "next"
       }
     ],
-    "paths": {
-      "@/*": ["./*"]
-    },
     "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "types": ["jest", "node"]
   },
   "include": [

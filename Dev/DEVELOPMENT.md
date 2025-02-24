@@ -54,27 +54,41 @@ pnpm dev
 ```
 根目录/
 ├── app/                # 页面路由
-│   ├── login/         # 登录页面
-│   ├── management/    # 管理页面
-│   ├── funding/       # 资金填报页面
-│   ├── analysis/      # 数据分析页面
-│   ├── dashboard/     # 仪表盘页面
-│   └── api/          # API 路由
+│   ├── (main)/        # 主布局组（需要侧边栏的页面）
+│   │   ├── layout.tsx # 主布局（包含侧边栏和导航）
+│   │   ├── page.tsx   # 根页面（重定向到dashboard）
+│   │   ├── dashboard/ # 仪表盘页面
+│   │   ├── funding/   # 资金填报页面
+│   │   ├── analysis/  # 数据分析页面
+│   │   └── management/ # 管理页面
+│   ├── login/         # 登录页面（独立布局）
+│   ├── api/          # API路由
+│   ├── layout.tsx    # 根布局
+│   └── globals.css   # 全局样式
 ├── components/        # 组件
-│   ├── ui/           # UI 基础组件
+│   ├── ui/           # UI基础组件
 │   ├── user-nav.tsx  # 用户导航组件
 │   ├── main-nav.tsx  # 主导航组件
 │   └── role-based-ui.tsx # 基于角色的UI控制组件
 ├── lib/              # 工具函数
-├── hooks/            # 自定义 Hook
+│   ├── auth/         # 认证相关
+│   │   ├── types.ts  # 权限类型定义
+│   │   ├── guards.ts # 权限守卫
+│   │   └── utils.ts  # 认证工具函数
+│   ├── services/     # 服务层
+│   │   ├── auth.service.ts    # 认证服务
+│   │   ├── organization.service.ts # 机构服务
+│   │   ├── project.service.ts # 项目服务
+│   │   └── record.service.ts  # 记录服务
+│   ├── prisma.ts     # Prisma客户端（单例模式）
+│   ├── auth.tsx      # 认证相关工具函数
+│   └── utils.ts      # 通用工具函数
+├── hooks/            # 自定义Hook
 ├── styles/           # 样式文件
 ├── prisma/           # Prisma配置和模型
 ├── public/           # 静态资源
-└── Dev/              # 开发文档
-    ├── API.md        # API文档
-    ├── DEVELOPMENT.md # 开发指南
-    ├── PROGRESS.md   # 进度文档
-    └── ...          # 其他文档
+├── __tests__/        # 测试文件
+└── Dev/             # 开发文档
 ```
 
 3. **代码风格**
@@ -124,4 +138,42 @@ chore: 其他
 3. **生产环境**
    - 版本管理
    - 监控告警
-   - 备份恢复 
+   - 备份恢复
+
+## 开发登录功能指南
+
+### 1. 环境准备
+```bash
+# 安装依赖
+pnpm install
+
+# 初始化数据库
+pnpm prisma generate
+pnpm prisma migrate dev
+pnpm db:seed
+
+# 启动开发服务器
+pnpm dev
+```
+
+### 2. 测试账户
+使用以下任意账户进行测试：
+- 管理员: admin@example.com / admin123
+- 财务: finance@example.com / finance123
+- 填报员: reporter@example.com / reporter123
+- 审核员: auditor@example.com / auditor123
+- 观察者: observer@example.com / observer123
+
+### 3. 开发注意事项
+- 确保.env文件中配置了正确的DATABASE_URL和JWT_SECRET
+- 使用Prisma Studio查看数据库：pnpm prisma studio
+- 使用单例模式实例化Prisma客户端
+- 遵循API文档规范进行开发
+- 确保错误处理完整性
+- 注意密码加密和token安全
+
+### 4. 调试方法
+- 使用浏览器开发工具查看网络请求
+- 检查localStorage中的token存储
+- 查看服务器端日志输出
+- 使用Prisma Studio验证数据 
