@@ -260,4 +260,14 @@ export function middleware(request: NextRequest) {
 - 首屏加载优化
 - 长列表渲染
 - 频繁更新处理
-- 网络请求优化 
+- 网络请求优化
+
+## 状态管理
+- 全局状态使用 Zustand
+- 表单状态使用 React Hook Form
+- 禁止使用 Redux
+
+## 性能红线
+- 首屏加载时间 <2s
+- 交互响应延迟 <200ms
+- 内存占用 <100MB 

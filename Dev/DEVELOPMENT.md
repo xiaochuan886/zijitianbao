@@ -52,13 +52,29 @@ pnpm dev
 
 2. **目录结构**
 ```
-src/
-  ├── app/             # 页面路由
-  ├── components/      # 公共组件
-  ├── lib/            # 工具函数
-  ├── hooks/          # 自定义Hook
-  ├── types/          # 类型定义
-  └── styles/         # 样式文件
+根目录/
+├── app/                # 页面路由
+│   ├── login/         # 登录页面
+│   ├── management/    # 管理页面
+│   ├── funding/       # 资金填报页面
+│   ├── analysis/      # 数据分析页面
+│   ├── dashboard/     # 仪表盘页面
+│   └── api/          # API 路由
+├── components/        # 组件
+│   ├── ui/           # UI 基础组件
+│   ├── user-nav.tsx  # 用户导航组件
+│   ├── main-nav.tsx  # 主导航组件
+│   └── role-based-ui.tsx # 基于角色的UI控制组件
+├── lib/              # 工具函数
+├── hooks/            # 自定义 Hook
+├── styles/           # 样式文件
+├── prisma/           # Prisma配置和模型
+├── public/           # 静态资源
+└── Dev/              # 开发文档
+    ├── API.md        # API文档
+    ├── DEVELOPMENT.md # 开发指南
+    ├── PROGRESS.md   # 进度文档
+    └── ...          # 其他文档
 ```
 
 3. **代码风格**

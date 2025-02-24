@@ -14,37 +14,48 @@
 - UI组件库: shadcn/ui
 - 数据库: SQLite (通过 Prisma ORM)
 - 开发语言: TypeScript
-- 状态管理: React Context
+- 状态管理: React Context + Hooks
 - 表单处理: React Hook Form
 - 数据验证: Zod
 
 ### 1.3 项目结构
 ```
-funding-system/
-├── app/                    # Next.js 应用主目录
-│   ├── api/               # API 路由
-│   ├── (auth)/           # 认证相关页面
-│   ├── dashboard/        # 仪表盘页面
-│   └── layout.tsx        # 根布局
-├── components/            # React 组件
-│   ├── ui/               # UI基础组件
+根目录/
+├── app/                # 页面路由
+│   ├── login/         # 登录页面
+│   ├── management/    # 管理页面
+│   ├── funding/       # 资金填报页面
+│   ├── analysis/      # 数据分析页面
+│   ├── dashboard/     # 仪表盘页面
+│   └── api/          # API 路由
+├── components/        # 组件
+│   ├── ui/           # UI 基础组件
+│   ├── user-nav.tsx  # 用户导航组件
+│   ├── main-nav.tsx  # 主导航组件
 │   └── role-based-ui.tsx # 基于角色的UI控制组件
-├── lib/                   # 核心库文件
-│   ├── auth/             # 认证相关
-│   │   ├── types.ts      # 权限类型定义
+├── lib/              # 工具函数
+│   ├── auth/         # 认证相关
+│   │   ├── types.ts  # 权限类型定义
 │   │   ├── permission.ts # 权限检查逻辑
 │   │   └── decorators.ts # 权限装饰器
-│   ├── services/         # 服务层
-│   │   ├── types.ts      # 服务类型定义
+│   ├── services/     # 服务层
+│   │   ├── types.ts  # 服务类型定义
 │   │   ├── auth.service.ts    # 认证服务
 │   │   ├── organization.service.ts # 机构服务
 │   │   ├── project.service.ts # 项目服务
 │   │   ├── record.service.ts  # 记录服务
-│   │   └── index.ts      # 服务导出
-│   └── prisma.ts         # Prisma客户端
-├── prisma/               # Prisma配置和模型
-│   └── schema.prisma     # 数据库模型定义
-└── middleware.ts         # Next.js中间件（权限控制）
+│   │   └── index.ts  # 服务导出
+│   └── prisma.ts     # Prisma客户端
+├── hooks/            # 自定义 Hook
+├── styles/           # 样式文件
+├── prisma/           # Prisma配置和模型
+│   └── schema.prisma # 数据库模型定义
+├── public/           # 静态资源
+└── Dev/              # 开发文档
+    ├── API.md        # API文档
+    ├── DEVELOPMENT.md # 开发指南
+    ├── PROGRESS.md   # 进度文档
+    └── ...          # 其他文档
 ```
 
 ## 二、已实现功能
@@ -289,4 +300,17 @@ funding-system/
 - 优化中间件实现
   - 导出middleware函数
   - 集成新权限系统
-  - 添加性能监控 
+  - 添加性能监控
+
+## 三、近期计划
+### 2024-03-01 至 2024-03-15
+✅ 完成机构管理核心功能
+⬜ 实现部门树形管理
+⬜ 添加文件上传组件
+
+## 四、质量指标
+| 指标 | 目标值 | 当前值 |
+|------|--------|--------|
+| API响应时间 | <500ms | 620ms |
+| 测试覆盖率 | ≥80% | 72% |
+| 文档完整率 | 100% | 85% | 

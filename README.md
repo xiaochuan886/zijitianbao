@@ -25,7 +25,7 @@
 1. 克隆项目
 ```bash
 git clone [项目地址]
-cd form-system
+cd funding-system
 ```
 
 2. 安装依赖
@@ -56,18 +56,29 @@ pnpm dev
 ## 项目结构
 
 ```
-src/
+根目录/
 ├── app/                # 页面路由
-│   ├── (auth)/        # 认证相关页面
-│   ├── (dashboard)/   # 主应用页面
-│   └── api/           # API 路由
+│   ├── login/         # 登录页面
+│   ├── management/    # 管理页面
+│   ├── funding/       # 资金填报页面
+│   ├── analysis/      # 数据分析页面
+│   ├── dashboard/     # 仪表盘页面
+│   └── api/          # API 路由
 ├── components/        # 组件
 │   ├── ui/           # UI 基础组件
-│   └── business/     # 业务组件
+│   ├── user-nav.tsx  # 用户导航组件
+│   ├── main-nav.tsx  # 主导航组件
+│   └── role-based-ui.tsx # 基于角色的UI控制组件
 ├── lib/              # 工具函数
 ├── hooks/            # 自定义 Hook
-├── types/            # TypeScript 类型
-└── styles/           # 样式文件
+├── styles/           # 样式文件
+├── prisma/           # Prisma配置和模型
+├── public/           # 静态资源
+└── Dev/              # 开发文档
+    ├── API.md        # API文档
+    ├── DEVELOPMENT.md # 开发指南
+    ├── PROGRESS.md   # 进度文档
+    └── ...          # 其他文档
 ```
 
 ## 开发指南
@@ -75,7 +86,7 @@ src/
 ### 技术栈
 - 前端框架: Next.js 14 (App Router)
 - UI 框架: TailwindCSS + Shadcn UI
-- 状态管理: Zustand
+- 状态管理: React Context + Hooks
 - 数据库: Prisma + SQLite
 - 认证: NextAuth.js
 

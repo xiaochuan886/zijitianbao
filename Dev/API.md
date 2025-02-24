@@ -90,7 +90,7 @@ interface RefreshResponse {
     - order: 排序方向 (asc/desc)
 
 ### 2. 创建机构
-- **路径**: POST /api/organizations
+- **路径**: POST /api/v1/organizations
 - **权限**: 管理员
 - **请求体**:
 ```typescript
@@ -127,7 +127,7 @@ interface UpdateOrgRequest {
 - **权限**: 管理员
 
 ### 6. 创建部门
-- **路径**: POST /api/organizations/:id/departments
+- **路径**: POST /api/v1/organizations/:id/departments
 - **权限**: 管理员
 - **请求体**:
 ```typescript
@@ -149,6 +149,17 @@ interface UpdateDepartmentRequest {
 ### 8. 删除部门
 - **路径**: DELETE /api/organizations/:id/departments/:departmentId
 - **权限**: 管理员
+
+### 9. 管理部门
+- **路径**: POST /api/v1/organizations/:id/departments
+- **权限**: 管理员
+- **请求体**:
+```typescript
+interface ManageDepartmentRequest {
+  operation: 'ADD' | 'REMOVE' | 'UPDATE';
+  departments: string[];
+}
+```
 
 ## 四、项目管理接口
 
