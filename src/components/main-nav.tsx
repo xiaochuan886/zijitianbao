@@ -14,6 +14,7 @@ import {
   LineChart,
   BarChart3,
   FileDown,
+  FileType,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -37,6 +38,11 @@ const navigation = [
         title: "项目管理",
         href: "/management/projects",
         icon: FolderKanban,
+      },
+      {
+        title: "资金需求类型",
+        href: "/management/fund-types",
+        icon: FileType,
       },
       {
         title: "用户权限",

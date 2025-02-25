@@ -39,7 +39,12 @@ export const columns: ColumnDef<Project>[] = [
     accessorKey: "budget",
     header: "预算",
     cell: ({ row }) => {
-      const amount = Number.parseFloat(row.getValue("budget"))
+      const budget = row.original.budget
+      if (!budget) return null
+      
+      const amount = Number.parseFloat(budget.toString())
+      if (isNaN(amount)) return null
+      
       const formatted = new Intl.NumberFormat("zh-CN", {
         style: "currency",
         currency: "CNY",

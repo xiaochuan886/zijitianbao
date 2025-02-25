@@ -7,6 +7,7 @@ type User = {
   name: string
   email: string
   role: "admin" | "manager" | "user"
+  token?: string
 }
 
 type AuthContextType = {
@@ -31,15 +32,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = async (email: string, password: string) => {
-    // This is a mock login. In a real application, you would validate credentials against a backend.
-    if (email === "admin@example.com" && password === "password") {
-      const user: User = { id: "1", name: "Admin User", email, role: "admin" }
-      setUser(user)
-      if (typeof window !== "undefined") {
-        localStorage.setItem("user", JSON.stringify(user))
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || '登录失败')
       }
-    } else {
-      throw new Error("Invalid credentials")
+
+      const data = await response.json()
+      const { user, token } = data.data
+
+      // 保存用户信息和token
+      const userWithToken = { ...user, token }
+      setUser(userWithToken)
+      if (typeof window !== "undefined") {
+        localStorage.setItem("user", JSON.stringify(userWithToken))
+        localStorage.setItem("token", token)
+      }
+    } catch (error: any) {
+      throw new Error(error.message || '登录失败')
     }
   }
 
@@ -47,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     if (typeof window !== "undefined") {
       localStorage.removeItem("user")
+      localStorage.removeItem("token")
     }
   }
 
