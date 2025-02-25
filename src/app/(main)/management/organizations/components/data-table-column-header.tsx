@@ -12,7 +12,9 @@ export function DataTableColumnHeader<TData, TValue>({
   column,
   title,
 }: DataTableColumnHeaderProps<TData, TValue>) {
-  if (!column.getCanSort()) {
+  const canSort = column.getCanSort?.() ?? false
+
+  if (!canSort) {
     return <div>{title}</div>
   }
 
@@ -31,4 +33,4 @@ export function DataTableColumnHeader<TData, TValue>({
       )}
     </Button>
   )
-} 
+}

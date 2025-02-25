@@ -23,18 +23,22 @@ const formSchema = z.object({
   name: z.string().min(2, {
     message: "项目名称至少需要2个字符。",
   }),
-  organization: z.string({
-    required_error: "请选择所属机构。",
+  organizations: z.array(z.string()).min(1, {
+    message: "请至少选择一个机构。",
   }),
+  departments: z.array(z.string()).optional(),
   status: z.string({
     required_error: "请选择项目状态。",
   }),
-  budget: z.coerce.number().min(0, {
-    message: "预算不能为负数。",
+  startYear: z.number().min(2024, {
+    message: "开始年份不能早于2024年。",
   }),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
-    message: "请输入有效的日期格式 (YYYY-MM-DD)。",
-  }),
+  subProjects: z.array(z.object({
+    name: z.string().min(2, { message: "子项目名称至少需要2个字符。" }),
+    fundingType: z.string({ required_error: "请选择资金需求类型。" })
+  })).min(1, {
+    message: "请至少添加一个子项目。",
+  })
 })
 
 interface ProjectFormProps {
@@ -49,10 +53,11 @@ export function ProjectForm({ initialData, onSubmit }: ProjectFormProps) {
     resolver: zodResolver(formSchema),
     defaultValues: initialData || {
       name: "",
-      organization: "",
-      status: "",
-      budget: 0,
-      startDate: "",
+      organizations: [],
+      departments: [],
+      status: "规划中",
+      startYear: new Date().getFullYear(),
+      subProjects: []
     },
   })
 
@@ -136,30 +141,91 @@ export function ProjectForm({ initialData, onSubmit }: ProjectFormProps) {
             />
             <FormField
               control={form.control}
-              name="budget"
+              name="startYear"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>预算</FormLabel>
+                  <FormLabel>开始年份</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="输入项目预算" {...field} />
+                    <Input
+                      type="number"
+                      min={2024}
+                      placeholder="输入开始年份"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="startDate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>开始日期</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">子项目</h4>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const subProjects = form.getValues("subProjects") || [];
+                    form.setValue("subProjects", [
+                      ...subProjects,
+                      { name: "", fundingType: "" },
+                    ]);
+                  }}
+                >
+                  添加子项目
+                </Button>
+              </div>
+              {form.watch("subProjects")?.map((_, index) => (
+                <div key={index} className="flex gap-4">
+                  <FormField
+                    control={form.control}
+                    name={`subProjects.${index}.name`}
+                    render={({ field }) => (
+                      <FormItem className="flex-1">
+                        <FormControl>
+                          <Input placeholder="子项目名称" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`subProjects.${index}.fundingType`}
+                    render={({ field }) => (
+                      <FormItem className="flex-1">
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="资金需求类型" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="capital">资本性支出</SelectItem>
+                            <SelectItem value="operating">经营性支出</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const subProjects = form.getValues("subProjects");
+                      form.setValue(
+                        "subProjects",
+                        subProjects.filter((_, i) => i !== index)
+                      );
+                    }}
+                  >
+                    ×
+                  </Button>
+                </div>
+              ))}
+            </div>
             <DialogFooter>
               <Button type="submit">{initialData ? "保存更改" : "创建项目"}</Button>
             </DialogFooter>

@@ -77,19 +77,19 @@ export default function UsersPage() {
   // 添加事件监听器，用于捕获行操作
   useEffect(() => {
     // 监听自定义row-action事件
-    const handleRowAction = (event: CustomEvent) => {
-      const { action, row } = event.detail;
+    const handleRowAction = (event: any) => {
+      const { action, data } = event.detail;
       if (action === "edit") {
-        handleEditClick(row);
+        handleEditClick(data);
       }
     };
     
     // 添加事件监听器
-    document.addEventListener('row-action', handleRowAction as EventListener);
+    window.addEventListener('row-action', handleRowAction);
     
     // 清理函数
     return () => {
-      document.removeEventListener('row-action', handleRowAction as EventListener);
+      window.removeEventListener('row-action', handleRowAction);
     };
   }, []);
 
@@ -232,7 +232,9 @@ export default function UsersPage() {
       </div>
 
       <DataTable
-        columns={columns}
+        columns={columns({
+          onEdit: handleEditClick
+        })}
         data={data}
         pagination={pagination}
         onPaginationChange={(paginationUpdate) => {
@@ -243,7 +245,6 @@ export default function UsersPage() {
           }))
         }}
         loading={loading}
-        onEdit={(userData) => handleEditClick(userData as User)}
       />
 
       <UserForm

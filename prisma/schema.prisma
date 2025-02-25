@@ -49,7 +49,8 @@ model Organization {
   departments Department[]
   users       User[]       @relation("PrimaryOrganization")
   userOrganizations UserOrganization[] // 多用户关联
-  projects    Project[]
+  projects    Project[]    @relation("PrimaryOrganization")
+  projectOrganizations Project[] @relation("ProjectOrganizations") // 关联项目
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -71,21 +72,32 @@ model Department {
   @@index([name])
 }
 
+// 项目状态枚举
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 // 项目表
 model Project {
   id            String         @id @default(cuid())
   name          String
-  status        String        // active/archived
+  status        ProjectStatus  @default(ACTIVE)
   startYear     Int
-  organizations Organization[]
+  hasRecords    Boolean       @default(false)  // 是否有关联记录
+  organizationId String        // 主要所属机构
+  organization   Organization  @relation("PrimaryOrganization", fields: [organizationId], references: [id])
+  organizations Organization[] @relation("ProjectOrganizations") // 关联机构
   departments   Department[]
   subProjects   SubProject[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
+  @@unique([name, organizationId], name: "projectNameOrg")
   @@index([name])
   @@index([status])
   @@index([startYear])
+  @@index([organizationId])
 }
 
 // 子项目表

@@ -40,7 +40,11 @@ const roleColors: Record<Role, string> = {
   OBSERVER: "bg-gray-500 hover:bg-gray-600"
 }
 
-export const columns: ColumnDef<User>[] = [
+interface DataTableProps {
+  onEdit: (user: User) => void
+}
+
+export const columns = ({ onEdit }: DataTableProps): ColumnDef<User>[] => [
   {
     id: "select",
     header: ({ table }) => (
@@ -140,12 +144,7 @@ export const columns: ColumnDef<User>[] = [
             <DropdownMenuLabel>操作</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem 
-              onClick={() => {
-                // 使用表格的onEdit方法
-                if (table.options.meta?.onEdit) {
-                  table.options.meta.onEdit(user);
-                }
-              }}
+              onClick={() => onEdit(user)}
             >
               <Pencil className="mr-2 h-4 w-4" />
               编辑

@@ -36,9 +36,14 @@ export async function GET(request: Request) {
             ],
           }
         : {}),
-      // 如果不是管理员，只能看到自己所在机构的数据
-      ...(session.user.role !== "ADMIN" && session.user.organizationId
-        ? { id: session.user.organizationId }
+      // 如果不是管理员，只能看到自己关联的机构数据
+      ...(session.user.role !== "ADMIN"
+        ? {
+            OR: [
+              { id: session.user.organizationId },
+              { users: { some: { id: session.user.id } } }
+            ]
+          }
         : {}),
     }
 
@@ -72,27 +77,23 @@ export async function GET(request: Request) {
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: {
-          createdAt: "desc",
+          updatedAt: 'desc',
         },
       }),
     ])
 
     // 5. 返回结果
     return NextResponse.json({
-      code: 200,
-      message: "获取成功",
-      data: {
-        items,
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
     })
-  } catch (error) {
-    console.error("GET /api/organizations error:", error)
+  } catch (error: any) {
+    console.error('Get organizations error:', error)
     return NextResponse.json(
-      { message: "服务器内部错误" },
+      { message: error.message || "获取机构列表失败" },
       { status: 500 }
     )
   }
@@ -156,4 +157,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-} 
+}

@@ -93,7 +93,7 @@ export function DataTable({
             <TableRow>
               {columns.map((column) => (
                 <TableHead key={column.id || column.accessorKey || column.header}>
-                  {column.header}
+                  {typeof column.header === 'function' ? flexRender(column.header, { table, column }) : column.header}
                 </TableHead>
               ))}
             </TableRow>

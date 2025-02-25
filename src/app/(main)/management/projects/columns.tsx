@@ -14,12 +14,17 @@ import {
 import { ProjectForm } from "./project-form"
 
 export type Project = {
-  id: number
+  id: string
   name: string
-  organization: string
+  organizations: string[]
+  departments: string[]
   status: string
-  budget: number
-  startDate: string
+  startYear: number
+  subProjects: Array<{
+    name: string
+    fundingType: string
+  }>
+  createdAt: Date
 }
 
 export const columns: ColumnDef<Project>[] = [
@@ -28,33 +33,40 @@ export const columns: ColumnDef<Project>[] = [
     header: "项目名称",
   },
   {
-    accessorKey: "organization",
-    header: "所属机构",
+    accessorKey: "organizations",
+    header: "关联机构",
+    cell: ({ row }) => (
+      <div className="space-x-1">
+        {row.original.organizations.map((org, index) => (
+          <span key={index} className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
+            {org}
+          </span>
+        ))}
+      </div>
+    ),
   },
   {
     accessorKey: "status",
     header: "状态",
+    cell: ({ row }) => (
+      <span className={`px-2 py-1 rounded text-sm ${
+        row.original.status === "规划中" ? "bg-blue-100 text-blue-800" :
+        row.original.status === "进行中" ? "bg-green-100 text-green-800" :
+        row.original.status === "已完成" ? "bg-gray-100 text-gray-800" :
+        "bg-yellow-100 text-yellow-800"
+      }`}>
+        {row.original.status}
+      </span>
+    ),
   },
   {
-    accessorKey: "budget",
-    header: "预算",
-    cell: ({ row }) => {
-      const budget = row.original.budget
-      if (!budget) return null
-      
-      const amount = Number.parseFloat(budget.toString())
-      if (isNaN(amount)) return null
-      
-      const formatted = new Intl.NumberFormat("zh-CN", {
-        style: "currency",
-        currency: "CNY",
-      }).format(amount)
-      return <div className="font-medium">{formatted}</div>
-    },
+    accessorKey: "startYear",
+    header: "开始年份",
   },
   {
-    accessorKey: "startDate",
-    header: "开始日期",
+    accessorKey: "subProjects",
+    header: "子项目数量",
+    cell: ({ row }) => row.original.subProjects.length,
   },
   {
     id: "actions",
