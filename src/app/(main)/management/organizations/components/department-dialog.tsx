@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Plus, Trash2, Save } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 interface Department {
@@ -33,10 +33,21 @@ export function DepartmentDialog({
   departments: initialDepartments,
   onSave,
 }: DepartmentDialogProps) {
-  const [departments, setDepartments] = useState<Department[]>(() =>
-    initialDepartments.map(dept => ({ ...dept, isNew: false, isDeleted: false }))
-  )
+  const [departments, setDepartments] = useState<Department[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 当弹窗打开或初始部门列表改变时，更新部门列表
+  useEffect(() => {
+    if (open) {
+      setDepartments(
+        initialDepartments.map(dept => ({
+          ...dept,
+          isNew: false,
+          isDeleted: false
+        }))
+      )
+    }
+  }, [open, initialDepartments])
 
   // 添加新部门
   const handleAddDepartment = () => {
@@ -89,8 +100,10 @@ export function DepartmentDialog({
 
       await onSave(validDepartments)
       onOpenChange(false)
+      toast.success("保存成功")
     } catch (error) {
-      toast.error("保存失败")
+      console.error("Save departments error:", error)
+      toast.error("保存失败，请重试")
     } finally {
       setIsSubmitting(false)
     }

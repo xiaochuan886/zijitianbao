@@ -7,16 +7,15 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useState } from "react"
 import { Save } from "lucide-react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
 
 interface Organization {
   id: string
   name: string
   code: string
   departments: { id: string; name: string }[]
-  createdAt: string
-  updatedAt: string
 }
 
 interface OrganizationDialogProps {
@@ -32,19 +31,35 @@ export function OrganizationDialog({
   organization,
   onSubmit,
 }: OrganizationDialogProps) {
-  const [name, setName] = useState(organization?.name || "")
-  const [code, setCode] = useState(organization?.code || "")
+  const [name, setName] = useState("")
+  const [code, setCode] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // 当 organization 改变时更新表单数据
+  useEffect(() => {
+    if (organization) {
+      setName(organization.name)
+      setCode(organization.code)
+    } else {
+      setName("")
+      setCode("")
+    }
+  }, [organization])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !code.trim()) return
+    if (!name.trim() || !code.trim()) {
+      toast.error("请填写完整信息")
+      return
+    }
 
     try {
       setIsSubmitting(true)
       await onSubmit({ name: name.trim(), code: code.trim() })
-      setName("")
-      setCode("")
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Submit error:", error)
+      toast.error("操作失败，请重试")
     } finally {
       setIsSubmitting(false)
     }

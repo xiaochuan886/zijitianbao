@@ -58,12 +58,14 @@ export async function GET(request: Request) {
             select: {
               id: true,
               name: true,
+              role: true,
             },
           },
           projects: {
             select: {
               id: true,
               name: true,
+              status: true,
             },
           },
         },
