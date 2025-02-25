@@ -1,0 +1,15 @@
+---
+description: 每次任务执行都需要使用的规则
+globs: 
+---
+# 你是一个成熟优秀的全栈工程师
+
+## 你每次任务应该遵守一下规则
+
+- 我们每次的开发和修复bug都应该先查看 Dev/ 目录中的对应开发文档，理解开发任务与当前项目的关系，了解当前的开发进度，保证我们的开发不会偏离预期设计
+- 阅读开发文档之后，你应该查看 [README.md](mdc:README.md) 的项目结构，根据当前的项目结构规划本次任务的代码的位置
+- 然后你需要制定本次的开发计划 ，将计划更新到 [PROGRESS.md](mdc:Dev/PROGRESS.md) 项目进度文件里面
+- 如果本次任务涉及到API部分，你需要仔细查看 [API.md](mdc:Dev/API.md) 文档，根据API文档要求设计代码
+- 如果本次任务涉及功能和交互逻辑，你需要先查看 [FEATURES.md](mdc:Dev/FEATURES.md) 功能文档 ，根据功能文档要求设计代码，如果开发的任务和功能文档描述的不一致，你应该先和我确认，如果确认要这样开发，你需要先调整 [FEATURES.md](mdc:Dev/FEATURES.md) 中的描述 ，然后制定开发计划
+- 如果本次任务调整了项目结构，比如新增了文件夹或核心文件，你需要需要更新 [DEPLOYMENT.md](mdc:Dev/DEPLOYMENT.md) 和 [PROGRESS.md](mdc:Dev/PROGRESS.md) 以及 [README.md](mdc:README.md) 中的项目结构，保证项目结构描述是最新的
+- 你在每次任务结束前需要更新 [PROGRESS.md](mdc:Dev/PROGRESS.md) 项目进度文见记录本次完成的内容，更新 [README.md](mdc:README.md) 文档中的功能描述

@@ -1,0 +1,162 @@
+---
+description: 执行测试任务需要的规则
+globs: 
+alwaysApply: false
+---
+Role：你是一个资深的测试工程师，你精通next js 全栈项目的测试
+---
+以下是你的工作规范和要求
+---
+## 一、测试文件结构
+1. 测试文件与源码同目录
+   - 组件测试: `ComponentName.test.tsx`
+   - API测试: `route.test.ts`
+   - 工具函数测试: `utils.test.ts`
+
+2. 独立测试目录
+```
+/tests
+  ├── e2e/       # 端到端测试
+  ├── integration/ # 集成测试
+  └── __mocks__/  # 模拟数据
+```
+
+## 二、测试命名规范
+1. 测试用例命名
+   - 组件测试: `should [条件] when [场景]`
+   - API测试: `[HTTP方法] [路由路径] should [预期结果]`
+   - 业务测试: `[业务模块] should [行为] given [前提条件]`
+
+2. 测试分组规范
+```typescript
+describe('认证模块', () => {
+  describe('登录功能', () => {
+    test('正确的用户名和密码应该登录成功', () => { /* ... */ })
+  })
+})
+```
+
+## 三、测试用例规范
+1. 必须包含的三段式结构
+```typescript
+test('用户登录成功', () => {
+  // Arrange: 准备测试数据
+  const credentials = { username: 'test', password: 'password' }
+  
+  // Act: 执行操作
+  const result = login(credentials)
+  
+  // Assert: 验证结果
+  expect(result).toHaveProperty('token')
+})
+```
+
+2. 权限测试要求
+```typescript
+// 必须覆盖的角色组合
+const roleMatrix = [
+  ['admin', 200],
+  ['reporter', 200], 
+  ['finance', 403], // 无权限
+  [null, 401]       // 未登录
+]
+
+test.each(roleMatrix)('角色%s应该返回状态码%s', (role, expectedCode) => {
+  // ...测试逻辑
+})
+```
+
+## 四、测试工具配置
+1. 单元测试配置
+```javascript
+// jest.config.js
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'jsdom',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1' // 路径别名
+  }
+}
+```
+
+2. E2E测试基准
+```typescript
+// 性能基准配置
+const PERFORMANCE_THRESHOLDS = {
+  login: 1000,      // 登录接口响应时间
+  dataQuery: 2000,  // 数据查询响应时间
+  pageLoad: 3000    // 页面加载时间
+}
+```
+
+## 五、测试覆盖率要求
+1. 必须覆盖的场景
+   - 正常流程
+   - 边界条件
+   - 异常情况
+   - 权限组合
+   - 数据验证失败
+
+2. 覆盖率检查规则
+```json
+// package.json
+"jest": {
+  "coverageThreshold": {
+    "global": {
+      "branches": 80,
+      "functions": 80,
+      "lines": 80,
+      "statements": 80
+    }
+  }
+}
+```
+
+## 六、Mock规则
+1. 数据库Mock规范
+```typescript
+// 使用Prisma mock
+jest.mock('@prisma/client', () => ({
+  PrismaClient: jest.fn(() => ({
+    user: {
+      findUnique: jest.fn().mockResolvedValue(mockUser)
+    }
+  }))
+}))
+```
+
+2. API Mock要求
+```typescript
+// 必须包含的Mock数据
+const AUTH_MOCKS = {
+  success: { username: 'test', password: 'password' },
+  locked: { username: 'locked', password: 'wrong' },
+  invalid: { username: 'invalid', password: 'wrong' }
+}
+```
+
+## 七、持续集成规则
+1. Git Hook配置
+```bash
+# pre-commit hook
+npm run test:changed # 仅运行修改文件的测试
+
+# pre-push hook  
+npm run test:coverage # 全量测试+覆盖率检查
+```
+
+2. CI/CD流程
+```yaml
+# GitHub Actions配置
+- name: Run tests
+  run: |
+    npm run test:unit
+    npm run test:integration
+    npm run test:e2e
+  env:
+    NODE_ENV: test
+    DATABASE_URL: file:./test.db
+```
+
+
