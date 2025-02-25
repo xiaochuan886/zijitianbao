@@ -73,4 +73,58 @@ export const apiClient = {
         }),
     },
   },
+  
+  // 用户相关
+  users: {
+    list: (params?: { 
+      page?: number; 
+      pageSize?: number; 
+      search?: string;
+      organizationId?: string;
+      role?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    }) =>
+      fetchWithAuth('/api/users', { params: params as Record<string, string> }),
+    
+    create: (data: { 
+      name: string; 
+      email: string; 
+      password: string;
+      role: string;
+      organizationId?: string;
+      organizationIds?: string[];
+    }) =>
+      fetchWithAuth('/api/users', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    
+    update: (id: string, data: { 
+      name?: string; 
+      email?: string; 
+      role?: string;
+      organizationId?: string;
+      organizationIds?: string[];
+      active?: boolean;
+    }) =>
+      fetchWithAuth(`/api/users/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    
+    delete: (id: string) =>
+      fetchWithAuth(`/api/users/${id}`, {
+        method: 'DELETE',
+      }),
+    
+    getById: (id: string) =>
+      fetchWithAuth(`/api/users/${id}`),
+
+    resetPassword: (id: string, password: string) =>
+      fetchWithAuth(`/api/users/${id}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }),
+  },
 } 

@@ -31,6 +31,12 @@ const initialData: Project[] = [
 export default function ProjectsPage() {
   const [data, setData] = useState<Project[]>(initialData)
   const [searchTerm, setSearchTerm] = useState("")
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: initialData.length,
+    totalPages: Math.ceil(initialData.length / 10)
+  })
 
   const filteredData = data.filter(
     (project) =>
@@ -39,14 +45,49 @@ export default function ProjectsPage() {
       project.status.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
+  const paginatedData = filteredData.slice(
+    (pagination.page - 1) * pagination.pageSize,
+    pagination.page * pagination.pageSize
+  )
+
+  const total = filteredData.length;
+  const totalPages = Math.ceil(total / pagination.pageSize);
+
   const handleAddProject = (newProject: Omit<Project, "id">) => {
     const id = Math.max(...data.map((p) => p.id)) + 1
     setData([...data, { ...newProject, id }])
   }
 
-  const handleEditProject = (editedProject: Project) => {
-    setData(data.map((project) => (project.id === editedProject.id ? editedProject : project)))
+  const handleEditProject = (data: Partial<Project> & { id: number }) => {
+    const editedProject: Project = {
+      id: data.id,
+      name: data.name || '',
+      organization: data.organization || '',
+      status: data.status || '',
+      budget: data.budget || 0,
+      startDate: data.startDate || ''
+    };
+    setData(prevData => prevData.map(project => project.id === editedProject.id ? editedProject : project));
   }
+
+  const handlePaginationChange = (newPagination: { page: number; pageSize: number }) => {
+    setPagination({
+      ...pagination,
+      ...newPagination,
+      total,
+      totalPages
+    });
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setPagination({
+      ...pagination,
+      page: 1,
+      total,
+      totalPages
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -58,11 +99,17 @@ export default function ProjectsPage() {
         <Input
           placeholder="搜索项目..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={handleSearchChange}
           className="max-w-sm"
         />
       </div>
-      <DataTable columns={columns} data={filteredData} onEdit={handleEditProject} />
+      <DataTable 
+        columns={columns} 
+        data={paginatedData} 
+        pagination={pagination}
+        onPaginationChange={handlePaginationChange}
+        onEdit={handleEditProject} 
+      />
     </div>
   )
 }

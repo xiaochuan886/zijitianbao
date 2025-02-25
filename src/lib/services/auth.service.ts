@@ -1,6 +1,6 @@
 import { prisma } from '../prisma'
 import { ServiceError } from './types'
-import { hash, compare } from 'bcrypt'
+import { hash, compare } from 'bcryptjs'
 
 export interface LoginRequest {
   email: string

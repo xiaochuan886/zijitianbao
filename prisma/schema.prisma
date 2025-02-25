@@ -19,9 +19,11 @@ model User {
   name          String
   email         String       @unique
   password      String       // 加密存储
-  organizationId String?
-  organization  Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?     // 保留向后兼容
+  organization  Organization? @relation("PrimaryOrganization", fields: [organizationId], references: [id])
+  organizations UserOrganization[] // 多机构关联
   role          Role         @default(REPORTER)
+  active        Boolean      @default(true)  // 用户状态，true为启用，false为禁用
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -45,7 +47,8 @@ model Organization {
   name        String
   code        String       @unique
   departments Department[]
-  users       User[]
+  users       User[]       @relation("PrimaryOrganization")
+  userOrganizations UserOrganization[] // 多用户关联
   projects    Project[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -155,4 +158,18 @@ model AuditLog {
   @@index([action])
   @@index([resource])
   @@index([timestamp])
+}
+
+// 用户-机构多对多关联表
+model UserOrganization {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
 }

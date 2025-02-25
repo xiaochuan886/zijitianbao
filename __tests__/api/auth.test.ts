@@ -4,7 +4,7 @@ import { POST as REGISTER } from '@/app/api/auth/register/route';
 import { PUT as CHANGE_PASSWORD } from '@/app/api/auth/password/route';
 import { prismaMock } from '../../jest.setup';
 import { User } from '@prisma/client';
-import { hash } from 'bcrypt';
+import { hash } from 'bcryptjs';
 
 // Mock user data
 const mockUser: User = {
@@ -102,7 +102,7 @@ describe('认证API测试', () => {
       // Mock findUnique to return user
       prismaMock.user.findUnique.mockResolvedValue(mockUser);
       // Mock bcrypt compare to return false
-      jest.spyOn(require('bcrypt'), 'compare').mockImplementationOnce(() => Promise.resolve(false));
+      jest.spyOn(require('bcryptjs'), 'compare').mockImplementationOnce(() => Promise.resolve(false));
 
       const headers = new Headers();
       headers.set('content-type', 'application/json');
@@ -264,7 +264,7 @@ describe('认证API测试', () => {
       // Mock findUnique to return user
       prismaMock.user.findUnique.mockResolvedValue(mockUser);
       // Mock bcrypt compare to return false
-      jest.spyOn(require('bcrypt'), 'compare').mockImplementationOnce(() => Promise.resolve(false));
+      jest.spyOn(require('bcryptjs'), 'compare').mockImplementationOnce(() => Promise.resolve(false));
 
       const headers = new Headers();
       headers.set('authorization', 'Bearer admin-token');

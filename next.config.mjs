@@ -12,7 +12,7 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   experimental: {
-    serverActions: true,
+    // serverActions 现在默认可用，已移除此配置
   },
   webpack: (config, { isServer }) => {
     // 添加对 mjs 文件的支持
