@@ -29,13 +29,13 @@ async function fetchWithAuth(url: string, options: FetchOptions = {}) {
     headers,
   })
 
-  const data = await response.json()
-
   if (!response.ok) {
-    throw new Error(data.message || '请求失败')
+    const error = await response.json()
+    throw new Error(error.message || '请求失败')
   }
 
-  return data
+  const data = await response.json()
+  return data.data || data
 }
 
 export const apiClient = {
@@ -63,5 +63,14 @@ export const apiClient = {
     
     getById: (id: string) =>
       fetchWithAuth(`/api/organizations/${id}`),
+
+    // 部门相关
+    departments: {
+      update: (organizationId: string, departments: { id?: string; name: string; isDeleted?: boolean }[]) =>
+        fetchWithAuth(`/api/organizations/${organizationId}/departments`, {
+          method: 'PUT',
+          body: JSON.stringify({ departments }),
+        }),
+    },
   },
 } 
