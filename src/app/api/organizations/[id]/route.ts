@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { services } from '@/lib/services';
+import { OrganizationService } from '@/lib/services/organization.service';
 import { checkPermission } from '@/lib/auth/permission';
-import { createPermissionError } from '@/lib/auth/errors';
 import { parseSession } from '@/lib/auth/session';
-import { ServiceError } from '@/lib/services/types';
+
+const organizationService = new OrganizationService();
 
 // GET /api/organizations/[id] - 获取机构详情
 export async function GET(
@@ -35,7 +35,23 @@ export async function GET(
     }
 
     // 2. 调用服务
-    const result = await services.organization.findById(params.id);
+    const result = await organizationService.findById(params.id);
+
+    if (!result) {
+      return new Response(
+        JSON.stringify({
+          code: 404,
+          message: '机构不存在',
+          timestamp: Date.now(),
+        }),
+        { 
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
 
     // 3. 返回结果
     return new Response(
@@ -54,17 +70,14 @@ export async function GET(
     );
   } catch (error: any) {
     console.error('GET /api/organizations/[id] error:', error);
-    const statusCode = error instanceof ServiceError ? error.statusCode : 500;
-    const message = error instanceof ServiceError ? error.message : '服务器错误';
-    
     return new Response(
       JSON.stringify({
-        code: statusCode,
-        message: message,
+        code: 500,
+        message: error.message || '服务器错误',
         timestamp: Date.now(),
       }),
       { 
-        status: statusCode,
+        status: 500,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -106,7 +119,7 @@ export async function PUT(
     }
 
     // 3. 调用服务
-    const result = await services.organization.update(params.id, data);
+    const result = await organizationService.update(params.id, data);
 
     // 4. 返回结果
     return new Response(
@@ -125,17 +138,14 @@ export async function PUT(
     );
   } catch (error: any) {
     console.error('PUT /api/organizations/[id] error:', error);
-    const statusCode = error instanceof ServiceError ? error.statusCode : 500;
-    const message = error instanceof ServiceError ? error.message : '服务器错误';
-    
     return new Response(
       JSON.stringify({
-        code: statusCode,
-        message: message,
+        code: 500,
+        message: error.message || '服务器错误',
         timestamp: Date.now(),
       }),
       { 
-        status: statusCode,
+        status: 500,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -174,7 +184,7 @@ export async function DELETE(
     }
 
     // 2. 调用服务
-    await services.organization.delete(params.id);
+    await organizationService.delete(params.id);
 
     // 3. 返回结果
     return new Response(
@@ -192,17 +202,14 @@ export async function DELETE(
     );
   } catch (error: any) {
     console.error('DELETE /api/organizations/[id] error:', error);
-    const statusCode = error instanceof ServiceError ? error.statusCode : 500;
-    const message = error instanceof ServiceError ? error.message : '服务器错误';
-    
     return new Response(
       JSON.stringify({
-        code: statusCode,
-        message: message,
+        code: 500,
+        message: error.message || '服务器错误',
         timestamp: Date.now(),
       }),
       { 
-        status: statusCode,
+        status: 500,
         headers: {
           'Content-Type': 'application/json',
         },

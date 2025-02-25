@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { services } from '@/lib/services';
+import { OrganizationService } from '@/lib/services/organization.service';
 import { checkPermission } from '@/lib/auth/permission';
-import { createPermissionError } from '@/lib/auth/errors';
 import { parseSession } from '@/lib/auth/session';
-import { ServiceError } from '@/lib/services/types';
+
+const organizationService = new OrganizationService();
 
 // GET /api/organizations - 获取机构列表
 export async function GET(request: NextRequest) {
@@ -13,9 +13,6 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '10');
     const search = searchParams.get('search') || '';
-    const sorting = searchParams.get('sorting')
-      ? JSON.parse(searchParams.get('sorting')!)
-      : { field: 'createdAt', order: 'desc' };
 
     // 2. 权限检查
     const session = parseSession(request.headers.get('authorization'));
@@ -41,9 +38,9 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. 调用服务
-    const result = await services.organization.findAll(
+    const result = await organizationService.findAll(
       { page, pageSize },
-      { search, sorting }
+      { search }
     );
 
     // 4. 返回结果
@@ -63,17 +60,14 @@ export async function GET(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('GET /api/organizations error:', error);
-    const statusCode = error instanceof ServiceError ? error.statusCode : 500;
-    const message = error instanceof ServiceError ? error.message : '服务器错误';
-    
     return new Response(
       JSON.stringify({
-        code: statusCode,
-        message: message,
+        code: 500,
+        message: error.message || '服务器错误',
         timestamp: Date.now(),
       }),
       { 
-        status: statusCode,
+        status: 500,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -112,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. 调用服务
-    const result = await services.organization.create(data);
+    const result = await organizationService.create(data);
 
     // 4. 返回结果
     return new Response(
@@ -131,17 +125,14 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('POST /api/organizations error:', error);
-    const statusCode = error instanceof ServiceError ? error.statusCode : 500;
-    const message = error instanceof ServiceError ? error.message : '服务器错误';
-    
     return new Response(
       JSON.stringify({
-        code: statusCode,
-        message: message,
+        code: 500,
+        message: error.message || '服务器错误',
         timestamp: Date.now(),
       }),
       { 
-        status: statusCode,
+        status: 500,
         headers: {
           'Content-Type': 'application/json',
         },

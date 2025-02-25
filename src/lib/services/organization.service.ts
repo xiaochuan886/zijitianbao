@@ -1,6 +1,7 @@
 import { prisma } from '../prisma'
 import { PaginationParams, PaginatedResponse, QueryParams, ServiceError } from './types'
 import { Organization, Department } from '@prisma/client'
+import { Prisma } from "@prisma/client"
 
 export interface CreateOrganizationDto {
   name: string
@@ -169,53 +170,54 @@ export class OrganizationService {
     }
   }
 
-  async findAll(
-    { page, pageSize }: PaginationParams,
-    { search, sorting }: QueryParams
-  ): Promise<PaginatedResponse<Organization>> {
-    try {
-      const where = search
-        ? {
-            OR: [
-              { name: { contains: search } },
-              { code: { contains: search } },
-            ],
-          }
-        : {}
+  async findAll(pagination: { page: number; pageSize: number }, filters?: { search?: string }) {
+    const skip = (pagination.page - 1) * pagination.pageSize
+    const where: Prisma.OrganizationWhereInput = {}
 
-      const [total, items] = await Promise.all([
-        prisma.organization.count({ where }),
-        prisma.organization.findMany({
-          where,
-          include: {
-            departments: true,
-            _count: {
-              select: {
-                users: true,
-                projects: true,
-              },
-            },
+    if (filters?.search) {
+      where.OR = [
+        { name: { contains: filters.search } },
+        { code: { contains: filters.search } },
+      ]
+    }
+
+    const total = await prisma.organization.count({ where })
+
+    const items = await prisma.organization.findMany({
+      where,
+      skip,
+      take: pagination.pageSize,
+      include: {
+        departments: {
+          select: {
+            id: true,
+            name: true,
           },
-          orderBy: sorting
-            ? { [sorting.field]: sorting.order }
-            : { createdAt: 'desc' },
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-        }),
-      ])
+        },
+        users: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        projects: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
 
-      return {
-        items,
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      }
-    } catch (error) {
-      if (error instanceof ServiceError) {
-        throw error
-      }
-      throw new ServiceError(500, '获取机构列表失败', error)
+    return {
+      items,
+      total,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      totalPages: Math.ceil(total / pagination.pageSize),
     }
   }
 

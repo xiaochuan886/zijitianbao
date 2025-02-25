@@ -37,6 +37,15 @@ export async function POST(request: Request) {
     // 查找用户
     const user = await prisma.user.findUnique({
       where: { email: username },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+      },
     })
 
     if (!user) {
@@ -55,12 +64,17 @@ export async function POST(request: Request) {
       )
     }
 
-    // 生成JWT token
+    // 生成JWT token，包含完整的用户信息
     const token = sign(
       {
-        id: user.id,
-        email: user.email,
-        role: user.role,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          organizationId: user.organizationId,
+          organization: user.organization,
+        },
       },
       process.env.JWT_SECRET || "your-secret-key",
       { expiresIn: "24h" }
@@ -72,8 +86,10 @@ export async function POST(request: Request) {
       user: {
         id: user.id,
         name: user.name,
+        email: user.email,
         role: user.role,
-        organizationId: user.organizationId || "",
+        organizationId: user.organizationId,
+        organization: user.organization,
       },
     })
   } catch (error) {
