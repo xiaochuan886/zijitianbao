@@ -37,8 +37,8 @@ export function SubProjectForm({ form, disabled }: SubProjectFormProps) {
             'Authorization': `Bearer ${token}`
           }
         });
-        const { data } = await response.json();
-        setFundingTypes(data.items || []);
+        const data = await response.json();
+        setFundingTypes(data.data?.items || []);
       } catch (error) {
         console.error('获取资金需求类型失败:', error);
       } finally {

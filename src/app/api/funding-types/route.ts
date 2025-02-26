@@ -20,12 +20,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const search = searchParams.get('search') || ''
 
     // 获取资金需求类型列表
-    const fundTypeService = new services.FundTypeService()
-    const result = await fundTypeService.findAll({
-      page,
-      pageSize,
-      search
-    })
+    const result = await services.fundType.findAll(
+      { page, pageSize },
+      { search }
+    )
 
     return NextResponse.json({
       code: 200,
