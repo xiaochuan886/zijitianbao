@@ -27,7 +27,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editingProject, setEditingProject] = useState<any | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -107,11 +107,59 @@ export default function ProjectsPage() {
     },
   ];
 
-  const handleEdit = (id: string) => {
-    const project = projects.find(p => p.id === id);
-    if (project) {
-      setEditingProject(project);
+  const handleEdit = async (id: string) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/projects/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('获取项目详情失败');
+      }
+      
+      const projectData = await response.json();
+      console.log('获取到的项目详情:', projectData);
+      
+      // 转换为表单需要的格式
+      const formData = {
+        id: projectData.id,
+        name: projectData.name,
+        code: projectData.code || '',
+        startYear: projectData.startYear,
+        departments: projectData.organizations.map((org: any) => {
+          // 找出属于这个机构的部门
+          const orgDepartments = projectData.departments.filter(
+            (dept: any) => dept.organizationId === org.id
+          );
+          
+          return {
+            organizationId: org.id,
+            departmentIds: orgDepartments.map((dept: any) => dept.id)
+          };
+        }),
+        subProjects: projectData.subProjects.map((sub: any) => ({
+          id: sub.id,
+          name: sub.name,
+          fundingTypes: sub.fundTypes.map((type: any) => type.id)
+        }))
+      };
+      
+      console.log('转换后的表单数据:', formData);
+      setEditingProject(formData);
       setShowForm(true);
+    } catch (error) {
+      console.error('获取项目详情失败:', error);
+      toast({
+        variant: 'destructive',
+        title: '错误',
+        description: '获取项目详情失败，请稍后重试'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -159,11 +207,12 @@ export default function ProjectsPage() {
       const apiData = {
         name: formData.name,
         code: formData.code,
-        status: 'ACTIVE', // 新项目默认为活跃状态，使用枚举值
+        status: editingProject?.status || 'ACTIVE', // 保留原状态或默认为活跃
         startYear: formData.startYear,
         organizationIds: formData.departments.map((d: any) => d.organizationId),
         departmentIds: formData.departments.flatMap((d: any) => d.departmentIds),
         subProjects: formData.subProjects.map((s: any) => ({
+          id: s.id, // 保留子项目ID用于更新
           name: s.name,
           fundTypeIds: s.fundingTypes
         }))
@@ -241,7 +290,7 @@ export default function ProjectsPage() {
             <h1 className="text-2xl font-semibold">{editingProject ? '编辑项目' : '新增项目'}</h1>
           </div>
           <ProjectForm
-            initialData={editingProject as any}
+            initialData={editingProject}
             onSubmit={handleFormSubmit}
             onCancel={handleFormCancel}
           />
