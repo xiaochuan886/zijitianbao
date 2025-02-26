@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export type Prediction = {
   id: string
@@ -14,6 +15,8 @@ export type Prediction = {
   project: string
   month: string
   status: string
+  subProjectCount?: number
+  remarks?: { subProject: string, content: string, period: string }[]
   remark?: string
 }
 
@@ -84,6 +87,50 @@ export const columns: ColumnDef<Prediction>[] = [
   {
     accessorKey: "remark",
     header: "备注",
+    cell: ({ row }) => {
+      const prediction = row.original;
+      const remarks = prediction.remarks || [];
+      const subProjectCount = prediction.subProjectCount || 0;
+      
+      // 如果没有子项目信息或备注，显示普通文本
+      if (!remarks.length && prediction.remark) {
+        return <span className="text-gray-500">{prediction.remark}</span>;
+      }
+      
+      if (!remarks.length && !prediction.remark) {
+        return <span className="text-gray-400">-</span>;
+      }
+      
+      return (
+        <div className="flex flex-col gap-2">
+          {subProjectCount > 0 && (
+            <span className="text-xs text-gray-500">共 {subProjectCount} 个子项目</span>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {remarks.map((item, index) => (
+              <TooltipProvider key={index}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="cursor-help">
+                      {`${item.subProject.substring(0, 6)}${item.subProject.length > 6 ? '...' : ''} - ${item.content.substring(0, 8)}${item.content.length > 8 ? '...' : ''} - ${item.period}`}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="max-w-xs">
+                      <p className="font-semibold">{item.subProject} ({item.period})</p>
+                      <p className="text-sm mt-1">{item.content}</p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ))}
+            {prediction.remark && !remarks.length && (
+              <Badge variant="outline">{prediction.remark}</Badge>
+            )}
+          </div>
+        </div>
+      );
+    },
   },
   {
     id: "actions",

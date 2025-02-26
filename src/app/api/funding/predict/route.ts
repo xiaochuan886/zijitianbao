@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import { Record as PrismaRecord } from "@prisma/client";
+
+// 定义备注项的类型
+interface RemarkItem {
+  subProject: string;
+  content: string;
+  period: string;
+}
 
 // 获取资金需求预测项目列表
 export async function GET(req: NextRequest) {
@@ -100,10 +108,28 @@ export async function GET(req: NextRequest) {
 
       // 获取备注信息
       let remark = "";
+      const remarks: RemarkItem[] = [];
       if (hasRecords) {
-        const records = project.subProjects.flatMap(sp => sp.records);
-        const recordWithRemark = records.find(r => r.remark);
-        remark = recordWithRemark?.remark || "";
+        // 收集所有子项目的备注信息
+        project.subProjects.forEach(sp => {
+          sp.records.forEach((record: any) => {
+            if (record.remark && 
+                (!year || record.year === parseInt(year)) && 
+                (!month || record.month === parseInt(month))) {
+              // 添加到结构化备注列表
+              remarks.push({
+                subProject: sp.name,
+                content: record.remark,
+                period: `${record.year}-${record.month.toString().padStart(2, '0')}`
+              });
+              
+              // 保留兼容性的单一备注字段
+              if (!remark) {
+                remark = record.remark;
+              }
+            }
+          });
+        });
       }
 
       return {
@@ -113,6 +139,8 @@ export async function GET(req: NextRequest) {
         project: project.code ? `${project.name} (${project.code})` : project.name,
         month: month ? `${year}-${month.padStart(2, '0')}` : "",
         status: projectStatus,
+        subProjectCount: project.subProjects.length,
+        remarks: remarks,
         remark: remark
       };
     });

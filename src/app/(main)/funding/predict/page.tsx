@@ -41,6 +41,7 @@ export default function PredictPage() {
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 2 // 下个月
   })
+  const [submitting, setSubmitting] = useState(false)
 
   // 获取当前月份的下一个月
   const getNextMonth = useCallback(() => {
@@ -89,13 +90,27 @@ export default function PredictPage() {
       
       const data = await response.json()
       
-      // 提取组织和部门列表
-      const orgs = Array.from(new Set(data.map((item: Prediction) => item.organization)))
-      const deps = Array.from(new Set(data.map((item: Prediction) => item.department)))
+      // 首次加载时，获取所有机构和部门（不受筛选影响）
+      if (!organizations.length || !departments.length) {
+        try {
+          const metaResponse = await fetch(`/api/funding/predict/meta`)
+          if (metaResponse.ok) {
+            const metaData = await metaResponse.json()
+            setOrganizations(metaData.organizations.map((org: any) => ({ 
+              value: org.id, 
+              label: `${org.name} (${org.code})` 
+            })))
+            setDepartments(metaData.departments.map((dep: any) => ({ 
+              value: dep.id, 
+              label: dep.name 
+            })))
+          }
+        } catch (error) {
+          console.error("获取机构和部门列表失败", error)
+        }
+      }
       
       setProjects(data)
-      setOrganizations(orgs.map((org: unknown) => ({ value: String(org), label: String(org) })))
-      setDepartments(deps.map((dep: unknown) => ({ value: String(dep), label: String(dep) })))
       setLoading(false)
     } catch (error) {
       console.error("获取项目列表失败", error)
@@ -106,7 +121,7 @@ export default function PredictPage() {
       })
       setLoading(false)
     }
-  }, [filters, getNextMonth, toast])
+  }, [filters, getNextMonth, toast, organizations.length, departments.length])
 
   // 处理批量填报
   const handleBatchEdit = useCallback(() => {
@@ -149,6 +164,14 @@ export default function PredictPage() {
     }
     
     try {
+      setSubmitting(true)
+      
+      // 显示正在提交提示
+      toast({
+        title: "提示",
+        description: "正在提交项目，请稍候...",
+      })
+      
       // 调用API批量提交
       const response = await fetch("/api/funding/predict/batch-submit", {
         method: "POST",
@@ -183,6 +206,8 @@ export default function PredictPage() {
         description: error instanceof Error ? error.message : "批量提交失败",
         variant: "destructive"
       })
+    } finally {
+      setSubmitting(false)
     }
   }, [selectedProjects, projects, currentMonth, fetchProjects, toast])
 
@@ -334,10 +359,10 @@ export default function PredictPage() {
         </Button>
         <Button 
           onClick={handleBatchSubmit}
-          disabled={selectedProjects.length === 0}
+          disabled={selectedProjects.length === 0 || submitting}
         >
           <Upload className="mr-2 h-4 w-4" />
-          批量提交
+          {submitting ? "提交中..." : "批量提交"}
         </Button>
       </div>
     </div>

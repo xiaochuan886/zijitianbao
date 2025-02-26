@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import { Prisma } from "@prisma/client";
 
 // 保存资金需求预测草稿
 export async function POST(req: NextRequest) {
@@ -111,10 +112,9 @@ export async function POST(req: NextRequest) {
                     predicted: value === null ? null : parseFloat(String(value)),
                     status: "draft",
                     submittedBy: session?.user?.id || "temp-user-id",
-                    // 暂时注释掉remark字段，解决类型问题
-                    // remark: remarks?.[recordId] || "", 
+                    remark: remarks?.[recordId] || "", 
                     updatedAt: new Date(),
-                  },
+                  } as Prisma.RecordUpdateInput,
                 });
                 
                 updatePromises.push(updatePromise);
@@ -137,11 +137,10 @@ export async function POST(req: NextRequest) {
                     predicted: value === null ? null : parseFloat(String(value)),
                     status: "draft",
                     submittedBy: session?.user?.id || "temp-user-id",
-                    // 暂时注释掉remark字段，解决类型问题
-                    // remark: remarks?.[recordId] || "", 
+                    remark: remarks?.[recordId] || "", 
                     createdAt: new Date(),
                     updatedAt: new Date(),
-                  },
+                  } as Prisma.RecordUncheckedCreateInput,
                 });
                 
                 updatePromises.push(createPromise);
@@ -163,10 +162,9 @@ export async function POST(req: NextRequest) {
                 predicted: value === null ? null : parseFloat(String(value)),
                 status: "draft",
                 submittedBy: session?.user?.id || "temp-user-id",
-                // 暂时注释掉remark字段，解决类型问题
-                // remark: remarks?.[recordId] || "", 
+                remark: remarks?.[recordId] || "", 
                 updatedAt: new Date(),
-              },
+              } as Prisma.RecordUpdateInput,
             });
             
             updatePromises.push(updatePromise);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import { Prisma } from "@prisma/client";
 
 // 提交资金需求预测
 export async function POST(req: NextRequest) {
@@ -83,7 +84,8 @@ export async function POST(req: NextRequest) {
                 submittedBy: session?.user?.id || "temp-user-id",
                 submittedAt: new Date(),
                 updatedAt: new Date(),
-              },
+                remark: remarks?.[recordId] || "",
+              } as Prisma.RecordUpdateInput,
             });
             
             updatePromises.push(updatePromise);
@@ -101,10 +103,10 @@ export async function POST(req: NextRequest) {
                 status: "submitted",
                 submittedBy: session?.user?.id || "temp-user-id",
                 submittedAt: new Date(),
-                // remark: remarks?.[recordId] || "",  // 暂时注释掉，解决类型问题
+                remark: remarks?.[recordId] || "",
                 createdAt: new Date(),
                 updatedAt: new Date(),
-              },
+              } as Prisma.RecordUncheckedCreateInput,
             });
             
             updatePromises.push(createPromise);
@@ -122,9 +124,9 @@ export async function POST(req: NextRequest) {
             status: "submitted",
             submittedBy: session?.user?.id || "temp-user-id",
             submittedAt: new Date(),
-            // remark: remarks?.[recordId] || "",  // 暂时注释掉，解决类型问题
+            remark: remarks?.[recordId] || "",
             updatedAt: new Date(),
-          },
+          } as Prisma.RecordUpdateInput,
         });
         
         updatePromises.push(updatePromise);
