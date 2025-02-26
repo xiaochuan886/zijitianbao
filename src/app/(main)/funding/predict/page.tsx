@@ -35,7 +35,8 @@ export default function PredictPage() {
   const [statuses] = useState([
     { value: "未填写", label: "未填写" },
     { value: "草稿", label: "草稿" },
-    { value: "已提交", label: "已提交" }
+    { value: "已提交", label: "已提交" },
+    { value: "pending_withdrawal", label: "撤回审核中" }
   ])
   const [currentMonth, setCurrentMonth] = useState<{year: number, month: number}>({
     year: new Date().getFullYear(),
@@ -133,10 +134,25 @@ export default function PredictPage() {
       return
     }
     
+    // 检查是否所有选中的项目都可编辑（草稿或未填写状态）
+    const hasNonEditableProjects = selectedProjects.some(id => {
+      const project = projects.find(p => p.id === id)
+      return project && project.status !== "草稿" && project.status !== "未填写"
+    })
+    
+    if (hasNonEditableProjects) {
+      toast({
+        title: "警告",
+        description: "只有草稿和未填写状态的项目才能编辑",
+        variant: "destructive"
+      })
+      return
+    }
+    
     // 将选中的项目ID作为查询参数传递
     const ids = selectedProjects.join(",")
     router.push(`/funding/predict/edit?ids=${ids}&year=${currentMonth.year}&month=${currentMonth.month}`)
-  }, [selectedProjects, router, toast, currentMonth])
+  }, [selectedProjects, router, toast, currentMonth, projects])
 
   // 处理批量提交
   const handleBatchSubmit = useCallback(async () => {
@@ -356,7 +372,13 @@ export default function PredictPage() {
         <Button 
           variant="outline" 
           onClick={handleBatchEdit}
-          disabled={selectedProjects.length === 0}
+          disabled={
+            selectedProjects.length === 0 || 
+            selectedProjects.some(id => {
+              const project = projects.find(p => p.id === id)
+              return project && project.status !== "草稿" && project.status !== "未填写"
+            })
+          }
         >
           <FileEdit className="mr-2 h-4 w-4" />
           批量填报

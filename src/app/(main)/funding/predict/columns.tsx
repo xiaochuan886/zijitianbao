@@ -188,11 +188,13 @@ export const columns: ColumnDef<Prediction>[] = [
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>操作</DropdownMenuLabel>
             
-            {/* 填报按钮 - 对所有状态可用 */}
-            <DropdownMenuItem onClick={() => router.push(`/funding/predict/edit?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}`)}>
-              <FileEdit className="mr-2 h-4 w-4" />
-              填报
-            </DropdownMenuItem>
+            {/* 填报按钮 - 只对未填写和草稿状态可用 */}
+            {(prediction.status === "未填写" || prediction.status === "草稿") && (
+              <DropdownMenuItem onClick={() => router.push(`/funding/predict/edit?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}`)}>
+                <FileEdit className="mr-2 h-4 w-4" />
+                填报
+              </DropdownMenuItem>
+            )}
             
             {/* 提交按钮 - 对未填写和草稿状态可用 */}
             {(prediction.status === "未填写" || prediction.status === "草稿") && (
@@ -246,12 +248,10 @@ export const columns: ColumnDef<Prediction>[] = [
               </DropdownMenuItem>
             )}
             
-            {/* 查看按钮 - 对已提交状态可用 */}
-            {(prediction.status === "已提交" || prediction.status === "pending_withdrawal") && (
-              <DropdownMenuItem onClick={() => router.push(`/funding/predict/view?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}`)}>
-                查看详情
-              </DropdownMenuItem>
-            )}
+            {/* 查看按钮 - 对所有状态可用，但只对已提交和撤回审核中状态会单独显示 */}
+            <DropdownMenuItem onClick={() => router.push(`/funding/predict/view?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}`)}>
+              查看详情
+            </DropdownMenuItem>
             
             {/* 撤回申请按钮 - 对已提交状态可用 */}
             {prediction.status === "已提交" && (
