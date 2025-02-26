@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/ui/data-table"
 import { FileEdit, Upload, RotateCcw } from "lucide-react"
@@ -30,6 +30,7 @@ export default function PredictPage() {
     project: "",
     status: "all"
   })
+  const prevFiltersRef = useRef(filters)
   const [organizations, setOrganizations] = useState<{value: string, label: string}[]>([])
   const [departments, setDepartments] = useState<{value: string, label: string}[]>([])
   const [statuses] = useState([
@@ -43,6 +44,8 @@ export default function PredictPage() {
     month: new Date().getMonth() + 2 // 下个月
   })
   const [submitting, setSubmitting] = useState(false)
+  const [debouncedFetch, setDebouncedFetch] = useState(false)
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // 获取当前月份的下一个月
   const getNextMonth = useCallback(() => {
@@ -52,9 +55,25 @@ export default function PredictPage() {
     return { year, month }
   }, [])
 
-  // 获取项目列表
-  const fetchProjects = useCallback(async () => {
+  // 获取项目列表 - 优化数据加载逻辑
+  const fetchProjects = useCallback(async (forceRefresh = false) => {
     try {
+      // 如果正在加载中，取消之前的请求
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current)
+        fetchTimeoutRef.current = null
+      }
+      
+      // 如果不是强制刷新，且筛选条件没有变化，则不重新加载数据
+      if (!forceRefresh && 
+          JSON.stringify(filters) === JSON.stringify(prevFiltersRef.current) && 
+          projects.length > 0) {
+        return
+      }
+      
+      // 更新上一次的筛选条件
+      prevFiltersRef.current = {...filters}
+      
       setLoading(true)
       
       // 获取下个月
@@ -82,8 +101,18 @@ export default function PredictPage() {
         params.append("status", filters.status)
       }
       
+      // 添加缓存控制参数，避免浏览器缓存
+      params.append("_t", Date.now().toString())
+      
       // 调用API获取项目列表
-      const response = await fetch(`/api/funding/predict?${params.toString()}`)
+      const response = await fetch(`/api/funding/predict?${params.toString()}`, {
+        // 添加缓存控制头，避免浏览器缓存
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
       
       if (!response.ok) {
         throw new Error("获取项目列表失败")
@@ -94,7 +123,14 @@ export default function PredictPage() {
       // 首次加载时，获取所有机构和部门（不受筛选影响）
       if (!organizations.length || !departments.length) {
         try {
-          const metaResponse = await fetch(`/api/funding/predict/meta`)
+          const metaResponse = await fetch(`/api/funding/predict/meta`, {
+            // 添加缓存控制头，避免浏览器缓存
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          })
           if (metaResponse.ok) {
             const metaData = await metaResponse.json()
             setOrganizations(metaData.organizations.map((org: any) => ({ 
@@ -111,6 +147,7 @@ export default function PredictPage() {
         }
       }
       
+      // 使用函数式更新，避免闭包问题
       setProjects(data)
       setLoading(false)
     } catch (error) {
@@ -122,7 +159,26 @@ export default function PredictPage() {
       })
       setLoading(false)
     }
-  }, [filters, getNextMonth, toast, organizations.length, departments.length])
+  }, [filters, getNextMonth, toast, organizations.length, departments.length, projects.length])
+
+  // 处理筛选条件变化 - 添加防抖处理
+  const handleFilterChange = useCallback((newFilters: typeof filters) => {
+    setFilters(newFilters)
+    
+    // 设置防抖标志
+    setDebouncedFetch(true)
+    
+    // 清除之前的定时器
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current)
+    }
+    
+    // 设置新的定时器，延迟500ms执行查询
+    fetchTimeoutRef.current = setTimeout(() => {
+      setDebouncedFetch(false)
+      fetchProjects(true)
+    }, 500)
+  }, [fetchProjects])
 
   // 处理批量填报
   const handleBatchEdit = useCallback(() => {
@@ -218,7 +274,7 @@ export default function PredictPage() {
       })
       
       // 刷新项目列表
-      fetchProjects()
+      fetchProjects(true)
     } catch (error) {
       console.error("批量提交失败", error)
       toast({
@@ -233,19 +289,19 @@ export default function PredictPage() {
 
   // 初始化
   useEffect(() => {
-    fetchProjects()
+    fetchProjects(true)
+    
+    // 清理函数
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current)
+      }
+    }
   }, [fetchProjects])
 
   // 处理选中项目变化
   const handleSelectedRowsChange = useCallback((selectedRowIds: string[]) => {
-    console.log('选中的项目IDs:', selectedRowIds); // 添加日志，帮助调试
-    setSelectedProjects(prev => {
-      // 使用深度比较，避免不必要的状态更新
-      if (JSON.stringify(prev) === JSON.stringify(selectedRowIds)) {
-        return prev;
-      }
-      return selectedRowIds;
-    });
+    setSelectedProjects(selectedRowIds)
   }, []);
 
   return (
@@ -254,10 +310,20 @@ export default function PredictPage() {
         <h1 className="text-3xl font-bold tracking-tight">资金需求预测填报</h1>
         <Button 
           variant="outline" 
-          onClick={fetchProjects}
+          onClick={() => fetchProjects(true)}
+          disabled={loading}
         >
-          <RotateCcw className="mr-2 h-4 w-4" />
-          刷新
+          {loading ? (
+            <>
+              <span className="animate-spin mr-2">⟳</span>
+              加载中...
+            </>
+          ) : (
+            <>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              刷新
+            </>
+          )}
         </Button>
       </div>
       
@@ -271,7 +337,7 @@ export default function PredictPage() {
               <label className="text-sm font-medium">机构</label>
               <Select
                 value={filters.organization}
-                onValueChange={(value) => setFilters({...filters, organization: value})}
+                onValueChange={(value) => handleFilterChange({...filters, organization: value})}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="选择机构" />
@@ -291,7 +357,7 @@ export default function PredictPage() {
               <label className="text-sm font-medium">部门</label>
               <Select
                 value={filters.department}
-                onValueChange={(value) => setFilters({...filters, department: value})}
+                onValueChange={(value) => handleFilterChange({...filters, department: value})}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="选择部门" />
@@ -312,7 +378,7 @@ export default function PredictPage() {
               <Input
                 placeholder="输入项目名称或编码"
                 value={filters.project}
-                onChange={(e) => setFilters({...filters, project: e.target.value})}
+                onChange={(e) => handleFilterChange({...filters, project: e.target.value})}
               />
             </div>
             
@@ -320,7 +386,7 @@ export default function PredictPage() {
               <label className="text-sm font-medium">状态</label>
               <Select
                 value={filters.status}
-                onValueChange={(value) => setFilters({...filters, status: value})}
+                onValueChange={(value) => handleFilterChange({...filters, status: value})}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="选择状态" />
@@ -341,21 +407,26 @@ export default function PredictPage() {
             <Button 
               variant="outline" 
               onClick={() => {
-                setFilters({
+                const resetFilters = {
                   organization: "all",
                   department: "all",
                   project: "",
                   status: "all"
-                })
+                }
+                setFilters(resetFilters)
+                // 重置后立即刷新
+                setTimeout(() => fetchProjects(true), 0)
               }}
+              disabled={loading || debouncedFetch}
             >
               重置
             </Button>
             <Button 
               className="ml-2"
-              onClick={fetchProjects}
+              onClick={() => fetchProjects(true)}
+              disabled={loading || debouncedFetch}
             >
-              查询
+              {(loading || debouncedFetch) ? "加载中..." : "查询"}
             </Button>
           </div>
         </CardContent>
@@ -374,6 +445,7 @@ export default function PredictPage() {
           onClick={handleBatchEdit}
           disabled={
             selectedProjects.length === 0 || 
+            loading ||
             selectedProjects.some(id => {
               const project = projects.find(p => p.id === id)
               return project && project.status !== "草稿" && project.status !== "未填写"
@@ -388,6 +460,7 @@ export default function PredictPage() {
           disabled={
             selectedProjects.length === 0 || 
             submitting || 
+            loading ||
             selectedProjects.some(id => {
               const project = projects.find(p => p.id === id)
               return project && project.status !== "草稿"

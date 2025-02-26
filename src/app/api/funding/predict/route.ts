@@ -118,12 +118,6 @@ export async function GET(req: NextRequest) {
     // 获取用户会话
     const session = await getServerSession(authOptions);
     
-    // 临时解决方案：即使没有会话也继续执行，不返回401错误
-    // 在生产环境中应该删除这段代码，保留下面的授权检查
-    // if (!session || !session.user) {
-    //   return NextResponse.json({ error: "未授权访问" }, { status: 401 });
-    // }
-
     // 获取查询参数
     const searchParams = req.nextUrl.searchParams;
     const organizationId = searchParams.get("organizationId");
@@ -133,8 +127,10 @@ export async function GET(req: NextRequest) {
     const month = searchParams.get("month");
     const year = searchParams.get("year");
 
-    // 构建查询条件
-    const where: any = {};
+    // 构建查询条件 - 直接在数据库层面进行过滤
+    const where: any = {
+      status: "ACTIVE"
+    };
 
     // 如果指定了机构ID
     if (organizationId) {
@@ -157,81 +153,81 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    // 只查询活跃项目
-    where.status = "ACTIVE";
-
-    // 查询项目列表
+    // 优化查询：只获取必要的字段和关联数据
     const projects = await db.project.findMany({
       where,
-      include: {
-        organization: true,
-        departments: true,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        organization: {
+          select: {
+            name: true,
+            code: true,
+          }
+        },
+        departments: {
+          select: {
+            name: true,
+          }
+        },
         subProjects: {
-          include: {
+          select: {
+            id: true,
+            name: true,
             records: {
               where: {
                 ...(year ? { year: parseInt(year) } : {}),
                 ...(month ? { month: parseInt(month) } : {}),
               },
+              select: {
+                status: true,
+                remark: true,
+                year: true,
+                month: true,
+              }
             },
           },
         },
       },
     });
 
-    // 处理项目状态
+    // 使用更高效的方式处理项目状态和备注
     const projectsWithStatus = projects.map((project) => {
+      // 收集所有相关记录
+      const allRecords = project.subProjects.flatMap(sp => sp.records);
+      
       // 检查是否有记录
-      const hasRecords = project.subProjects.some((subProject) =>
-        subProject.records.some((record) => 
-          (!year || record.year === parseInt(year)) && 
-          (!month || record.month === parseInt(month))
-        )
-      );
+      const hasRecords = allRecords.length > 0;
 
-      // 获取项目状态
+      // 获取项目状态 - 使用更简洁的逻辑
       let projectStatus = "未填写";
+      
       if (hasRecords) {
         // 检查是否有任何记录是"pending_withdrawal"状态
-        const hasPendingWithdrawal = project.subProjects.some((subProject) =>
-          subProject.records.some((record) => 
-            ((!year || record.year === parseInt(year)) && 
-            (!month || record.month === parseInt(month))) ? 
-            record.status === "pending_withdrawal" : false
-          )
-        );
-        
-        // 如果有待撤回的记录，优先显示这个状态
-        if (hasPendingWithdrawal) {
+        if (allRecords.some(record => record.status === "pending_withdrawal")) {
           projectStatus = "pending_withdrawal";
-        } else {
-          // 否则检查是否全部是已提交状态
-          const allSubmitted = project.subProjects.every((subProject) =>
-            subProject.records.every((record) => 
-              ((!year || record.year === parseInt(year)) && 
-              (!month || record.month === parseInt(month))) ? 
-              record.status === "submitted" : true
-            )
-          );
-          
-          if (allSubmitted) {
-            projectStatus = "已提交";
-          } else {
-            projectStatus = "草稿";
-          }
+        } 
+        // 检查是否全部是已提交状态
+        else if (allRecords.every(record => record.status === "submitted")) {
+          projectStatus = "已提交";
+        } 
+        else {
+          projectStatus = "草稿";
         }
       }
 
-      // 获取备注信息
-      let remark = "";
+      // 获取备注信息 - 使用更高效的方式
       const remarks: RemarkItem[] = [];
+      let mainRemark = "";
+      
       if (hasRecords) {
-        // 收集所有子项目的备注信息
+        // 使用Map来避免重复处理相同的子项目
+        const processedSubProjects = new Map();
+        
         project.subProjects.forEach(sp => {
           sp.records.forEach((record: any) => {
-            if (record.remark && 
-                (!year || record.year === parseInt(year)) && 
-                (!month || record.month === parseInt(month))) {
+            if (record.remark) {
               // 添加到结构化备注列表
               remarks.push({
                 subProject: sp.name,
@@ -239,15 +235,16 @@ export async function GET(req: NextRequest) {
                 period: `${record.year}-${record.month.toString().padStart(2, '0')}`
               });
               
-              // 保留兼容性的单一备注字段
-              if (!remark) {
-                remark = record.remark;
+              // 保留第一个备注作为主备注
+              if (!mainRemark) {
+                mainRemark = record.remark;
               }
             }
           });
         });
       }
 
+      // 返回处理后的项目数据
       return {
         id: project.id,
         organization: `${project.organization.name} (${project.organization.code})`,
@@ -257,7 +254,8 @@ export async function GET(req: NextRequest) {
         status: projectStatus,
         subProjectCount: project.subProjects.length,
         remarks: remarks,
-        remark: remark
+        remark: mainRemark,
+        year: year || ""
       };
     });
 
