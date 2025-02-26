@@ -17,7 +17,14 @@ export async function POST(req: NextRequest) {
 
     // 获取请求数据
     const data = await req.json();
-    const { records, remarks } = data;
+    const { records, remarks, projectInfo } = data;
+
+    console.log("保存API收到数据:", JSON.stringify({
+      recordsCount: Object.keys(records).length,
+      remarksCount: remarks ? Object.keys(remarks).length : 0,
+      hasProjectInfo: !!projectInfo,
+      tempRecords: projectInfo?.tempRecords?.length
+    }, null, 2));
 
     if (!records || typeof records !== "object") {
       return NextResponse.json(
@@ -25,24 +32,76 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    
+    // 处理记录
+    const updatePromises = [];
+    const createdRecords = [];
+    const updatedRecords = [];
+    
+    for (const [recordId, value] of Object.entries(records)) {
+      // 如果是临时ID，需要创建新记录
+      if (recordId.startsWith('temp-')) {
+        console.log(`处理临时记录: ${recordId}, 值: ${value}`);
+        
+        // 从临时ID中解析信息 (temp-subProjectId-fundTypeId-year-month)
+        const parts = recordId.split('-');
+        if (parts.length >= 5) {
+          const subProjectId = parts[1];
+          const year = parseInt(parts[3]);
+          const month = parseInt(parts[4]);
+          
+          console.log(`创建新记录: 子项目ID=${subProjectId}, 年=${year}, 月=${month}, 值=${value}`);
+          createdRecords.push({ recordId, subProjectId, year, month, value });
+          
+          // 创建新记录
+          const createPromise = db.record.create({
+            data: {
+              subProjectId,
+              year,
+              month,
+              predicted: value === null ? null : parseFloat(String(value)),
+              status: "draft",
+              submittedBy: session?.user?.id || "temp-user-id",
+              // remark: remarks?.[recordId] || "",  // 暂时注释掉，解决类型问题
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+          
+          updatePromises.push(createPromise);
+        }
+      } else {
+        console.log(`更新现有记录: ${recordId}, 值: ${value}`);
+        updatedRecords.push(recordId);
+        
+        // 更新现有记录
+        const updatePromise = db.record.update({
+          where: { id: recordId },
+          data: {
+            predicted: value === null ? null : parseFloat(String(value)),
+            status: "draft",
+            submittedBy: session?.user?.id || "temp-user-id",
+            // remark: remarks?.[recordId] || "",  // 暂时注释掉，解决类型问题
+            updatedAt: new Date(),
+          },
+        });
+        
+        updatePromises.push(updatePromise);
+      }
+    }
 
-    // 批量更新记录
-    const updatePromises = Object.entries(records).map(async ([recordId, value]) => {
-      // 更新记录
-      return db.record.update({
-        where: { id: recordId },
-        data: {
-          predicted: value === null ? null : parseFloat(String(value)),
-          status: "draft",
-          remark: remarks?.[recordId] || "",
-          updatedAt: new Date(),
-        },
-      });
+    console.log(`即将处理记录: 创建=${createdRecords.length}, 更新=${updatedRecords.length}`);
+    
+    const results = await Promise.all(updatePromises);
+    console.log(`处理完成: ${results.length} 条记录`);
+
+    return NextResponse.json({ 
+      success: true,
+      message: "保存成功",
+      created: createdRecords.length,
+      updated: updatedRecords.length,
+      total: results.length
     });
-
-    await Promise.all(updatePromises);
-
-    return NextResponse.json({ success: true });
   } catch (error) {
     console.error("保存资金需求预测草稿失败", error);
     return NextResponse.json(

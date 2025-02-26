@@ -305,6 +305,26 @@ export default function PredictEditPage() {
         }
       });
       
+      // 收集临时记录信息，提供更多上下文
+      const tempRecords = Object.entries(recordsRef.current)
+        .filter(([id]) => id.startsWith('temp-'))
+        .map(([id, value]) => {
+          const parts = id.split('-');
+          if (parts.length >= 5) {
+            return {
+              id,
+              subProjectId: parts[1],
+              fundTypeId: parts[2],
+              year: parseInt(parts[3]),
+              month: parseInt(parts[4]),
+              value,
+              remark: remarksRef.current[id] || ""
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+      
       // 调用API保存
       const response = await fetch("/api/funding/predict/save", {
         method: "POST",
@@ -312,8 +332,12 @@ export default function PredictEditPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          records: realRecords,
-          remarks: realRemarks,
+          records: recordsRef.current,
+          remarks: remarksRef.current,
+          projectInfo: {
+            tempRecords,
+            nextMonth: nextMonth
+          }
         }),
       });
       
@@ -354,13 +378,13 @@ export default function PredictEditPage() {
       let hasEmptyValues = false;
       
       Object.entries(recordsRef.current).forEach(([recordId, value]) => {
+        if (value === null) {
+          hasEmptyValues = true;
+        }
+        
         // 只处理非临时ID的记录
         if (!recordId.startsWith('temp-')) {
           realRecords[recordId] = value;
-          // 检查是否有空值
-          if (value === null) {
-            hasEmptyValues = true;
-          }
         }
       });
       
@@ -370,6 +394,26 @@ export default function PredictEditPage() {
           realRemarks[recordId] = value;
         }
       });
+      
+      // 收集临时记录信息
+      const tempRecords = Object.entries(recordsRef.current)
+        .filter(([id]) => id.startsWith('temp-'))
+        .map(([id, value]) => {
+          const parts = id.split('-');
+          if (parts.length >= 5) {
+            return {
+              id,
+              subProjectId: parts[1],
+              fundTypeId: parts[2],
+              year: parseInt(parts[3]),
+              month: parseInt(parts[4]),
+              value,
+              remark: remarksRef.current[id] || ""
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
       
       // 数据校验
       if (hasEmptyValues) {
@@ -389,8 +433,12 @@ export default function PredictEditPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          records: realRecords,
-          remarks: realRemarks,
+          records: recordsRef.current,
+          remarks: remarksRef.current,
+          projectInfo: {
+            tempRecords,
+            nextMonth: nextMonth
+          }
         }),
       });
       
