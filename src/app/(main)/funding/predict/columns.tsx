@@ -1,16 +1,8 @@
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import { MoreHorizontal, FileEdit, Upload, Trash2 } from "lucide-react"
+import { FileEdit, Upload, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
@@ -22,6 +14,7 @@ export type Prediction = {
   project: string
   month: string
   status: string
+  remark?: string
 }
 
 export const columns: ColumnDef<Prediction>[] = [
@@ -89,6 +82,10 @@ export const columns: ColumnDef<Prediction>[] = [
     },
   },
   {
+    accessorKey: "remark",
+    header: "备注",
+  },
+  {
     id: "actions",
     cell: ({ row }) => {
       const router = useRouter()
@@ -119,50 +116,19 @@ export const columns: ColumnDef<Prediction>[] = [
             </Button>
           )}
           
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">打开菜单</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>操作</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(prediction.id)}>
-                复制ID
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push(`/funding/predict/edit?id=${prediction.id}`)}>
-                编辑
-              </DropdownMenuItem>
-              {prediction.status !== "已提交" && (
-                <DropdownMenuItem onClick={() => {
-                  // 这里应该调用 API 提交
-                  console.log("提交", prediction.id)
-                }}>
-                  提交
-                </DropdownMenuItem>
-              )}
-              {prediction.status === "已提交" && (
-                <DropdownMenuItem onClick={() => {
-                  // 这里应该调用 API 申请撤回
-                  console.log("申请撤回", prediction.id)
-                }}>
-                  申请撤回
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                className="text-red-600"
-                onClick={() => {
-                  // 这里应该调用 API 删除
-                  console.log("删除", prediction.id)
-                }}
-              >
-                删除
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {prediction.status === "已提交" && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                // 这里应该调用 API 申请撤回
+                console.log("申请撤回", prediction.id)
+              }}
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="sr-only md:not-sr-only md:ml-2">申请撤回</span>
+            </Button>
+          )}
         </div>
       )
     },

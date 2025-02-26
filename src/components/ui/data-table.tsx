@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   ColumnDef,
   flexRender,
@@ -10,6 +10,7 @@ import {
   SortingState,
   getSortedRowModel,
   TableOptions,
+  RowSelectionState,
 } from "@tanstack/react-table"
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -52,6 +53,7 @@ export interface DataTableProps {
   }
   onPaginationChange?: (pagination: { page: number; pageSize: number }) => void
   loading?: boolean
+  onSelectedRowsChange?: (selectedRowIds: string[]) => void
 }
 
 export function DataTable({
@@ -59,10 +61,28 @@ export function DataTable({
   data,
   pagination,
   onPaginationChange,
-  loading = false
+  loading = false,
+  onSelectedRowsChange
 }: DataTableProps) {
   
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const onSelectedRowsChangeRef = useRef(onSelectedRowsChange);
+  const dataRef = useRef(data);
+  const rowSelectionRef = useRef(rowSelection);
+  
+  // 更新引用
+  useEffect(() => {
+    onSelectedRowsChangeRef.current = onSelectedRowsChange;
+  }, [onSelectedRowsChange]);
+  
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+  
+  useEffect(() => {
+    rowSelectionRef.current = rowSelection;
+  }, [rowSelection]);
 
   const table = useReactTable({
     data,
@@ -71,12 +91,69 @@ export function DataTable({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
+    onRowSelectionChange: setRowSelection,
     state: {
       sorting,
+      rowSelection,
     },
     manualPagination: true,
     pageCount: pagination?.totalPages ?? -1,
-  })
+    enableRowSelection: true,
+  });
+  
+  // 安全地获取选中的行 ID
+  const getSelectedRowIds = useCallback(() => {
+    const currentData = dataRef.current;
+    const currentSelection = rowSelectionRef.current;
+    
+    if (!currentData || currentData.length === 0 || !currentSelection) {
+      return [];
+    }
+    
+    return Object.keys(currentSelection)
+      .filter(index => currentSelection[index])
+      .map(index => {
+        const rowIndex = parseInt(index);
+        if (rowIndex >= 0 && rowIndex < currentData.length) {
+          return currentData[rowIndex]?.id || '';
+        }
+        return '';
+      })
+      .filter(id => id);
+  }, []);
+  
+  // 当选择的行变化时，调用回调函数
+  // 使用 useEffect 的清理函数来防止在组件卸载后调用
+  useEffect(() => {
+    // 创建一个标志，表示该效果是否仍然有效
+    let isEffectActive = true;
+    
+    // 使用 requestAnimationFrame 来确保在渲染完成后调用
+    const handler = window.requestAnimationFrame(() => {
+      if (!isEffectActive) return;
+      
+      const callback = onSelectedRowsChangeRef.current;
+      if (callback && dataRef.current.length > 0) {
+        const selectedIds = getSelectedRowIds();
+        callback(selectedIds);
+      }
+    });
+    
+    // 清理函数
+    return () => {
+      isEffectActive = false;
+      window.cancelAnimationFrame(handler);
+    };
+  }, [rowSelection, getSelectedRowIds]);
+  
+  // 当数据变化时，重置行选择
+  useEffect(() => {
+    // 使用对象引用比较而不是长度比较
+    const prevData = dataRef.current;
+    if (prevData !== data) {
+      setRowSelection({});
+    }
+  }, [data]);
   
   // 通过路径获取对象属性
   const getValueByPath = (obj: any, path: string) => {

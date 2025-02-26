@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/ui/data-table"
-import { PlusCircle, FileEdit, Upload } from "lucide-react"
+import { FileEdit, Upload, RotateCcw } from "lucide-react"
 import { columns, Prediction } from "./columns"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -59,7 +59,8 @@ export default function PredictPage() {
           department: "部门1", 
           project: "智慧城市项目 (SC001)", 
           month: getNextMonth(), 
-          status: "未填写" 
+          status: "未填写",
+          remark: ""
         },
         { 
           id: "2", 
@@ -67,7 +68,8 @@ export default function PredictPage() {
           department: "部门2", 
           project: "5G网络建设 (5G001)", 
           month: getNextMonth(), 
-          status: "草稿" 
+          status: "草稿",
+          remark: "上月预测金额较大，本月可能会减少"
         },
         { 
           id: "3", 
@@ -75,7 +77,8 @@ export default function PredictPage() {
           department: "部门1", 
           project: "数据中心扩建 (DC001)", 
           month: getNextMonth(), 
-          status: "已提交" 
+          status: "已提交",
+          remark: "按计划执行"
         },
         { 
           id: "4", 
@@ -83,7 +86,8 @@ export default function PredictPage() {
           department: "部门3", 
           project: "AI研发项目 (AI001)", 
           month: getNextMonth(), 
-          status: "未填写" 
+          status: "未填写",
+          remark: ""
         },
       ]
       
@@ -116,7 +120,7 @@ export default function PredictPage() {
     )
   })
 
-  // 处理批量编辑
+  // 处理批量填报
   const handleBatchEdit = () => {
     if (selectedProjects.length === 0) {
       toast({
@@ -141,6 +145,21 @@ export default function PredictPage() {
       return
     }
     
+    // 检查是否有未填写的项目
+    const hasUnfilledProjects = selectedProjects.some(id => {
+      const project = projects.find(p => p.id === id)
+      return project && project.status === "未填写"
+    })
+    
+    if (hasUnfilledProjects) {
+      toast({
+        title: "警告",
+        description: "选中的项目中包含未填写的项目，请先填报后再提交",
+        variant: "destructive"
+      })
+      return
+    }
+    
     // 这里应该调用 API 批量提交
     toast({
       title: "成功",
@@ -153,28 +172,22 @@ export default function PredictPage() {
     fetchProjects()
   }, [])
 
+  // 处理选中项目变化
+  const handleSelectedRowsChange = useCallback((selectedRowIds: string[]) => {
+    console.log('选中的项目IDs:', selectedRowIds); // 添加日志，帮助调试
+    setSelectedProjects(prev => {
+      // 使用深度比较，避免不必要的状态更新
+      if (JSON.stringify(prev) === JSON.stringify(selectedRowIds)) {
+        return prev;
+      }
+      return selectedRowIds;
+    });
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">资金需求预测填报</h1>
-        <div className="flex gap-2">
-          {selectedProjects.length > 0 && (
-            <>
-              <Button onClick={handleBatchEdit}>
-                <FileEdit className="mr-2 h-4 w-4" />
-                批量编辑
-              </Button>
-              <Button onClick={handleBatchSubmit}>
-                <Upload className="mr-2 h-4 w-4" />
-                批量提交
-              </Button>
-            </>
-          )}
-          <Button onClick={() => router.push("/funding/predict/edit")}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            新增预测
-          </Button>
-        </div>
       </div>
       
       <Card>
@@ -259,7 +272,26 @@ export default function PredictPage() {
         columns={columns as any}
         data={filteredProjects}
         loading={loading}
+        onSelectedRowsChange={handleSelectedRowsChange}
       />
+      
+      <div className="flex justify-end gap-2 mt-4">
+        <Button 
+          variant="outline" 
+          onClick={handleBatchEdit}
+          disabled={selectedProjects.length === 0}
+        >
+          <FileEdit className="mr-2 h-4 w-4" />
+          批量填报
+        </Button>
+        <Button 
+          onClick={handleBatchSubmit}
+          disabled={selectedProjects.length === 0}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          批量提交
+        </Button>
+      </div>
     </div>
   )
 }
