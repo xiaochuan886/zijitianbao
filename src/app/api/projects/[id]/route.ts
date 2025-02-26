@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ProjectService } from '@/lib/services/project.service'
 import { ApiError } from '@/lib/api-middlewares'
+import { parseSession } from '@/lib/auth/session'
 
 const projectService = new ProjectService()
 
@@ -11,6 +12,15 @@ interface RouteContext {
 // GET /api/projects/[id] - 获取项目详情
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
+    // 检查授权
+    const session = await parseSession(req.headers.get('authorization'))
+    if (!session) {
+      return NextResponse.json(
+        { message: '未授权访问' },
+        { status: 401 }
+      )
+    }
+
     const result = await projectService.findById(context.params.id)
     return NextResponse.json(result)
   } catch (error: any) {
@@ -25,6 +35,15 @@ export async function GET(req: NextRequest, context: RouteContext) {
 // PUT /api/projects/[id] - 更新项目
 export async function PUT(req: NextRequest, context: RouteContext) {
   try {
+    // 检查授权
+    const session = await parseSession(req.headers.get('authorization'))
+    if (!session) {
+      return NextResponse.json(
+        { message: '未授权访问' },
+        { status: 401 }
+      )
+    }
+
     const data = await req.json()
     const result = await projectService.update(context.params.id, data)
     return NextResponse.json(result)
@@ -40,6 +59,15 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 // DELETE /api/projects/[id] - 删除项目
 export async function DELETE(req: NextRequest, context: RouteContext) {
   try {
+    // 检查授权
+    const session = await parseSession(req.headers.get('authorization'))
+    if (!session) {
+      return NextResponse.json(
+        { message: '未授权访问' },
+        { status: 401 }
+      )
+    }
+
     await projectService.delete(context.params.id)
     return NextResponse.json({ success: true })
   } catch (error: any) {

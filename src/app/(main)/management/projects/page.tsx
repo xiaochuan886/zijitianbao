@@ -16,6 +16,13 @@ interface Project {
   createdAt: Date;
 }
 
+interface RowType {
+  original: {
+    id: string;
+    status: string;
+  };
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,7 +37,12 @@ export default function ProjectsPage() {
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/projects');
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/projects', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       const data = await response.json();
       setProjects(data);
     } catch (error) {
@@ -57,7 +69,7 @@ export default function ProjectsPage() {
     {
       accessorKey: 'status',
       header: '状态',
-      cell: ({ row }) => (
+      cell: ({ row }: { row: RowType }) => (
         <span className={`px-2 py-1 rounded text-sm ${
           row.original.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
         }`}>
@@ -72,7 +84,7 @@ export default function ProjectsPage() {
     {
       accessorKey: 'actions',
       header: '操作',
-      cell: ({ row }) => (
+      cell: ({ row }: { row: RowType }) => (
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => handleEdit(row.original.id)}>
             编辑
@@ -96,8 +108,12 @@ export default function ProjectsPage() {
   const handleArchive = async (id: string) => {
     try {
       setLoading(true);
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/projects/${id}/archive`, {
-        method: 'PUT'
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
       if (!response.ok) throw new Error('归档失败');
       
@@ -128,11 +144,13 @@ export default function ProjectsPage() {
     try {
       const url = editingProject ? `/api/projects/${editingProject.id}` : '/api/projects';
       const method = editingProject ? 'PUT' : 'POST';
+      const token = localStorage.getItem('token');
       
       const response = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(data)
       });
@@ -169,7 +187,7 @@ export default function ProjectsPage() {
             <h1 className="text-2xl font-semibold">{editingProject ? '编辑项目' : '新增项目'}</h1>
           </div>
           <ProjectForm
-            initialData={editingProject}
+            initialData={editingProject as any}
             onSubmit={handleFormSubmit}
             onCancel={handleFormCancel}
           />
@@ -184,11 +202,16 @@ export default function ProjectsPage() {
             </Button>
           </div>
           
-          <DataTable
-            columns={columns}
-            data={projects}
-            loading={loading}
-          />
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <p>加载中...</p>
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={projects}
+            />
+          )}
         </>
       )}
     </div>

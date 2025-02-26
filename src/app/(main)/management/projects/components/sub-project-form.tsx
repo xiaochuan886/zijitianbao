@@ -31,7 +31,12 @@ export function SubProjectForm({ form, disabled }: SubProjectFormProps) {
   useEffect(() => {
     const fetchFundingTypes = async () => {
       try {
-        const response = await fetch('/api/funding-types');
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/funding-types', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
         const { data } = await response.json();
         setFundingTypes(data.items || []);
       } catch (error) {
@@ -48,7 +53,7 @@ export function SubProjectForm({ form, disabled }: SubProjectFormProps) {
 
   const handleRemove = (index: number) => {
     const currentSubProjects = form.getValues('subProjects');
-    form.setValue('subProjects', currentSubProjects.filter((_, i) => i !== index));
+    form.setValue('subProjects', currentSubProjects.filter((item: any, i: number) => i !== index));
   };
 
   if (loading) {

@@ -31,7 +31,12 @@ export function OrganizationSelector({ value, onChange, disabled }: Organization
   useEffect(() => {
     const fetchOrganizations = async () => {
       try {
-        const response = await fetch('/api/organizations');
+        const token = localStorage.getItem('token');
+        const response = await fetch('/api/organizations', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
         const data = await response.json();
         setOrganizations(Array.isArray(data) ? data : data.items || []);
       } catch (error) {
