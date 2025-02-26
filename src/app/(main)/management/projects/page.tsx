@@ -44,7 +44,17 @@ export default function ProjectsPage() {
         }
       });
       const data = await response.json();
-      setProjects(data);
+      console.log('获取到的项目数据:', data);
+      
+      // 检查响应数据格式，正确处理分页数据
+      if (data && data.items) {
+        setProjects(data.items);
+      } else if (Array.isArray(data)) {
+        setProjects(data);
+      } else {
+        console.error('项目数据格式不正确:', data);
+        setProjects([]);
+      }
     } catch (error) {
       console.error('获取项目列表失败:', error);
       toast({
@@ -71,9 +81,9 @@ export default function ProjectsPage() {
       header: '状态',
       cell: ({ row }: { row: RowType }) => (
         <span className={`px-2 py-1 rounded text-sm ${
-          row.original.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+          row.original.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
         }`}>
-          {row.original.status === 'active' ? '活跃' : '已归档'}
+          {row.original.status === 'ACTIVE' ? '活跃' : '已归档'}
         </span>
       ),
     },
@@ -90,7 +100,7 @@ export default function ProjectsPage() {
             编辑
           </Button>
           <Button variant="outline" size="sm" onClick={() => handleArchive(row.original.id)}>
-            {row.original.status === 'active' ? '归档' : '激活'}
+            {row.original.status === 'ACTIVE' ? '归档' : '激活'}
           </Button>
         </div>
       ),
