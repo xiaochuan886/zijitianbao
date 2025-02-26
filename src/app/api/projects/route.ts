@@ -64,8 +64,19 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await req.json()
-    const result = await projectService.create(data)
-    return NextResponse.json(result)
+    console.log('接收到的项目数据:', data)
+    
+    try {
+      const result = await projectService.create(data)
+      console.log('项目创建成功:', result)
+      return NextResponse.json(result)
+    } catch (serviceError: any) {
+      console.error('项目服务错误:', serviceError)
+      return NextResponse.json(
+        { message: serviceError.message || '创建项目失败' },
+        { status: serviceError.statusCode || 500 }
+      )
+    }
   } catch (error: any) {
     console.error('API Error:', error)
     return NextResponse.json(

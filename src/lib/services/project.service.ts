@@ -1,10 +1,11 @@
 import { prisma } from '../prisma'
 import { PaginationParams, PaginatedResponse, QueryParams, ServiceError } from './types'
-import { Prisma } from '@prisma/client'
+import { Prisma, ProjectStatus } from '@prisma/client'
 
 export interface CreateProjectDto {
   name: string
-  status: string
+  code: string
+  status: ProjectStatus
   startYear: number
   organizationIds: string[]
   departmentIds: string[]
@@ -16,7 +17,8 @@ export interface CreateProjectDto {
 
 export interface UpdateProjectDto {
   name?: string
-  status?: string
+  code?: string
+  status?: ProjectStatus
   startYear?: number
   organizationIds?: string[]
   departmentIds?: string[]
@@ -29,36 +31,89 @@ export interface UpdateProjectDto {
 
 export class ProjectService {
   async create(data: CreateProjectDto) {
-    return await prisma.project.create({
-      data: {
-        name: data.name,
-        status: data.status,
-        startYear: data.startYear,
-        organizations: {
-          connect: data.organizationIds.map((id) => ({ id })),
-        },
-        departments: {
-          connect: data.departmentIds.map((id) => ({ id })),
-        },
-        subProjects: {
-          create: data.subProjects.map((sub) => ({
-            name: sub.name,
-            fundTypes: {
-              connect: sub.fundTypeIds.map((id) => ({ id })),
-            },
-          })),
-        },
-      },
-      include: {
-        organizations: true,
-        departments: true,
-        subProjects: {
-          include: {
-            fundTypes: true,
+    console.log('ProjectService.create 接收到的数据:', data);
+    
+    try {
+      // 验证必要字段
+      if (!data.name) throw new ServiceError(400, '项目名称不能为空');
+      if (!data.code) throw new ServiceError(400, '项目编码不能为空');
+      if (!data.startYear) throw new ServiceError(400, '开始年份不能为空');
+      if (!data.organizationIds || data.organizationIds.length === 0) {
+        throw new ServiceError(400, '至少选择一个机构');
+      }
+      if (!data.departmentIds || data.departmentIds.length === 0) {
+        throw new ServiceError(400, '至少选择一个部门');
+      }
+      if (!data.subProjects || data.subProjects.length === 0) {
+        throw new ServiceError(400, '至少添加一个子项目');
+      }
+      
+      // 检查每个子项目
+      for (const sub of data.subProjects) {
+        if (!sub.name) throw new ServiceError(400, '子项目名称不能为空');
+        if (!sub.fundTypeIds || sub.fundTypeIds.length === 0) {
+          throw new ServiceError(400, '子项目至少选择一个资金需求类型');
+        }
+      }
+      
+      // 根据Prisma模型定义，项目必须有一个主要所属机构
+      const organizationId = data.organizationIds[0];
+      
+      const result = await prisma.project.create({
+        data: {
+          name: data.name,
+          status: data.status,
+          startYear: data.startYear,
+          organizationId: organizationId, // 主要所属机构
+          organizations: {
+            connect: data.organizationIds.map((id) => ({ id })),
+          },
+          departments: {
+            connect: data.departmentIds.map((id) => ({ id })),
+          },
+          subProjects: {
+            create: data.subProjects.map((sub) => ({
+              name: sub.name,
+              fundTypes: {
+                connect: sub.fundTypeIds.map((id) => ({ id })),
+              },
+            })),
           },
         },
-      },
-    })
+        include: {
+          organizations: true,
+          departments: true,
+          subProjects: {
+            include: {
+              fundTypes: true,
+            },
+          },
+        },
+      });
+      
+      console.log('项目创建成功:', result);
+      return result;
+    } catch (error: any) {
+      console.error('项目创建失败:', error);
+      
+      // 处理Prisma错误
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new ServiceError(400, '项目编码已存在');
+        }
+        if (error.code === 'P2025') {
+          throw new ServiceError(400, '关联的机构、部门或资金需求类型不存在');
+        }
+      }
+      
+      // 如果已经是ServiceError，直接抛出
+      if (error instanceof ServiceError) {
+        throw error;
+      }
+      
+      // 其他错误
+      throw new ServiceError(500, error.message || '创建项目失败');
+    }
   }
 
   async update(id: string, data: UpdateProjectDto) {

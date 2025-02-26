@@ -7,7 +7,6 @@ import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus } from 'lucide-react';
 import { OrganizationSelector } from './organization-selector';
@@ -17,11 +16,10 @@ const projectSchema = z.object({
   name: z.string().min(2, '项目名称至少2个字符').max(100, '项目名称最多100个字符'),
   code: z.string().min(2, '项目编码至少2个字符').max(50, '项目编码最多50个字符'),
   startYear: z.number().min(2000, '开始年份不能早于2000年').max(2100, '开始年份不能晚于2100年'),
-  organizations: z.array(z.string()).min(1, '至少选择一个机构'),
   departments: z.array(z.object({
-    organizationId: z.string(),
+    organizationId: z.string().min(1, '请选择机构'),
     departmentIds: z.array(z.string()).min(1, '至少选择一个部门')
-  })),
+  })).min(1, '至少选择一个机构和部门'),
   subProjects: z.array(z.object({
     name: z.string().min(2, '子项目名称至少2个字符'),
     fundingTypes: z.array(z.string()).min(1, '至少选择一个资金需求类型')
@@ -38,7 +36,6 @@ interface ProjectFormProps {
 
 export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProps) {
   const [loading, setLoading] = useState(false);
-  const [selectedOrgs, setSelectedOrgs] = useState<string[]>([]);
 
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
@@ -46,8 +43,7 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
       name: '',
       code: '',
       startYear: new Date().getFullYear(),
-      organizations: [],
-      departments: [],
+      departments: [{ organizationId: '', departmentIds: [] }],
       subProjects: [{ name: '', fundingTypes: [] }]
     }
   });
@@ -55,6 +51,48 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
   const handleSubmit = async (data: ProjectFormValues) => {
     try {
       setLoading(true);
+      console.log('表单提交数据:', data); // 添加日志，查看提交的数据
+      
+      // 检查数据是否有效
+      if (!data.name || !data.code || !data.startYear) {
+        console.error('基本信息不完整');
+        return;
+      }
+      
+      if (!data.departments || data.departments.length === 0) {
+        console.error('未选择机构和部门');
+        return;
+      }
+      
+      if (!data.subProjects || data.subProjects.length === 0) {
+        console.error('未添加子项目');
+        return;
+      }
+      
+      // 检查每个机构和部门是否有效
+      for (const dept of data.departments) {
+        if (!dept.organizationId) {
+          console.error('存在未选择机构的项');
+          return;
+        }
+        if (!dept.departmentIds || dept.departmentIds.length === 0) {
+          console.error('存在未选择部门的项');
+          return;
+        }
+      }
+      
+      // 检查每个子项目是否有效
+      for (const sub of data.subProjects) {
+        if (!sub.name) {
+          console.error('存在未填写名称的子项目');
+          return;
+        }
+        if (!sub.fundingTypes || sub.fundingTypes.length === 0) {
+          console.error('存在未选择资金需求类型的子项目');
+          return;
+        }
+      }
+      
       await onSubmit(data);
     } catch (error) {
       console.error('提交失败:', error);

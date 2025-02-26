@@ -140,37 +140,81 @@ export default function ProjectsPage() {
     setShowForm(true);
   };
 
-  const handleFormSubmit = async (data: any) => {
+  const handleFormSubmit = async (formData: any) => {
     try {
+      setLoading(true);
+      console.log('原始表单数据:', formData);
+      
+      // 转换数据格式以匹配API期望的格式
+      const apiData = {
+        name: formData.name,
+        code: formData.code,
+        status: 'ACTIVE', // 新项目默认为活跃状态，使用枚举值
+        startYear: formData.startYear,
+        organizationIds: formData.departments.map((d: any) => d.organizationId),
+        departmentIds: formData.departments.flatMap((d: any) => d.departmentIds),
+        subProjects: formData.subProjects.map((s: any) => ({
+          name: s.name,
+          fundTypeIds: s.fundingTypes
+        }))
+      };
+      
+      console.log('转换后的API数据:', apiData);
+      
       const url = editingProject ? `/api/projects/${editingProject.id}` : '/api/projects';
       const method = editingProject ? 'PUT' : 'POST';
       const token = localStorage.getItem('token');
       
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(data)
-      });
+      console.log('发送请求到:', url, '方法:', method);
       
-      if (!response.ok) throw new Error('保存失败');
-      
-      toast({
-        title: '成功',
-        description: `项目已${editingProject ? '更新' : '创建'}`
-      });
-      
-      setShowForm(false);
-      await fetchProjects();
-    } catch (error) {
+      try {
+        const response = await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(apiData)
+        });
+        
+        console.log('响应状态:', response.status);
+        const responseText = await response.text();
+        console.log('响应文本:', responseText);
+        
+        let responseData;
+        try {
+          responseData = responseText ? JSON.parse(responseText) : {};
+        } catch (e) {
+          console.error('解析响应JSON失败:', e);
+          responseData = { message: '服务器响应格式错误' };
+        }
+        
+        console.log('响应数据:', responseData);
+        
+        if (!response.ok) {
+          throw new Error(responseData.message || '保存失败');
+        }
+        
+        toast({
+          title: '成功',
+          description: `项目已${editingProject ? '更新' : '创建'}`
+        });
+        
+        setShowForm(false);
+        await fetchProjects();
+      } catch (fetchError: any) {
+        console.error('请求错误:', fetchError);
+        throw fetchError;
+      }
+    } catch (error: any) {
       console.error('保存项目失败:', error);
       toast({
         variant: 'destructive',
         title: '错误',
-        description: '保存项目失败，请稍后重试'
+        description: error.message || '保存项目失败，请稍后重试'
       });
+    } finally {
+      setLoading(false);
     }
   };
 
