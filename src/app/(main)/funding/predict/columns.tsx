@@ -1,12 +1,37 @@
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import { FileEdit, Upload, RotateCcw } from "lucide-react"
+import { FileEdit, Upload, RotateCcw, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { useState } from "react"
+import { useToast } from "@/components/ui/use-toast"
+import { cn } from "@/lib/utils"
+import { submitWithdrawalRequest } from "./client-api"
 
 export type Prediction = {
   id: string
@@ -18,6 +43,7 @@ export type Prediction = {
   subProjectCount?: number
   remarks?: { subProject: string, content: string, period: string }[]
   remark?: string
+  year: string
 }
 
 export const columns: ColumnDef<Prediction>[] = [
@@ -63,25 +89,36 @@ export const columns: ColumnDef<Prediction>[] = [
     accessorKey: "status",
     header: "状态",
     cell: ({ row }) => {
-      const status = row.getValue("status") as string
+      const status = row.getValue("status") as string;
       
-      let variant: "default" | "outline" | "secondary" | "destructive" = "default"
+      let color = "";
+      let text = "";
       
       switch (status) {
         case "未填写":
-          variant = "outline"
-          break
+          color = "bg-gray-200";
+          text = "未填写";
+          break;
         case "草稿":
-          variant = "secondary"
-          break
+          color = "bg-yellow-200";
+          text = "草稿";
+          break;
         case "已提交":
-          variant = "default"
-          break
+          color = "bg-green-200";
+          text = "已提交";
+          break;
+        case "pending_withdrawal":
+          color = "bg-blue-200";
+          text = "撤回审核中";
+          break;
         default:
-          variant = "default"
+          color = "bg-gray-200";
+          text = status;
       }
       
-      return <Badge variant={variant}>{status}</Badge>
+      return (
+        <Badge className={`${color} text-gray-900`}>{text}</Badge>
+      );
     },
   },
   {
@@ -136,49 +173,250 @@ export const columns: ColumnDef<Prediction>[] = [
     id: "actions",
     cell: ({ row }) => {
       const router = useRouter()
+      const { toast } = useToast()
       const prediction = row.original
-
+      
+      // 根据不同状态显示不同的操作选项
       return (
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => router.push(`/funding/predict/edit?id=${prediction.id}`)}
-          >
-            <FileEdit className="h-4 w-4" />
-            <span className="sr-only md:not-sr-only md:ml-2">填报</span>
-          </Button>
-          
-          {prediction.status !== "已提交" && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                // 这里应该调用 API 提交
-                console.log("提交", prediction.id)
-              }}
-            >
-              <Upload className="h-4 w-4" />
-              <span className="sr-only md:not-sr-only md:ml-2">提交</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0">
+              <span className="sr-only">打开菜单</span>
+              <MoreHorizontal className="h-4 w-4" />
             </Button>
-          )}
-          
-          {prediction.status === "已提交" && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                // 这里应该调用 API 申请撤回
-                console.log("申请撤回", prediction.id)
-              }}
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span className="sr-only md:not-sr-only md:ml-2">申请撤回</span>
-            </Button>
-          )}
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>操作</DropdownMenuLabel>
+            
+            {/* 填报按钮 - 对所有状态可用 */}
+            <DropdownMenuItem onClick={() => router.push(`/funding/predict/edit?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}`)}>
+              <FileEdit className="mr-2 h-4 w-4" />
+              填报
+            </DropdownMenuItem>
+            
+            {/* 提交按钮 - 对未填写和草稿状态可用 */}
+            {(prediction.status === "未填写" || prediction.status === "草稿") && (
+              <DropdownMenuItem 
+                onClick={async () => {
+                  try {
+                    // 调用API提交预测
+                    const response = await fetch(`/api/funding/predict/submit-single/${prediction.id}`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        year: prediction.year,
+                        month: prediction.month,
+                      }),
+                    });
+                    
+                    if (!response.ok) {
+                      const errorData = await response.json();
+                      throw new Error(errorData.error || "提交失败");
+                    }
+                    
+                    // 显示成功提示
+                    toast({
+                      title: "提交成功",
+                      description: "项目已成功提交",
+                    });
+                    
+                    // 刷新页面
+                    router.refresh();
+                  } catch (error) {
+                    console.error("提交失败", error);
+                    toast({
+                      title: "提交失败",
+                      description: error instanceof Error ? error.message : "提交失败",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                提交
+              </DropdownMenuItem>
+            )}
+            
+            {/* 编辑按钮 - 对未填写和草稿状态可用 */}
+            {(prediction.status === "未填写" || prediction.status === "草稿") && (
+              <DropdownMenuItem onClick={() => router.push(`/funding/predict/edit?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}`)}>
+                编辑
+              </DropdownMenuItem>
+            )}
+            
+            {/* 查看按钮 - 对已提交状态可用 */}
+            {(prediction.status === "已提交" || prediction.status === "pending_withdrawal") && (
+              <DropdownMenuItem onClick={() => router.push(`/funding/predict/view?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}`)}>
+                查看详情
+              </DropdownMenuItem>
+            )}
+            
+            {/* 撤回申请按钮 - 对已提交状态可用 */}
+            {prediction.status === "已提交" && (
+              <WithdrawalRequestDialog 
+                recordId={prediction.id} 
+                projectName={prediction.project} 
+                onComplete={() => {
+                  // 刷新数据
+                  router.refresh()
+                  // 提示用户刷新页面
+                  toast({
+                    title: "撤回申请已提交",
+                    description: "状态已更新为「撤回申请待审批」"
+                  })
+                }}
+              />
+            )}
+            
+            {/* 撤销撤回申请 - 对待审核状态可用 */}
+            {prediction.status === "pending_withdrawal" && (
+              <DropdownMenuItem
+                onClick={async () => {
+                  try {
+                    // 实现取消撤回申请的API调用
+                    const response = await fetch(`/api/funding/predict/withdrawal/cancel/${prediction.id}`, {
+                      method: "POST"
+                    })
+                    
+                    if (!response.ok) {
+                      const data = await response.json()
+                      throw new Error(data.error || "取消撤回申请失败")
+                    }
+                    
+                    toast({
+                      title: "成功",
+                      description: "已取消撤回申请"
+                    })
+                    
+                    // 刷新
+                    router.refresh()
+                  } catch (error) {
+                    console.error("取消撤回申请失败", error)
+                    toast({
+                      title: "错误",
+                      description: error instanceof Error ? error.message : "取消撤回申请失败",
+                      variant: "destructive"
+                    })
+                  }
+                }}
+              >
+                取消撤回申请
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )
     },
   },
 ]
+
+// 添加撤回申请对话框组件
+function WithdrawalRequestDialog({ 
+  recordId, 
+  projectName, 
+  onComplete 
+}: { 
+  recordId: string, 
+  projectName: string, 
+  onComplete: () => void 
+}) {
+  const [reason, setReason] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [open, setOpen] = useState(false)
+  const { toast } = useToast()
+  
+  const handleSubmit = async () => {
+    if (reason.trim().length < 5) {
+      toast({
+        title: "错误",
+        description: "撤回原因至少需要5个字符",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    try {
+      setSubmitting(true)
+      
+      console.log("准备提交撤回申请，记录ID:", recordId);
+      
+      // 使用客户端API函数提交撤回申请
+      const result = await submitWithdrawalRequest(recordId, reason);
+      
+      console.log("撤回申请结果:", result);
+      
+      // 无论成功或失败，都关闭对话框
+      setOpen(false);
+      
+      // 如果成功，通知父组件刷新
+      if (result.success) {
+        onComplete();
+      }
+    } catch (error) {
+      console.error("提交撤回申请失败", error);
+      toast({
+        title: "错误",
+        description: error instanceof Error ? error.message : "提交撤回申请失败",
+        variant: "destructive"
+      });
+      // 即使出错也关闭对话框
+      setOpen(false);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <DropdownMenuItem onSelect={(e) => {
+          e.preventDefault();
+          setOpen(true); // 确保点击菜单项时打开对话框
+        }}>
+          撤回申请
+        </DropdownMenuItem>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>提交撤回申请</DialogTitle>
+          <DialogDescription>
+            项目: {projectName}
+            <br />
+            请填写撤回原因，管理员审核通过后将允许重新编辑。
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="reason">撤回原因</Label>
+            <Textarea
+              id="reason"
+              placeholder="请详细说明撤回原因..."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button 
+            variant="outline" 
+            onClick={() => setOpen(false)}
+          >
+            取消
+          </Button>
+          <Button 
+            onClick={handleSubmit}
+            disabled={submitting || reason.trim().length < 5}
+          >
+            {submitting ? "提交中..." : "提交申请"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 

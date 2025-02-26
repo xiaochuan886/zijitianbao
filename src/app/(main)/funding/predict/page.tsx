@@ -167,9 +167,9 @@ export default function PredictPage() {
       setSubmitting(true)
       
       // 显示正在提交提示
-      toast({
-        title: "提示",
-        description: "正在提交项目，请稍候...",
+      const submittingToast = toast({
+        title: "提交中",
+        description: `正在提交 ${selectedProjects.length} 个项目，请稍候...`,
       })
       
       // 调用API批量提交
@@ -185,6 +185,9 @@ export default function PredictPage() {
         }),
       })
       
+      // 关闭提交中的提示
+      submittingToast.dismiss()
+      
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || "批量提交失败")
@@ -192,9 +195,10 @@ export default function PredictPage() {
       
       const result = await response.json()
       
+      // 显示成功提示
       toast({
-        title: "成功",
-        description: `已提交 ${result.count} 个项目`,
+        title: "提交成功",
+        description: `已成功提交 ${result.count} 个项目`,
       })
       
       // 刷新项目列表
@@ -202,7 +206,7 @@ export default function PredictPage() {
     } catch (error) {
       console.error("批量提交失败", error)
       toast({
-        title: "错误",
+        title: "提交失败",
         description: error instanceof Error ? error.message : "批量提交失败",
         variant: "destructive"
       })

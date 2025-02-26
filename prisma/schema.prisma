@@ -139,10 +139,11 @@ model Record {
   actualUser    Float?     // 填报人实际金额
   actualFinance Float?     // 财务实际金额
   auditResult   Float?     // 审核结果
-  status        String     // draft/submitted/approved
+  status        String     // draft/submitted/pending_withdrawal/approved
   submittedBy   String     // 提交人ID
   submittedAt   DateTime?
   remark        String?    // 备注信息
+  withdrawalRequest WithdrawalRequest? // 一对一关系，一条记录最多有一个撤回申请
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -187,4 +188,23 @@ model UserOrganization {
   @@unique([userId, organizationId])
   @@index([userId])
   @@index([organizationId])
+}
+
+// 添加撤回申请表
+model WithdrawalRequest {
+  id            String     @id @default(cuid())
+  recordId      String     @unique  // 关联的记录ID
+  record        Record     @relation(fields: [recordId], references: [id])
+  requesterId   String     // 申请人ID
+  reason        String     // 申请原因
+  status        String     // pending/approved/rejected
+  adminId       String?    // 处理管理员ID
+  adminComment  String?    // 管理员备注
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([recordId])
+  @@index([requesterId])
+  @@index([status])
+  @@index([createdAt])
 }

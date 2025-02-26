@@ -345,14 +345,13 @@ export default function PredictEditPage() {
       setOriginalRemarks({...remarksRef.current});
       setHasChanges(false);
       
-      // 显示自动消失的成功提示
+      // 显示成功提示，并在2秒后自动消失
       const { dismiss } = toast({
         title: "成功",
         description: "数据已保存",
-        duration: 2000, // 2秒后自动消失
       });
       
-      // 为确保提示消失，无论duration是否生效
+      // 2秒后强制关闭提示
       setTimeout(() => {
         dismiss();
       }, 2000);
