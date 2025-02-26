@@ -1,0 +1,8 @@
+---
+description: Best practices for styling with Tailwind CSS
+globs: **/*.{ts,tsx,css}
+---
+- Use utility classes directly in your JSX for rapid development and maintainability.
+- Create custom components with pre-defined Tailwind classes for reusability.
+- Utilize the `@apply` directive in your CSS files for more complex styles.
+- Implement responsive design using Tailwind's responsive utility classes.

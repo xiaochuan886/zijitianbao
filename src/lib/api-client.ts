@@ -127,4 +127,27 @@ export const apiClient = {
         body: JSON.stringify({ password }),
       }),
   },
-} 
+
+  // 资金需求类型相关
+  fundTypes: {
+    list: (params?: { page?: number; pageSize?: number; search?: string }) =>
+      fetchWithAuth('/api/fund-types', { params: params as Record<string, string> }),
+    
+    create: (data: { name: string }) =>
+      fetchWithAuth('/api/fund-types', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    
+    update: (id: string, data: { name: string }) =>
+      fetchWithAuth(`/api/fund-types/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    
+    delete: (id: string) =>
+      fetchWithAuth(`/api/fund-types/${id}`, {
+        method: 'DELETE',
+      }),
+  },
+}

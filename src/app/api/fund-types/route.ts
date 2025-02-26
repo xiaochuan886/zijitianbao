@@ -24,13 +24,13 @@ export async function GET(req: NextRequest) {
   const sortOrder = url.searchParams.get('sortOrder') || 'desc'
   
   // 使用服务获取数据
-  const result = await services.fundType.findAll(
-    { page, pageSize },
-    {
-      search,
-      sorting: { field: sortField, order: sortOrder as 'asc' | 'desc' }
-    }
-  )
+  const result = await services.fundType.findAll({
+    page,
+    pageSize,
+    search,
+    sortField,
+    sortOrder: sortOrder as 'asc' | 'desc'
+  })
   
   return Response.json(result)
 }
@@ -89,4 +89,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
-} 
+}

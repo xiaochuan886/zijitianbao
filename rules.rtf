@@ -1,0 +1,119 @@
+{\rtf1\ansi\ansicpg936\cocoartf2821
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 HelveticaNeue;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww51000\viewh25480\viewkind0
+\deftab560
+\pard\pardeftab560\slleading20\partightenfactor0
+
+\f0\fs26 \cf0 Before diving into the best practices, please note that you may need to adapt the globs depending on your project's structure and file types.\
+\
+---\
+name: nextjs-best-practices.mdc\
+description: Best practices for Next.js applications and routing\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Use the App Router for better performance and improved data fetching.\
+- Implement proper error boundaries to handle runtime errors gracefully.\
+- Utilize Next.js built-in optimizations like image optimization and code splitting.\
+- Leverage server components for improved performance and reduced client-side JavaScript.\
+\
+---\
+name: react-best-practices.mdc\
+description: Best practices for React development\
+globs: **/*.\{ts,tsx,js,jsx\}\
+---\
+\
+- Use functional components with hooks instead of class components.\
+- Implement proper state management using context or state management libraries like Zustand.\
+- Utilize memoization techniques like `useMemo` and `useCallback` for performance optimization.\
+- Follow the principle of lifting state up to the appropriate component level.\
+\
+---\
+name: typescript-best-practices.mdc\
+description: TypeScript coding standards and type safety guidelines\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Enable strict mode in your `tsconfig.json` for better type checking.\
+- Use type inference where possible to reduce unnecessary type annotations.\
+- Leverage utility types like `Partial`, `Readonly`, and `Pick` for more expressive types.\
+- Implement custom type guards for runtime type checking and narrowing.\
+\
+---\
+name: prisma-best-practices.mdc\
+description: Best practices for using Prisma ORM\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Use Prisma Client in server components or API routes for database operations.\
+- Implement proper error handling and transaction management.\
+- Utilize Prisma's type-safe query builder for improved developer experience.\
+- Regularly update your Prisma schema and run migrations to keep your database in sync.\
+\
+---\
+name: react-query-best-practices.mdc\
+description: Best practices for managing data fetching with React Query\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Use `useQuery` for fetching data and `useMutation` for creating, updating, or deleting data.\
+- Implement proper query keys to enable efficient caching and refetching.\
+- Utilize `queryClient.invalidateQueries` to update related queries after mutations.\
+- Set appropriate stale times and cache times for optimal performance and freshness.\
+\
+---\
+name: react-hook-form-best-practices.mdc\
+description: Best practices for form handling with React Hook Form\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Use the `useForm` hook with proper configuration options like `mode` and `reValidateMode`.\
+- Implement custom validation using the `register` function or the `yupResolver`.\
+- Utilize the `watch` function for real-time form value monitoring.\
+- Leverage the `Controller` component for integrating with custom inputs or third-party components.\
+\
+---\
+name: zod-best-practices.mdc\
+description: Best practices for schema validation with Zod\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Define clear and reusable schemas for your data structures.\
+- Use Zod's built-in validation methods like `string()`, `number()`, and `array()`.\
+- Implement custom validation logic using the `refine` method.\
+- Utilize Zod's TypeScript integration for type-safe validation and inference.\
+\
+---\
+name: tailwindcss-best-practices.mdc\
+description: Best practices for styling with Tailwind CSS\
+globs: **/*.\{ts,tsx,css\}\
+---\
+\
+- Use utility classes directly in your JSX for rapid development and maintainability.\
+- Create custom components with pre-defined Tailwind classes for reusability.\
+- Utilize the `@apply` directive in your CSS files for more complex styles.\
+- Implement responsive design using Tailwind's responsive utility classes.\
+\
+---\
+name: radix-ui-best-practices.mdc\
+description: Best practices for using Radix UI components\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Use Radix UI primitives as building blocks for your custom components.\
+- Implement proper accessibility features using Radix UI's built-in ARIA attributes.\
+- Customize the look and feel of Radix components using CSS or styled-components.\
+- Utilize Radix UI's composition patterns for creating complex, accessible UI elements.\
+\
+---\
+name: zustand-best-practices.mdc\
+description: Best practices for state management with Zustand\
+globs: **/*.\{ts,tsx\}\
+---\
+\
+- Create separate stores for different domains of your application.\
+- Use the `useStore` hook to access store state and actions in your components.\
+- Implement proper state persistence using Zustand's middleware.\
+- Utilize the `immer` middleware for easier state updates with mutable syntax.}

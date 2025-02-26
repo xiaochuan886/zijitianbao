@@ -1,0 +1,8 @@
+---
+description: Best practices for schema validation with Zod
+globs: **/*.{ts,tsx}
+---
+- Define clear and reusable schemas for your data structures.
+- Use Zod's built-in validation methods like `string()`, `number()`, and `array()`.
+- Implement custom validation logic using the `refine` method.
+- Utilize Zod's TypeScript integration for type-safe validation and inference.

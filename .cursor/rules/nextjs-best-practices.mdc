@@ -1,0 +1,9 @@
+---
+description: Best practices for Next.js applications and routing
+globs: **/*.{ts,tsx}
+---
+
+- Use the App Router for better performance and improved data fetching.
+- Implement proper error boundaries to handle runtime errors gracefully.
+- Utilize Next.js built-in optimizations like image optimization and code splitting.
+- Leverage server components for improved performance and reduced client-side JavaScript.

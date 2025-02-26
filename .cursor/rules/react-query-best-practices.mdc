@@ -1,0 +1,10 @@
+---
+description: Best practices for managing data fetching with React Query
+globs: **/*.{ts,tsx}
+---
+
+- Use `useQuery` for fetching data and `useMutation` for creating, updating, or deleting data.
+- Implement proper query keys to enable efficient caching and refetching.
+- Utilize `queryClient.invalidateQueries` to update related queries after mutations.
+- Set appropriate stale times and cache times for optimal performance and freshness.
+

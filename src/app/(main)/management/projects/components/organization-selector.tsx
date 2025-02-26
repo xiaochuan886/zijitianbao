@@ -29,12 +29,11 @@ export function OrganizationSelector({ value, onChange, disabled }: Organization
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // TODO: 从API获取机构列表
     const fetchOrganizations = async () => {
       try {
         const response = await fetch('/api/organizations');
         const data = await response.json();
-        setOrganizations(data);
+        setOrganizations(Array.isArray(data) ? data : data.items || []);
       } catch (error) {
         console.error('获取机构列表失败:', error);
       } finally {
@@ -115,30 +114,25 @@ export function OrganizationSelector({ value, onChange, disabled }: Organization
                   </Select>
                 )}
               </div>
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => handleRemove(index)}
-                disabled={disabled || value.length <= 1}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+              {!disabled && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleRemove(index)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </Card>
         );
       })}
 
-      <Button
-        type="button"
-        variant="outline"
-        onClick={handleAdd}
-        disabled={disabled}
-        className="w-full"
-      >
-        添加机构
-      </Button>
+      {!disabled && (
+        <Button onClick={handleAdd} className="w-full">
+          添加机构
+        </Button>
+      )}
     </div>
   );
 }

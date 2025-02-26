@@ -1,0 +1,9 @@
+---
+description: Best practices for form handling with React Hook Form
+globs: **/*.{ts,tsx}
+---
+
+- Use the `useForm` hook with proper configuration options like `mode` and `reValidateMode`.
+- Implement custom validation using the `register` function or the `yupResolver`.
+- Utilize the `watch` function for real-time form value monitoring.
+- Leverage the `Controller` component for integrating with custom inputs or third-party components.

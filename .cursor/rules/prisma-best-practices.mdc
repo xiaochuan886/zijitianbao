@@ -1,0 +1,8 @@
+---
+description: Best practices for using Prisma ORM
+globs: **/*.{ts,tsx}
+---
+- Use Prisma Client in server components or API routes for database operations.
+- Implement proper error handling and transaction management.
+- Utilize Prisma's type-safe query builder for improved developer experience.
+- Regularly update your Prisma schema and run migrations to keep your database in sync.

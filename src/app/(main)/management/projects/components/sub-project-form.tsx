@@ -32,8 +32,8 @@ export function SubProjectForm({ form, disabled }: SubProjectFormProps) {
     const fetchFundingTypes = async () => {
       try {
         const response = await fetch('/api/funding-types');
-        const data = await response.json();
-        setFundingTypes(data);
+        const { data } = await response.json();
+        setFundingTypes(data.items || []);
       } catch (error) {
         console.error('获取资金需求类型失败:', error);
       } finally {
@@ -83,15 +83,15 @@ export function SubProjectForm({ form, disabled }: SubProjectFormProps) {
                     <FormLabel>资金需求类型</FormLabel>
                     <FormControl>
                       <Select
-                        value={field.value.join(',')}
-                        onValueChange={(value) => field.onChange(value.split(','))}
+                        value={field.value ? field.value.join(',') : ''}
+                        onValueChange={(value) => field.onChange(value ? value.split(',') : [])}
                         disabled={disabled}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="选择资金需求类型" />
                         </SelectTrigger>
                         <SelectContent>
-                          {fundingTypes.map((type) => (
+                          {fundingTypes?.map((type) => (
                             <SelectItem key={type.id} value={type.id}>
                               {type.name}
                             </SelectItem>

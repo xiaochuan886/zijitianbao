@@ -1,0 +1,8 @@
+---
+description: Best practices for using Radix UI components
+globs: **/*.{ts,tsx}
+---
+- Use Radix UI primitives as building blocks for your custom components.
+- Implement proper accessibility features using Radix UI's built-in ARIA attributes.
+- Customize the look and feel of Radix components using CSS or styled-components.
+- Utilize Radix UI's composition patterns for creating complex, accessible UI elements.

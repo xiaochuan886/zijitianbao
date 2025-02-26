@@ -1,0 +1,8 @@
+---
+description: Best practices for state management with Zustand
+globs: **/*.{ts,tsx}
+---
+- Create separate stores for different domains of your application.
+- Use the `useStore` hook to access store state and actions in your components.
+- Implement proper state persistence using Zustand's middleware.
+- Utilize the `immer` middleware for easier state updates with mutable syntax.
