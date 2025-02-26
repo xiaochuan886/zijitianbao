@@ -129,17 +129,25 @@ export const columns: ColumnDef<Prediction>[] = [
       const remarks = prediction.remarks || [];
       const subProjectCount = prediction.subProjectCount || 0;
       
-      // 如果没有子项目信息或备注，显示普通文本
+      // 如果没有任何备注信息，显示占位符
+      if (!remarks.length && !prediction.remark) {
+        return <span className="text-gray-400">-</span>;
+      }
+      
+      // 如果只有主备注，没有子项目备注，显示主备注
       if (!remarks.length && prediction.remark) {
         return (
           <TooltipProvider>
-            <Tooltip>
+            <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
-                <span className="text-gray-500 cursor-help truncate max-w-[200px] inline-block">
-                  {prediction.remark}
+                <span 
+                  className="text-gray-500 cursor-help truncate max-w-[200px] inline-block hover:bg-accent hover:text-accent-foreground rounded px-1"
+                  title={prediction.remark}
+                >
+                  {prediction.remark.length > 15 ? `${prediction.remark.substring(0, 15)}...` : prediction.remark}
                 </span>
               </TooltipTrigger>
-              <TooltipContent>
+              <TooltipContent side="top" align="start" sideOffset={5} className="bg-popover text-popover-foreground p-3 shadow-lg border rounded-md z-50">
                 <div className="max-w-xs">
                   <p className="text-sm">{prediction.remark}</p>
                 </div>
@@ -149,10 +157,7 @@ export const columns: ColumnDef<Prediction>[] = [
         );
       }
       
-      if (!remarks.length && !prediction.remark) {
-        return <span className="text-gray-400">-</span>;
-      }
-      
+      // 如果有子项目备注，只显示子项目备注，不显示主备注
       return (
         <div className="flex flex-col gap-2">
           {subProjectCount > 0 && (
@@ -161,13 +166,17 @@ export const columns: ColumnDef<Prediction>[] = [
           <div className="flex flex-wrap gap-1">
             {remarks.map((item, index) => (
               <TooltipProvider key={index}>
-                <Tooltip>
+                <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
-                    <Badge variant="outline" className="cursor-help">
+                    <Badge 
+                      variant="outline" 
+                      className="cursor-help hover:bg-accent hover:text-accent-foreground"
+                      title={`${item.subProject} (${item.period}): ${item.content}`}
+                    >
                       {`${item.subProject.substring(0, 6)}${item.subProject.length > 6 ? '...' : ''} - ${item.content.substring(0, 8)}${item.content.length > 8 ? '...' : ''} - ${item.period}`}
                     </Badge>
                   </TooltipTrigger>
-                  <TooltipContent>
+                  <TooltipContent side="top" align="start" sideOffset={5} className="bg-popover text-popover-foreground p-3 shadow-lg border rounded-md z-50">
                     <div className="max-w-xs">
                       <p className="font-semibold">{item.subProject} ({item.period})</p>
                       <p className="text-sm mt-1">{item.content}</p>
@@ -176,9 +185,6 @@ export const columns: ColumnDef<Prediction>[] = [
                 </Tooltip>
               </TooltipProvider>
             ))}
-            {prediction.remark && !remarks.length && (
-              <Badge variant="outline">{prediction.remark}</Badge>
-            )}
           </div>
         </div>
       );
@@ -232,103 +238,80 @@ export const columns: ColumnDef<Prediction>[] = [
         }
       };
       
-      // 取消撤回申请的函数
-      const handleCancelWithdrawal = async () => {
-        try {
-          // 实现取消撤回申请的API调用
-          const response = await fetch(`/api/funding/predict/withdrawal/cancel/${prediction.id}`, {
-            method: "POST"
-          })
-          
-          if (!response.ok) {
-            const data = await response.json()
-            throw new Error(data.error || "取消撤回申请失败")
-          }
-          
-          toast({
-            title: "成功",
-            description: "已取消撤回申请"
-          })
-          
-          // 刷新
-          router.refresh()
-        } catch (error) {
-          console.error("取消撤回申请失败", error)
-          toast({
-            title: "错误",
-            description: error instanceof Error ? error.message : "取消撤回申请失败",
-            variant: "destructive"
-          })
-        }
-      };
-      
       return (
-        <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">打开菜单</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>操作</DropdownMenuLabel>
-              
-              {/* 查看详情按钮 - 所有状态都可用 */}
-              <DropdownMenuItem
-                onClick={() => {
-                  const year = new Date().getFullYear()
-                  const month = new Date().getMonth() + 2
-                  window.location.href = `/funding/predict/view?id=${prediction.id}&year=${year}&month=${month}`
-                }}
-              >
-                <Eye className="mr-2 h-4 w-4" />
-                查看详情
-              </DropdownMenuItem>
-              
-              {/* 填报按钮 - 只对未填写和草稿状态可用 */}
-              {(prediction.status === "未填写" || prediction.status === "草稿") && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    const year = new Date().getFullYear()
-                    const month = new Date().getMonth() + 2
-                    window.location.href = `/funding/predict/edit?id=${prediction.id}&year=${year}&month=${month}`
-                  }}
-                >
-                  <FileEdit className="mr-2 h-4 w-4" />
-                  填报
-                </DropdownMenuItem>
-              )}
-              
-              {/* 提交按钮 - 对草稿状态可用 */}
-              {prediction.status === "草稿" && (
-                <DropdownMenuItem
-                  onClick={handleSubmit}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  提交
-                </DropdownMenuItem>
-              )}
-              
-              {/* 撤回申请按钮 - 只对已提交状态可用 */}
-              {prediction.status === "已提交" && (
-                <DropdownMenuItem onSelect={() => setOpen(true)}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  撤回申请
-                </DropdownMenuItem>
-              )}
-              
-              {/* 取消撤回申请按钮 - 只对撤回审核中状态可用 */}
-              {prediction.status === "撤回审核中" && (
-                <DropdownMenuItem 
-                  onSelect={() => setCancelWithdrawalOpen(true)}
-                >
-                  <XCircle className="mr-2 h-4 w-4" />
-                  取消撤回申请
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex items-center gap-2">
+          {/* 查看详情按钮 - 除了未填写和草稿状态外都显示 */}
+          {prediction.status !== "未填写" && prediction.status !== "草稿" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const year = new Date().getFullYear()
+                const month = new Date().getMonth() + 2
+                window.location.href = `/funding/predict/view?id=${prediction.id}&year=${year}&month=${month}`
+              }}
+              className="h-8 px-2 py-0"
+            >
+              <Eye className="h-4 w-4" />
+              <span className="ml-1">查看</span>
+            </Button>
+          )}
+          
+          {/* 填报按钮 - 只对未填写和草稿状态可用 */}
+          {(prediction.status === "未填写" || prediction.status === "草稿") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const year = new Date().getFullYear()
+                const month = new Date().getMonth() + 2
+                window.location.href = `/funding/predict/edit?id=${prediction.id}&year=${year}&month=${month}`
+              }}
+              className="h-8 px-2 py-0"
+            >
+              <FileEdit className="h-4 w-4" />
+              <span className="ml-1">填报</span>
+            </Button>
+          )}
+          
+          {/* 提交按钮 - 对草稿状态可用 */}
+          {prediction.status === "草稿" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSubmit}
+              className="h-8 px-2 py-0"
+            >
+              <Upload className="h-4 w-4" />
+              <span className="ml-1">提交</span>
+            </Button>
+          )}
+          
+          {/* 撤回申请按钮 - 只对已提交状态可用 */}
+          {prediction.status === "已提交" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOpen(true)}
+              className="h-8 px-2 py-0"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="ml-1">撤回</span>
+            </Button>
+          )}
+          
+          {/* 取消撤回申请按钮 - 只对撤回审核中状态可用 */}
+          {prediction.status === "pending_withdrawal" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCancelWithdrawalOpen(true)}
+              className="h-8 px-2 py-0"
+            >
+              <XCircle className="h-4 w-4" />
+              <span className="ml-1">取消撤回</span>
+            </Button>
+          )}
           
           <WithdrawalRequestDialog
             open={open}
@@ -361,7 +344,7 @@ export const columns: ColumnDef<Prediction>[] = [
               })
             }}
           />
-        </>
+        </div>
       )
     },
   },

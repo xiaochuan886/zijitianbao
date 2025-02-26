@@ -385,7 +385,14 @@ export default function PredictPage() {
         </Button>
         <Button 
           onClick={handleBatchSubmit}
-          disabled={selectedProjects.length === 0 || submitting}
+          disabled={
+            selectedProjects.length === 0 || 
+            submitting || 
+            selectedProjects.some(id => {
+              const project = projects.find(p => p.id === id)
+              return project && project.status !== "草稿"
+            })
+          }
         >
           <Upload className="mr-2 h-4 w-4" />
           {submitting ? "提交中..." : "批量提交"}

@@ -38,6 +38,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { ArrowLeft, FileEdit, Upload, RotateCcw, X } from "lucide-react"
 import { submitWithdrawalRequest } from "../client-api"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 // 定义数据类型
 interface FundRecord {
@@ -397,13 +398,27 @@ export default function PredictViewPage() {
                             {fundType.records
                               .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
                               .map(record => (
-                                <Textarea
-                                  key={record.id}
-                                  value={record.remark || ""}
-                                  readOnly
-                                  className="w-full resize-none bg-muted cursor-not-allowed"
-                                  rows={2}
-                                />
+                                <TooltipProvider key={record.id}>
+                                  <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                      <Textarea
+                                        key={record.id}
+                                        value={record.remark || ""}
+                                        readOnly
+                                        className="w-full resize-none bg-muted cursor-help hover:bg-accent/20"
+                                        rows={2}
+                                        title={record.remark || ""}
+                                      />
+                                    </TooltipTrigger>
+                                    {record.remark && (
+                                      <TooltipContent side="top" align="start" sideOffset={5} className="bg-popover text-popover-foreground p-3 shadow-lg border rounded-md z-50 max-w-md">
+                                        <div>
+                                          <p className="text-sm whitespace-pre-wrap">{record.remark}</p>
+                                        </div>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
                               ))}
                           </TableCell>
                         </TableRow>
@@ -417,11 +432,13 @@ export default function PredictViewPage() {
               {/* 填报按钮 - 只对未填写和草稿状态可用 */}
               {(project.status === "未填写" || project.status === "草稿") && (
                 <Button 
-                  variant="outline" 
+                  variant="outline"
+                  size="sm"
                   onClick={() => router.push(`/funding/predict/edit?id=${project.id}&year=${nextMonth.year}&month=${nextMonth.month}`)}
+                  className="h-8 px-2 py-0"
                 >
-                  <FileEdit className="mr-2 h-4 w-4" />
-                  填报
+                  <FileEdit className="h-4 w-4" />
+                  <span className="ml-1">填报</span>
                 </Button>
               )}
               
@@ -429,9 +446,13 @@ export default function PredictViewPage() {
               {project.status === "草稿" && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button>
-                      <Upload className="mr-2 h-4 w-4" />
-                      提交
+                    <Button 
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2 py-0"
+                    >
+                      <Upload className="h-4 w-4" />
+                      <span className="ml-1">提交</span>
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
@@ -453,9 +474,13 @@ export default function PredictViewPage() {
               {project.status === "已提交" && (
                 <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline">
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      撤回申请
+                    <Button 
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2 py-0"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      <span className="ml-1">撤回</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
@@ -503,9 +528,13 @@ export default function PredictViewPage() {
               {project.status === "pending_withdrawal" && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="outline">
-                      <X className="mr-2 h-4 w-4" />
-                      取消撤回申请
+                    <Button 
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2 py-0"
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="ml-1">取消撤回</span>
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
