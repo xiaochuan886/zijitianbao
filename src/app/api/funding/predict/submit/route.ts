@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       recordsCount: Object.keys(records).length,
       remarksCount: remarks ? Object.keys(remarks).length : 0,
       hasProjectInfo: !!projectInfo,
-      tempRecords: projectInfo?.tempRecords?.length
+      tempRecords: projectInfo?.tempRecords?.length || 0
     }, null, 2));
 
     if (!records || typeof records !== "object") {
@@ -56,29 +56,59 @@ export async function POST(req: NextRequest) {
         const parts = recordId.split('-');
         if (parts.length >= 5) {
           const subProjectId = parts[1];
+          const fundTypeId = parts[2];  // 仅用于日志
           const year = parseInt(parts[3]);
           const month = parseInt(parts[4]);
           
-          console.log(`创建新记录: 子项目ID=${subProjectId}, 年=${year}, 月=${month}, 值=${value}`);
-          createdRecords.push({ recordId, subProjectId, year, month, value });
+          console.log(`创建新记录: 子项目ID=${subProjectId}, 资金类型=${fundTypeId}, 年=${year}, 月=${month}, 值=${value}`);
           
-          // 创建新记录，并直接设置为已提交状态
-          const createPromise = db.record.create({
-            data: {
-              subProjectId,
-              year,
-              month,
-              predicted: parseFloat(String(value)), // 提交时值不能为null
-              status: "submitted",
-              submittedBy: session?.user?.id || "temp-user-id",
-              submittedAt: new Date(),
-              // remark: remarks?.[recordId] || "",  // 暂时注释掉，解决类型问题
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
+          // 查找该子项目下是否已存在相同月份的记录
+          const existingRecord = await db.record.findFirst({
+            where: {
+              subProjectId: subProjectId,
+              year: year,
+              month: month
+            }
           });
-          
-          updatePromises.push(createPromise);
+
+          if (existingRecord) {
+            console.log(`找到已存在的记录: ID=${existingRecord.id}，更新而非创建`);
+            
+            // 更新已存在的记录，并设置为已提交状态
+            const updatePromise = db.record.update({
+              where: { id: existingRecord.id },
+              data: {
+                predicted: parseFloat(String(value)), // 提交时值不能为null
+                status: "submitted",
+                submittedBy: session?.user?.id || "temp-user-id",
+                submittedAt: new Date(),
+                updatedAt: new Date(),
+              },
+            });
+            
+            updatePromises.push(updatePromise);
+            updatedRecords.push(existingRecord.id);
+          } else {
+            // 创建新记录，并直接设置为已提交状态
+            createdRecords.push({ recordId, subProjectId, year, month, value });
+            
+            const createPromise = db.record.create({
+              data: {
+                subProjectId,
+                year,
+                month,
+                predicted: parseFloat(String(value)), // 提交时值不能为null
+                status: "submitted",
+                submittedBy: session?.user?.id || "temp-user-id",
+                submittedAt: new Date(),
+                // remark: remarks?.[recordId] || "",  // 暂时注释掉，解决类型问题
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              },
+            });
+            
+            updatePromises.push(createPromise);
+          }
         }
       } else {
         console.log(`更新现有记录: ${recordId}, 值: ${value}`);

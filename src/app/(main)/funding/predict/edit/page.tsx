@@ -166,33 +166,42 @@ export default function PredictEditPage() {
     try {
       setSaving(true);
       
-      // 过滤掉临时ID记录，只保存真实ID记录
-      const realRecords: Record<string, number | null> = {};
-      const realRemarks: Record<string, string> = {};
+      // 收集临时记录信息，提供更多上下文
+      const tempRecords = Object.entries(recordsRef.current)
+        .filter(([id]) => id.startsWith('temp-'))
+        .map(([id, value]) => {
+          const parts = id.split('-');
+          if (parts.length >= 5) {
+            return {
+              id,
+              subProjectId: parts[1],
+              fundTypeId: parts[2],
+              year: parseInt(parts[3]),
+              month: parseInt(parts[4]),
+              value,
+              remark: remarksRef.current[id] || ""
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
       
-      Object.entries(recordsRef.current).forEach(([recordId, value]) => {
-        // 只处理非临时ID的记录
-        if (!recordId.startsWith('temp-')) {
-          realRecords[recordId] = value;
-        }
-      });
+      // 减少不必要的日志输出
+      console.log(`保存草稿: ${Object.keys(recordsRef.current).length}条记录，${tempRecords.length}条临时记录`);
       
-      Object.entries(remarksRef.current).forEach(([recordId, value]) => {
-        // 只处理非临时ID的记录
-        if (!recordId.startsWith('temp-')) {
-          realRemarks[recordId] = value;
-        }
-      });
-      
-      // 调用API保存草稿
+      // 调用API保存，使用完整的记录对象
       const response = await fetch("/api/funding/predict/save", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          records: realRecords,
-          remarks: realRemarks,
+          records: recordsRef.current,
+          remarks: remarksRef.current,
+          projectInfo: {
+            tempRecords,
+            nextMonth: nextMonth
+          }
         }),
       });
       
@@ -220,7 +229,7 @@ export default function PredictEditPage() {
     } finally {
       setSaving(false);
     }
-  }, [toast, checkForChanges]);
+  }, [toast, checkForChanges, nextMonth]);
   
   // 创建防抖函数
   const debouncedSaveDraft = useRef(
@@ -287,24 +296,6 @@ export default function PredictEditPage() {
     try {
       setSaving(true);
       
-      // 过滤掉临时ID记录，只保存真实ID记录
-      const realRecords: Record<string, number | null> = {};
-      const realRemarks: Record<string, string> = {};
-      
-      Object.entries(recordsRef.current).forEach(([recordId, value]) => {
-        // 只处理非临时ID的记录
-        if (!recordId.startsWith('temp-')) {
-          realRecords[recordId] = value;
-        }
-      });
-      
-      Object.entries(remarksRef.current).forEach(([recordId, value]) => {
-        // 只处理非临时ID的记录
-        if (!recordId.startsWith('temp-')) {
-          realRemarks[recordId] = value;
-        }
-      });
-      
       // 收集临时记录信息，提供更多上下文
       const tempRecords = Object.entries(recordsRef.current)
         .filter(([id]) => id.startsWith('temp-'))
@@ -325,7 +316,10 @@ export default function PredictEditPage() {
         })
         .filter(Boolean);
       
-      // 调用API保存
+      // 减少不必要的日志输出
+      console.log(`手动保存: ${Object.keys(recordsRef.current).length}条记录，${tempRecords.length}条临时记录`);
+      
+      // 调用API保存，使用完整的记录对象
       const response = await fetch("/api/funding/predict/save", {
         method: "POST",
         headers: {
@@ -372,26 +366,11 @@ export default function PredictEditPage() {
     try {
       setSubmitting(true);
       
-      // 过滤掉临时ID记录，只处理真实ID记录
-      const realRecords: Record<string, number | null> = {};
-      const realRemarks: Record<string, string> = {};
       let hasEmptyValues = false;
       
       Object.entries(recordsRef.current).forEach(([recordId, value]) => {
         if (value === null) {
           hasEmptyValues = true;
-        }
-        
-        // 只处理非临时ID的记录
-        if (!recordId.startsWith('temp-')) {
-          realRecords[recordId] = value;
-        }
-      });
-      
-      Object.entries(remarksRef.current).forEach(([recordId, value]) => {
-        // 只处理非临时ID的记录
-        if (!recordId.startsWith('temp-')) {
-          realRemarks[recordId] = value;
         }
       });
       
@@ -464,7 +443,7 @@ export default function PredictEditPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [router, toast]);
+  }, [router, toast, nextMonth]);
   
   // 获取项目数据
   const fetchData = useCallback(async () => {
@@ -524,8 +503,8 @@ export default function PredictEditPage() {
       
       const projectsData = await Promise.all(fetchPromises);
       
-      // 添加日志调试
-      console.log("获取到的项目数据:", projectsData);
+      // 移除过多的日志输出，保留最关键的
+      console.log(`成功获取到${projectsData.length}个项目的数据`);
       
       setProjects(projectsData);
       
@@ -541,12 +520,8 @@ export default function PredictEditPage() {
               (record: FundRecord) => record.year === parseInt(year) && record.month === parseInt(month)
             );
             
-            console.log(`子项目 ${subProject.name} - 资金类型 ${fundType.name} 当前月份记录:`, currentMonthRecords);
-            
             // 如果没有当前月份的记录，需要确保有相关记录显示
             if (currentMonthRecords.length === 0) {
-              console.log(`子项目 ${subProject.name} - 资金类型 ${fundType.name} 缺少当前月份记录，需要在前端创建显示记录`);
-              
               // 创建一个前端临时记录对象用于显示
               const tempRecord: FundRecord = {
                 id: `temp-${subProject.id}-${fundType.id}-${year}-${month}`,
@@ -580,8 +555,8 @@ export default function PredictEditPage() {
         });
       });
       
-      console.log("初始化的记录:", initialRecords);
-      console.log("初始化的备注:", initialRemarks);
+      // 移除过多的日志输出
+      console.log(`初始化了${Object.keys(initialRecords).length}条记录`);
       
       setRecords(initialRecords);
       setRemarks(initialRemarks);
@@ -610,28 +585,17 @@ export default function PredictEditPage() {
     }
   }, [records, remarks, checkForChanges, hasChanges]);
   
-  // 监听变更状态，触发自动保存
-  useEffect(() => {
-    if (hasChanges) {
-      debouncedSaveDraft();
-    }
-    
-    return () => {
-      debouncedSaveDraft.cancel();
-    };
-  }, [hasChanges, debouncedSaveDraft]);
-  
-  // 初始化
+  // 初始化，移除组件卸载时自动保存的逻辑
   useEffect(() => {
     fetchData();
     
-    // 组件卸载时保存草稿
-    return () => {
-      if (hasChangesRef.current) {
-        saveDraft();
-      }
-    };
-  }, [fetchData, saveDraft]);
+    // 组件卸载时不再自动保存
+    // return () => {
+    //   if (hasChangesRef.current) {
+    //     saveDraft();
+    //   }
+    // };
+  }, [fetchData]);
   
   return (
     <div className="space-y-6">
@@ -732,8 +696,7 @@ export default function PredictEditPage() {
                             <TableCell>
                               {fundType.records
                                 .filter(record => {
-                                  // 确保只显示当前填报月份的记录
-                                  console.log("Record:", record.id, record.year, record.month, "NextMonth:", nextMonth.year, nextMonth.month);
+                                  // 确保只显示当前填报月份的记录，移除console.log
                                   return record.year === nextMonth.year && record.month === nextMonth.month;
                                 })
                                 .map(record => (
