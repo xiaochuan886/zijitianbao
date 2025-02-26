@@ -46,49 +46,84 @@ interface ApiResponse<T> {
 - **请求体**:
 ```typescript
 interface LoginRequest {
-  username: string;  // 邮箱地址
+  username: string;  // 用户名
   password: string;  // 密码（至少6个字符）
 }
 ```
 - **响应**:
 ```typescript
 interface LoginResponse {
-  token: string;     // JWT token
-  user: {
-    id: string;      // 用户ID
-    name: string;    // 用户名称
-    role: string;    // 用户角色
-    organizationId: string;  // 所属机构ID
+  code: number;     // 状态码 (200: 成功)
+  message: string;  // 响应消息
+  data: {
+    token: string;  // JWT token (有效期24小时)
+    user: {
+      id: string;   // 用户ID
+      name: string; // 用户名称
+      role: string; // 用户角色
+    };
   };
+  timestamp: number; // 时间戳
 }
 ```
 - **错误码**:
   - 400: 请求参数错误
   - 401: 用户名或密码错误
   - 500: 服务器内部错误
-- **示例**:
-```bash
-# 请求
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin@example.com", "password": "admin123"}'
 
-# 成功响应
-{
-  "token": "eyJhbGciOiJIUzI1NiIs...",
-  "user": {
-    "id": "clrp2x4sg0000qwj591234567",
-    "name": "系统管理员",
-    "role": "ADMIN",
-    "organizationId": ""
-  }
-}
-
-# 错误响应
-{
-  "message": "用户名或密码错误"
+### 2. 用户注册
+- **路径**: POST /api/auth/register
+- **权限**: 公开
+- **请求体**:
+```typescript
+interface RegisterRequest {
+  username: string;  // 用户名
+  password: string;  // 密码
+  name: string;      // 姓名
 }
 ```
+- **响应**:
+```typescript
+interface RegisterResponse {
+  code: number;     // 状态码 (200: 成功)
+  message: string;  // 响应消息
+  data: {
+    id: string;     // 用户ID
+    name: string;   // 用户名称
+    role: string;   // 用户角色
+  };
+  timestamp: number; // 时间戳
+}
+```
+- **错误码**:
+  - 400: 请求参数错误
+  - 500: 服务器错误
+
+### 3. 修改密码
+- **路径**: PUT /api/auth/password
+- **权限**: 已登录用户
+- **请求头**: 
+  - Authorization: Bearer <token>
+- **请求体**:
+```typescript
+interface ChangePasswordRequest {
+  oldPassword: string;  // 原密码
+  newPassword: string;  // 新密码
+}
+```
+- **响应**:
+```typescript
+interface ChangePasswordResponse {
+  code: number;     // 状态码 (200: 成功)
+  message: string;  // 响应消息
+  timestamp: number; // 时间戳
+}
+```
+- **错误码**:
+  - 400: 请求参数错误
+  - 401: 未登录
+  - 403: 原密码错误
+  - 500: 服务器错误
 
 ### 2. 刷新令牌
 - **路径**: POST /api/auth/refresh
@@ -359,4 +394,4 @@ interface UploadResponse {
   - page: 页码
   - pageSize: 每页数量
 
-[更多接口详情...] 
+[更多接口详情...]

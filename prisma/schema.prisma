@@ -142,6 +142,7 @@ model Record {
   status        String     // draft/submitted/approved
   submittedBy   String     // 提交人ID
   submittedAt   DateTime?
+  remark        String?    // 备注信息
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 

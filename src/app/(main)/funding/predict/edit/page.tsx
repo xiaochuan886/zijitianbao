@@ -166,11 +166,40 @@ export default function PredictEditPage() {
     try {
       setSaving(true);
       
-      // 这里应该调用 API 保存草稿
-      console.log("保存草稿", { 
-        records: recordsRef.current, 
-        remarks: remarksRef.current 
+      // 过滤掉临时ID记录，只保存真实ID记录
+      const realRecords: Record<string, number | null> = {};
+      const realRemarks: Record<string, string> = {};
+      
+      Object.entries(recordsRef.current).forEach(([recordId, value]) => {
+        // 只处理非临时ID的记录
+        if (!recordId.startsWith('temp-')) {
+          realRecords[recordId] = value;
+        }
       });
+      
+      Object.entries(remarksRef.current).forEach(([recordId, value]) => {
+        // 只处理非临时ID的记录
+        if (!recordId.startsWith('temp-')) {
+          realRemarks[recordId] = value;
+        }
+      });
+      
+      // 调用API保存草稿
+      const response = await fetch("/api/funding/predict/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: realRecords,
+          remarks: realRemarks,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "保存草稿失败");
+      }
       
       // 更新原始记录
       setOriginalRecords({...recordsRef.current});
@@ -185,7 +214,7 @@ export default function PredictEditPage() {
       console.error("保存草稿失败", error);
       toast({
         title: "错误",
-        description: "保存草稿失败",
+        description: error instanceof Error ? error.message : "保存草稿失败",
         variant: "destructive"
       });
     } finally {
@@ -231,10 +260,15 @@ export default function PredictEditPage() {
           subProject.fundTypes.forEach(fundType => {
             if (fundType.id === fundTypeId) {
               fundType.records.forEach(record => {
+                // 只计算有效的记录
                 if (record.predicted !== null) {
                   total += record.predicted;
-                } else if (currentRecords[record.id] !== null && currentRecords[record.id] !== undefined) {
-                  total += currentRecords[record.id] as number;
+                } else {
+                  // 对于当前月份的临时记录，从currentRecords中获取值
+                  const recordKey = record.id;
+                  if (currentRecords[recordKey] !== null && currentRecords[recordKey] !== undefined) {
+                    total += currentRecords[recordKey] as number;
+                  }
                 }
               });
             }
@@ -253,11 +287,40 @@ export default function PredictEditPage() {
     try {
       setSaving(true);
       
-      // 这里应该调用 API 保存
-      console.log("保存", { 
-        records: recordsRef.current, 
-        remarks: remarksRef.current 
+      // 过滤掉临时ID记录，只保存真实ID记录
+      const realRecords: Record<string, number | null> = {};
+      const realRemarks: Record<string, string> = {};
+      
+      Object.entries(recordsRef.current).forEach(([recordId, value]) => {
+        // 只处理非临时ID的记录
+        if (!recordId.startsWith('temp-')) {
+          realRecords[recordId] = value;
+        }
       });
+      
+      Object.entries(remarksRef.current).forEach(([recordId, value]) => {
+        // 只处理非临时ID的记录
+        if (!recordId.startsWith('temp-')) {
+          realRemarks[recordId] = value;
+        }
+      });
+      
+      // 调用API保存
+      const response = await fetch("/api/funding/predict/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: realRecords,
+          remarks: realRemarks,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "保存失败");
+      }
       
       // 更新原始记录
       setOriginalRecords({...recordsRef.current});
@@ -272,7 +335,7 @@ export default function PredictEditPage() {
       console.error("保存失败", error);
       toast({
         title: "错误",
-        description: "保存失败",
+        description: error instanceof Error ? error.message : "保存失败",
         variant: "destructive"
       });
     } finally {
@@ -285,8 +348,30 @@ export default function PredictEditPage() {
     try {
       setSubmitting(true);
       
+      // 过滤掉临时ID记录，只处理真实ID记录
+      const realRecords: Record<string, number | null> = {};
+      const realRemarks: Record<string, string> = {};
+      let hasEmptyValues = false;
+      
+      Object.entries(recordsRef.current).forEach(([recordId, value]) => {
+        // 只处理非临时ID的记录
+        if (!recordId.startsWith('temp-')) {
+          realRecords[recordId] = value;
+          // 检查是否有空值
+          if (value === null) {
+            hasEmptyValues = true;
+          }
+        }
+      });
+      
+      Object.entries(remarksRef.current).forEach(([recordId, value]) => {
+        // 只处理非临时ID的记录
+        if (!recordId.startsWith('temp-')) {
+          realRemarks[recordId] = value;
+        }
+      });
+      
       // 数据校验
-      const hasEmptyValues = Object.values(recordsRef.current).some(value => value === null);
       if (hasEmptyValues) {
         toast({
           title: "警告",
@@ -297,11 +382,22 @@ export default function PredictEditPage() {
         return;
       }
       
-      // 这里应该调用 API 提交
-      console.log("提交", { 
-        records: recordsRef.current, 
-        remarks: remarksRef.current 
+      // 调用API提交
+      const response = await fetch("/api/funding/predict/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: realRecords,
+          remarks: realRemarks,
+        }),
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "提交失败");
+      }
       
       toast({
         title: "成功",
@@ -314,7 +410,7 @@ export default function PredictEditPage() {
       console.error("提交失败", error);
       toast({
         title: "错误",
-        description: "提交失败",
+        description: error instanceof Error ? error.message : "提交失败",
         variant: "destructive"
       });
     } finally {
@@ -330,116 +426,104 @@ export default function PredictEditPage() {
       // 获取查询参数
       const id = searchParams.get("id");
       const ids = searchParams.get("ids");
+      const year = searchParams.get("year") || new Date().getFullYear().toString();
+      const month = searchParams.get("month") || (new Date().getMonth() + 2).toString();
       
-      // 这里应该调用 API 获取项目数据
-      // 模拟数据
-      const nextMonth = getNextMonth();
-      setNextMonth(nextMonth);
+      setNextMonth({
+        year: parseInt(year),
+        month: parseInt(month)
+      });
       
-      // 模拟数据
-      const mockProjects: ProjectData[] = [
-        {
-          id: "1",
-          name: "智慧城市项目 (SC001)",
-          organization: {
-            id: "org1",
-            name: "机构A",
-            code: "A001"
-          },
-          subProjects: [
-            {
-              id: "sub1",
-              name: "子项目1",
-              fundTypes: [
-                {
-                  id: "ft1",
-                  name: "设备采购",
-                  records: [
-                    { id: "r1", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft1", fundTypeName: "设备采购", year: 2024, month: 1, predicted: 200000, status: "submitted", remark: "按计划执行" },
-                    { id: "r2", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft1", fundTypeName: "设备采购", year: 2024, month: 2, predicted: 300000, status: "submitted", remark: "按计划执行" },
-                    { id: "r3", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft1", fundTypeName: "设备采购", year: 2024, month: 3, predicted: 200000, status: "submitted", remark: "按计划执行" },
-                    { id: "r4", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft1", fundTypeName: "设备采购", year: nextMonth.year, month: nextMonth.month, predicted: null, status: "draft", remark: "预计按计划执行" }
-                  ]
-                },
-                {
-                  id: "ft2",
-                  name: "工程款",
-                  records: [
-                    { id: "r5", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft2", fundTypeName: "工程款", year: 2024, month: 1, predicted: 400000, status: "submitted", remark: "按计划执行" },
-                    { id: "r6", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft2", fundTypeName: "工程款", year: 2024, month: 2, predicted: 600000, status: "submitted", remark: "按计划执行" },
-                    { id: "r7", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft2", fundTypeName: "工程款", year: 2024, month: 3, predicted: 500000, status: "submitted", remark: "按计划执行" },
-                    { id: "r8", subProjectId: "sub1", subProjectName: "子项目1", fundTypeId: "ft2", fundTypeName: "工程款", year: nextMonth.year, month: nextMonth.month, predicted: null, status: "draft", remark: "预计按计划执行" }
-                  ]
-                }
-              ]
-            },
-            {
-              id: "sub2",
-              name: "子项目2",
-              fundTypes: [
-                {
-                  id: "ft3",
-                  name: "材料费",
-                  records: [
-                    { id: "r9", subProjectId: "sub2", subProjectName: "子项目2", fundTypeId: "ft3", fundTypeName: "材料费", year: 2024, month: 1, predicted: 100000, status: "submitted", remark: "按计划执行" },
-                    { id: "r10", subProjectId: "sub2", subProjectName: "子项目2", fundTypeId: "ft3", fundTypeName: "材料费", year: 2024, month: 2, predicted: 150000, status: "submitted", remark: "按计划执行" },
-                    { id: "r11", subProjectId: "sub2", subProjectName: "子项目2", fundTypeId: "ft3", fundTypeName: "材料费", year: 2024, month: 3, predicted: 100000, status: "submitted", remark: "按计划执行" },
-                    { id: "r12", subProjectId: "sub2", subProjectName: "子项目2", fundTypeId: "ft3", fundTypeName: "材料费", year: nextMonth.year, month: nextMonth.month, predicted: null, status: "draft", remark: "预计按计划执行" }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          id: "2",
-          name: "5G网络建设 (5G001)",
-          organization: {
-            id: "org1",
-            name: "机构A",
-            code: "A001"
-          },
-          subProjects: [
-            {
-              id: "sub3",
-              name: "子项目1",
-              fundTypes: [
-                {
-                  id: "ft4",
-                  name: "人工费",
-                  records: [
-                    { id: "r13", subProjectId: "sub3", subProjectName: "子项目1", fundTypeId: "ft4", fundTypeName: "人工费", year: 2024, month: 1, predicted: 150000, status: "submitted", remark: "按计划执行" },
-                    { id: "r14", subProjectId: "sub3", subProjectName: "子项目1", fundTypeId: "ft4", fundTypeName: "人工费", year: 2024, month: 2, predicted: 200000, status: "submitted", remark: "按计划执行" },
-                    { id: "r15", subProjectId: "sub3", subProjectName: "子项目1", fundTypeId: "ft4", fundTypeName: "人工费", year: 2024, month: 3, predicted: 150000, status: "submitted", remark: "按计划执行" },
-                    { id: "r16", subProjectId: "sub3", subProjectName: "子项目1", fundTypeId: "ft4", fundTypeName: "人工费", year: nextMonth.year, month: nextMonth.month, predicted: null, status: "draft", remark: "预计按计划执行" }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
-      
-      // 根据 ID 筛选项目
-      let filteredProjects = mockProjects;
-      if (id) {
-        filteredProjects = mockProjects.filter(project => project.id === id);
-      } else if (ids) {
-        const idArray = ids.split(',');
-        filteredProjects = mockProjects.filter(project => idArray.includes(project.id));
+      if (!ids && !id) {
+        toast({
+          title: "错误",
+          description: "缺少必要的项目ID参数",
+          variant: "destructive"
+        });
+        router.push("/funding/predict");
+        return;
       }
       
-      setProjects(filteredProjects);
+      // 构建API请求
+      const fetchPromises = [];
+      
+      if (id) {
+        // 单个项目
+        fetchPromises.push(
+          fetch(`/api/funding/predict/${id}?year=${year}&month=${month}`)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error("获取项目详情失败");
+              }
+              return response.json();
+            })
+        );
+      } else if (ids) {
+        // 多个项目
+        const idArray = ids.split(',');
+        for (const projectId of idArray) {
+          fetchPromises.push(
+            fetch(`/api/funding/predict/${projectId}?year=${year}&month=${month}`)
+              .then(response => {
+                if (!response.ok) {
+                  throw new Error(`获取项目 ${projectId} 详情失败`);
+                }
+                return response.json();
+              })
+          );
+        }
+      }
+      
+      const projectsData = await Promise.all(fetchPromises);
+      
+      // 添加日志调试
+      console.log("获取到的项目数据:", projectsData);
+      
+      setProjects(projectsData);
       
       // 初始化记录和备注
       const initialRecords: Record<string, number | null> = {};
       const initialRemarks: Record<string, string> = {};
       
-      filteredProjects.forEach(project => {
-        project.subProjects.forEach(subProject => {
-          subProject.fundTypes.forEach(fundType => {
-            fundType.records.forEach(record => {
-              if (record.year === nextMonth.year && record.month === nextMonth.month) {
+      projectsData.forEach(project => {
+        project.subProjects.forEach((subProject: any) => {
+          subProject.fundTypes.forEach((fundType: any) => {
+            // 检查是否存在当前月份的记录
+            const currentMonthRecords = fundType.records.filter(
+              (record: FundRecord) => record.year === parseInt(year) && record.month === parseInt(month)
+            );
+            
+            console.log(`子项目 ${subProject.name} - 资金类型 ${fundType.name} 当前月份记录:`, currentMonthRecords);
+            
+            // 如果没有当前月份的记录，需要确保有相关记录显示
+            if (currentMonthRecords.length === 0) {
+              console.log(`子项目 ${subProject.name} - 资金类型 ${fundType.name} 缺少当前月份记录，需要在前端创建显示记录`);
+              
+              // 创建一个前端临时记录对象用于显示
+              const tempRecord: FundRecord = {
+                id: `temp-${subProject.id}-${fundType.id}-${year}-${month}`,
+                subProjectId: subProject.id,
+                subProjectName: subProject.name,
+                fundTypeId: fundType.id,
+                fundTypeName: fundType.name,
+                year: parseInt(year),
+                month: parseInt(month),
+                predicted: null,
+                status: "draft",
+                remark: ""
+              };
+              
+              // 添加到fundType.records中
+              fundType.records.push(tempRecord);
+              
+              // 同时添加到初始记录和备注中
+              initialRecords[tempRecord.id] = null;
+              initialRemarks[tempRecord.id] = "";
+            }
+            
+            // 正常处理所有记录
+            fundType.records.forEach((record: FundRecord) => {
+              if (record.year === parseInt(year) && record.month === parseInt(month)) {
                 initialRecords[record.id] = record.predicted;
                 initialRemarks[record.id] = record.remark || "";
               }
@@ -447,6 +531,9 @@ export default function PredictEditPage() {
           });
         });
       });
+      
+      console.log("初始化的记录:", initialRecords);
+      console.log("初始化的备注:", initialRemarks);
       
       setRecords(initialRecords);
       setRemarks(initialRemarks);
@@ -457,12 +544,13 @@ export default function PredictEditPage() {
       console.error("获取数据失败", error);
       toast({
         title: "错误",
-        description: "获取数据失败",
+        description: error instanceof Error ? error.message : "获取数据失败",
         variant: "destructive"
       });
       setLoading(false);
+      router.push("/funding/predict");
     }
-  }, [searchParams, getNextMonth, toast]);
+  }, [searchParams, toast, router]);
   
   // 监听记录和备注变化，检查是否有变更并更新hasChanges状态
   useEffect(() => {
@@ -560,11 +648,17 @@ export default function PredictEditPage() {
                       <TableRow>
                         <TableHead className="w-[150px]">子项目</TableHead>
                         <TableHead className="w-[150px]">资金需求类型</TableHead>
-                        <TableHead className="w-[150px]">2024年汇总</TableHead>
-                        <TableHead className="w-[150px]">2024-01 (已提交)</TableHead>
-                        <TableHead className="w-[150px]">2024-02 (已提交)</TableHead>
-                        <TableHead className="w-[150px]">2024-03 (已提交)</TableHead>
-                        <TableHead className="w-[150px]">{`${nextMonth.year}-${nextMonth.month.toString().padStart(2, '0')} (可填报)`}</TableHead>
+                        <TableHead className="w-[150px]">年度汇总</TableHead>
+                        {/* 历史月份 */}
+                        {[1, 2, 3].filter(month => month < nextMonth.month).map(month => (
+                          <TableHead key={month} className="w-[150px]">
+                            {`${nextMonth.year}-${month.toString().padStart(2, '0')} (已提交)`}
+                          </TableHead>
+                        ))}
+                        {/* 当前月份 */}
+                        <TableHead className="w-[150px]">
+                          {`${nextMonth.year}-${nextMonth.month.toString().padStart(2, '0')} (可填报)`}
+                        </TableHead>
                         <TableHead className="w-[200px]">备注</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -578,18 +672,22 @@ export default function PredictEditPage() {
                               {formatCurrency(calculateYearTotal(subProject.id, fundType.id))}
                             </TableCell>
                             {/* 历史月份数据（不可编辑） */}
-                            {[1, 2, 3].map(month => {
-                              const record = fundType.records.find(r => r.month === month)
+                            {[1, 2, 3].filter(month => month < nextMonth.month).map(month => {
+                              const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year);
                               return (
                                 <TableCell key={month}>
                                   {record ? formatCurrency(record.predicted) : ""}
                                 </TableCell>
-                              )
+                              );
                             })}
-                            {/* 下月数据（可填报） */}
+                            {/* 当前月份数据（可填报） */}
                             <TableCell>
                               {fundType.records
-                                .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
+                                .filter(record => {
+                                  // 确保只显示当前填报月份的记录
+                                  console.log("Record:", record.id, record.year, record.month, "NextMonth:", nextMonth.year, nextMonth.month);
+                                  return record.year === nextMonth.year && record.month === nextMonth.month;
+                                })
                                 .map(record => (
                                   <Input
                                     key={record.id}

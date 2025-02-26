@@ -37,67 +37,65 @@ export default function PredictPage() {
     { value: "草稿", label: "草稿" },
     { value: "已提交", label: "已提交" }
   ])
+  const [currentMonth, setCurrentMonth] = useState<{year: number, month: number}>({
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 2 // 下个月
+  })
 
   // 获取当前月份的下一个月
-  const getNextMonth = () => {
+  const getNextMonth = useCallback(() => {
     const now = new Date()
     const year = now.getFullYear()
     const month = now.getMonth() + 2 // +1 是下个月，+1 是因为 getMonth() 从 0 开始
-    return `${year}-${month.toString().padStart(2, '0')}`
-  }
+    return { year, month }
+  }, [])
 
   // 获取项目列表
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       setLoading(true)
-      // 这里应该调用 API 获取项目列表
-      // 模拟数据
-      const data: Prediction[] = [
-        { 
-          id: "1", 
-          organization: "机构A (A001)", 
-          department: "部门1", 
-          project: "智慧城市项目 (SC001)", 
-          month: getNextMonth(), 
-          status: "未填写",
-          remark: ""
-        },
-        { 
-          id: "2", 
-          organization: "机构A (A001)", 
-          department: "部门2", 
-          project: "5G网络建设 (5G001)", 
-          month: getNextMonth(), 
-          status: "草稿",
-          remark: "上月预测金额较大，本月可能会减少"
-        },
-        { 
-          id: "3", 
-          organization: "机构B (B001)", 
-          department: "部门1", 
-          project: "数据中心扩建 (DC001)", 
-          month: getNextMonth(), 
-          status: "已提交",
-          remark: "按计划执行"
-        },
-        { 
-          id: "4", 
-          organization: "机构B (B001)", 
-          department: "部门3", 
-          project: "AI研发项目 (AI001)", 
-          month: getNextMonth(), 
-          status: "未填写",
-          remark: ""
-        },
-      ]
+      
+      // 获取下个月
+      const nextMonth = getNextMonth()
+      setCurrentMonth(nextMonth)
+      
+      // 构建查询参数
+      const params = new URLSearchParams()
+      params.append("year", nextMonth.year.toString())
+      params.append("month", nextMonth.month.toString())
+      
+      if (filters.organization !== "all") {
+        params.append("organizationId", filters.organization)
+      }
+      
+      if (filters.department !== "all") {
+        params.append("departmentId", filters.department)
+      }
+      
+      if (filters.project) {
+        params.append("projectName", filters.project)
+      }
+      
+      if (filters.status !== "all") {
+        params.append("status", filters.status)
+      }
+      
+      // 调用API获取项目列表
+      const response = await fetch(`/api/funding/predict?${params.toString()}`)
+      
+      if (!response.ok) {
+        throw new Error("获取项目列表失败")
+      }
+      
+      const data = await response.json()
       
       // 提取组织和部门列表
-      const orgs = Array.from(new Set(data.map(item => item.organization)))
-      const deps = Array.from(new Set(data.map(item => item.department)))
+      const orgs = Array.from(new Set(data.map((item: Prediction) => item.organization)))
+      const deps = Array.from(new Set(data.map((item: Prediction) => item.department)))
       
       setProjects(data)
-      setOrganizations(orgs.map(org => ({ value: org, label: org })))
-      setDepartments(deps.map(dep => ({ value: dep, label: dep })))
+      setOrganizations(orgs.map((org: unknown) => ({ value: String(org), label: String(org) })))
+      setDepartments(deps.map((dep: unknown) => ({ value: String(dep), label: String(dep) })))
       setLoading(false)
     } catch (error) {
       console.error("获取项目列表失败", error)
@@ -108,20 +106,10 @@ export default function PredictPage() {
       })
       setLoading(false)
     }
-  }
-
-  // 筛选项目
-  const filteredProjects = projects.filter(project => {
-    return (
-      (filters.organization === "all" || project.organization === filters.organization) &&
-      (filters.department === "all" || project.department === filters.department) &&
-      (filters.project === "" || project.project.includes(filters.project)) &&
-      (filters.status === "all" || project.status === filters.status)
-    )
-  })
+  }, [filters, getNextMonth, toast])
 
   // 处理批量填报
-  const handleBatchEdit = () => {
+  const handleBatchEdit = useCallback(() => {
     if (selectedProjects.length === 0) {
       toast({
         title: "提示",
@@ -132,11 +120,11 @@ export default function PredictPage() {
     
     // 将选中的项目ID作为查询参数传递
     const ids = selectedProjects.join(",")
-    router.push(`/funding/predict/edit?ids=${ids}`)
-  }
+    router.push(`/funding/predict/edit?ids=${ids}&year=${currentMonth.year}&month=${currentMonth.month}`)
+  }, [selectedProjects, router, toast, currentMonth])
 
   // 处理批量提交
-  const handleBatchSubmit = () => {
+  const handleBatchSubmit = useCallback(async () => {
     if (selectedProjects.length === 0) {
       toast({
         title: "提示",
@@ -160,17 +148,48 @@ export default function PredictPage() {
       return
     }
     
-    // 这里应该调用 API 批量提交
-    toast({
-      title: "成功",
-      description: `已提交 ${selectedProjects.length} 个项目`,
-    })
-  }
+    try {
+      // 调用API批量提交
+      const response = await fetch("/api/funding/predict/batch-submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectIds: selectedProjects,
+          year: currentMonth.year,
+          month: currentMonth.month,
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "批量提交失败")
+      }
+      
+      const result = await response.json()
+      
+      toast({
+        title: "成功",
+        description: `已提交 ${result.count} 个项目`,
+      })
+      
+      // 刷新项目列表
+      fetchProjects()
+    } catch (error) {
+      console.error("批量提交失败", error)
+      toast({
+        title: "错误",
+        description: error instanceof Error ? error.message : "批量提交失败",
+        variant: "destructive"
+      })
+    }
+  }, [selectedProjects, projects, currentMonth, fetchProjects, toast])
 
   // 初始化
   useEffect(() => {
     fetchProjects()
-  }, [])
+  }, [fetchProjects])
 
   // 处理选中项目变化
   const handleSelectedRowsChange = useCallback((selectedRowIds: string[]) => {
@@ -188,6 +207,13 @@ export default function PredictPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">资金需求预测填报</h1>
+        <Button 
+          variant="outline" 
+          onClick={fetchProjects}
+        >
+          <RotateCcw className="mr-2 h-4 w-4" />
+          刷新
+        </Button>
       </div>
       
       <Card>
@@ -265,12 +291,34 @@ export default function PredictPage() {
               </Select>
             </div>
           </div>
+          
+          <div className="flex justify-end mt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setFilters({
+                  organization: "all",
+                  department: "all",
+                  project: "",
+                  status: "all"
+                })
+              }}
+            >
+              重置
+            </Button>
+            <Button 
+              className="ml-2"
+              onClick={fetchProjects}
+            >
+              查询
+            </Button>
+          </div>
         </CardContent>
       </Card>
       
       <DataTable
         columns={columns as any}
-        data={filteredProjects}
+        data={projects}
         loading={loading}
         onSelectedRowsChange={handleSelectedRowsChange}
       />
