@@ -20,17 +20,20 @@ export async function GET(req: NextRequest) {
   const page = parseInt(url.searchParams.get('page') || '1')
   const pageSize = parseInt(url.searchParams.get('pageSize') || '10')
   const search = url.searchParams.get('search') || ''
-  const sortField = url.searchParams.get('sortField') || 'createdAt'
+  const sortBy = url.searchParams.get('sortBy') || 'createdAt'
   const sortOrder = url.searchParams.get('sortOrder') || 'desc'
   
   // 使用服务获取数据
-  const result = await services.fundType.findAll({
-    page,
-    pageSize,
-    search,
-    sortField,
-    sortOrder: sortOrder as 'asc' | 'desc'
-  })
+  const result = await services.fundType.findAll(
+    { page, pageSize },
+    { 
+      search, 
+      sorting: {
+        field: sortBy,
+        order: sortOrder as 'asc' | 'desc'
+      }
+    }
+  )
   
   return Response.json(result)
 }

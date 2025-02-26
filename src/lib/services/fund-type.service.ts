@@ -122,6 +122,15 @@ export class FundTypeService {
     { page, pageSize }: PaginationParams,
     { search, sorting }: QueryParams
   ): Promise<PaginatedResponse<any>> {
+    console.log('FundTypeService.findAll 被调用，参数:', { page, pageSize, search, sorting });
+    
+    // 确保sorting参数存在且有效
+    const orderBy: Prisma.FundTypeOrderByWithRelationInput = sorting && sorting.field
+      ? { [sorting.field]: (sorting.order || 'desc') as Prisma.SortOrder }
+      : { createdAt: 'desc' as Prisma.SortOrder };
+    
+    console.log('使用的排序条件:', orderBy);
+    
     const where: Prisma.FundTypeWhereInput = {
       ...(search
         ? {
@@ -129,32 +138,42 @@ export class FundTypeService {
           }
         : {})
     }
+    
+    console.log('使用的查询条件:', where);
 
-    const [total, items] = await Promise.all([
-      prisma.fundType.count({ where }),
-      prisma.fundType.findMany({
-        where,
-        include: {
-          _count: {
-            select: {
-              subProjects: true
+    try {
+      const [total, items] = await Promise.all([
+        prisma.fundType.count({ where }),
+        prisma.fundType.findMany({
+          where,
+          include: {
+            _count: {
+              select: {
+                subProjects: true
+              }
             }
-          }
-        },
-        orderBy: sorting
-          ? { [sorting.field]: sorting.order }
-          : { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize
-      })
-    ])
-
-    return {
-      items,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize)
+          },
+          orderBy,
+          skip: (page - 1) * pageSize,
+          take: pageSize
+        })
+      ]);
+      
+      console.log(`查询到 ${items.length} 条资金需求类型记录，总计 ${total} 条`);
+      
+      const result = {
+        items,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize)
+      };
+      
+      console.log('返回的分页数据:', result);
+      return result;
+    } catch (error) {
+      console.error('查询资金需求类型失败:', error);
+      throw error;
     }
   }
 

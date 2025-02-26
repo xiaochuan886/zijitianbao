@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { services } from '@/lib/services'
 import { checkPermission } from '@/lib/auth/permission'
 import { parseSession } from '@/lib/auth/session'
+import { ApiError } from '@/lib/errors'
 
 interface Params {
   params: {
@@ -124,24 +125,15 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   
   try {
     await services.fundType.delete(params.id)
-    return new Response(null, { status: 204 })
+    return Response.json({
+      code: 200,
+      message: '删除成功'
+    })
   } catch (error: any) {
-    if (error.statusCode === 404) {
-      return Response.json(
-        { message: error.message },
-        { status: 404 }
-      )
-    } else if (error.statusCode === 400) {
-      return Response.json(
-        { message: error.message },
-        { status: 400 }
-      )
-    }
-    
     console.error('删除资金需求类型失败:', error)
-    return Response.json(
-      { message: '删除资金需求类型失败' },
-      { status: 500 }
-    )
+    if (error instanceof ApiError) {
+      throw error
+    }
+    throw ApiError.internal('删除资金需求类型失败')
   }
 } 
