@@ -62,6 +62,7 @@ export class ProjectService {
       const result = await prisma.project.create({
         data: {
           name: data.name,
+          code: data.code,
           status: data.status,
           startYear: data.startYear,
           organizationId: organizationId, // 主要所属机构
@@ -132,6 +133,7 @@ export class ProjectService {
       where: { id },
       data: {
         name: data.name,
+        code: data.code,
         status: data.status,
         startYear: data.startYear,
         organizations: data.organizationIds

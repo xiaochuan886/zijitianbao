@@ -78,6 +78,7 @@ export function OrganizationSelector({ value, onChange, disabled }: Organization
     <div className="space-y-4">
       {value.map((item, index) => {
         const organization = organizations.find(org => org.id === item.organizationId);
+        const departmentIds = item.departmentIds || [];
         
         return (
           <Card key={index} className="p-4">
@@ -102,7 +103,7 @@ export function OrganizationSelector({ value, onChange, disabled }: Organization
 
                 {organization && (
                   <Select
-                    value={item.departmentIds.join(',')}
+                    value={departmentIds.join(',')}
                     onValueChange={(value) => handleDepartmentChange(index, value.split(','))}
                     disabled={disabled}
                   >

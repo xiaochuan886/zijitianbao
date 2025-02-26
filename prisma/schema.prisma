@@ -82,6 +82,7 @@ enum ProjectStatus {
 model Project {
   id            String         @id @default(cuid())
   name          String
+  code          String?        // 项目编码，可选字段
   status        ProjectStatus  @default(ACTIVE)
   startYear     Int
   hasRecords    Boolean       @default(false)  // 是否有关联记录
@@ -95,6 +96,7 @@ model Project {
 
   @@unique([name, organizationId], name: "projectNameOrg")
   @@index([name])
+  @@index([code])
   @@index([status])
   @@index([startYear])
   @@index([organizationId])
