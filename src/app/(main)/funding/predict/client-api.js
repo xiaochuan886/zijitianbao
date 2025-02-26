@@ -53,6 +53,48 @@ export const submitWithdrawalRequest = async (recordId, reason) => {
   }
 };
 
+// 客户端API函数，用于取消撤回申请
+export const cancelWithdrawalRequest = async (projectId) => {
+  try {
+    console.log("客户端发送取消撤回申请:", { projectId });
+    
+    // 使用浏览器原生fetch API
+    const response = await fetch(`/api/funding/predict/withdrawal/cancel/${projectId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      }
+    });
+
+    // 获取完整的响应数据，无论成功或失败
+    const data = await response.json();
+    console.log("取消撤回API响应:", { status: response.status, data });
+
+    if (!response.ok) {
+      // 处理404错误
+      if (response.status === 404) {
+        throw new Error(data.message || "找不到待撤回的记录，请刷新页面后重试");
+      }
+      
+      throw new Error(data.error || "取消撤回申请失败");
+    }
+    
+    // 成功取消撤回申请
+    toast.success(data.message || "已取消撤回申请");
+    
+    // 添加自动刷新页面功能
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500); // 延迟1.5秒后刷新，给用户足够时间看到成功消息
+
+    return { success: true, data };
+  } catch (error) {
+    console.error("取消撤回申请失败:", error);
+    toast.error(error.message || "取消撤回申请失败");
+    return { success: false, error };
+  }
+};
+
 // 测试API连接状态的函数
 export const testApiConnection = async () => {
   try {
