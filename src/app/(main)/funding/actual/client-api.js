@@ -7,14 +7,43 @@ export const submitWithdrawalRequest = async (recordId, reason) => {
   try {
     console.log("客户端发送撤回申请:", { recordId, reason });
     
+    // 首先尝试获取真实的记录ID
+    const recordIdUrl = `/api/funding/actual/record-id?projectId=${recordId}`;
+    console.log("查询记录ID:", recordIdUrl);
+    
+    const fetchRecordIdResponse = await fetch(recordIdUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      }
+    }).catch(error => {
+      console.error("获取记录ID失败，将使用项目ID作为记录ID:", error);
+      return null;
+    });
+    
+    let actualRecordId = recordId;
+    let recordStatus = null;
+    
+    if (fetchRecordIdResponse && fetchRecordIdResponse.ok) {
+      const recordData = await fetchRecordIdResponse.json();
+      console.log("记录ID查询响应:", recordData);
+      
+      if (recordData.recordId) {
+        actualRecordId = recordData.recordId;
+        recordStatus = recordData.status;
+        console.log("获取到实际记录ID:", actualRecordId, "状态:", recordStatus);
+      }
+    }
+    
     // 使用浏览器原生fetch API
-    const response = await fetch("/api/funding/predict/withdrawal-v2", {
+    const response = await fetch("/api/funding/actual/route", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        recordId,
+        action: "withdrawal",
+        recordId: actualRecordId,
         reason,
       }),
     });
@@ -31,7 +60,11 @@ export const submitWithdrawalRequest = async (recordId, reason) => {
       
       // 处理400错误
       if (response.status === 400 && data.currentStatus) {
-        throw new Error(`只有已提交的记录才能申请撤回，当前状态: ${data.currentStatus}`);
+        throw new Error(`只有已提交的记录才能申请撤回，当前状态: ${
+          typeof data.currentStatus === 'object' 
+            ? JSON.stringify(data.currentStatus) 
+            : data.currentStatus
+        }`);
       }
       
       throw new Error(data.error || "提交撤回申请失败");
@@ -58,8 +91,26 @@ export const cancelWithdrawalRequest = async (projectId) => {
   try {
     console.log("客户端发送取消撤回申请:", { projectId });
     
+    // 首先尝试获取真实的记录ID
+    const recordIdUrl = `/api/funding/actual/record-id?projectId=${projectId}`;
+    console.log("查询记录ID用于取消撤回:", recordIdUrl);
+    
+    const fetchRecordIdResponse = await fetch(recordIdUrl).catch(error => {
+      console.error("获取记录ID失败，将直接使用项目ID:", error);
+      return null;
+    });
+    
+    let recordInfo = null;
+    if (fetchRecordIdResponse && fetchRecordIdResponse.ok) {
+      recordInfo = await fetchRecordIdResponse.json();
+      console.log("记录ID查询响应:", recordInfo);
+    }
+    
     // 使用浏览器原生fetch API
-    const response = await fetch(`/api/funding/predict/withdrawal/cancel/${projectId}`, {
+    const cancelUrl = `/api/funding/actual/withdrawal/cancel/${projectId}`;
+    console.log("发送取消撤回请求:", cancelUrl);
+    
+    const response = await fetch(cancelUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -99,12 +150,12 @@ export const cancelWithdrawalRequest = async (projectId) => {
 export const testApiConnection = async () => {
   try {
     // 测试撤回API
-    const withdrawalResponse = await fetch("/api/funding/predict/withdrawal", {
+    const withdrawalResponse = await fetch("/api/funding/actual/withdrawal", {
       method: "HEAD",
     });
     
     // 测试测试版API
-    const testResponse = await fetch("/api/funding/predict/withdrawal-v2", {
+    const testResponse = await fetch("/api/funding/actual/withdrawal-v2", {
       method: "GET",
     });
     

@@ -18,7 +18,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/components/ui/use-toast"
 
-export default function PredictPage() {
+export default function ActualPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -105,7 +105,7 @@ export default function PredictPage() {
       params.append("_t", Date.now().toString())
       
       // 调用API获取项目列表
-      const response = await fetch(`/api/funding/predict?${params.toString()}`, {
+      const response = await fetch(`/api/funding/actual?${params.toString()}`, {
         // 添加缓存控制头，避免浏览器缓存
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -123,7 +123,7 @@ export default function PredictPage() {
       // 首次加载时，获取所有机构和部门（不受筛选影响）
       if (!organizations.length || !departments.length) {
         try {
-          const metaResponse = await fetch(`/api/funding/predict/meta`, {
+          const metaResponse = await fetch(`/api/funding/actual/meta`, {
             // 添加缓存控制头，避免浏览器缓存
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -207,7 +207,7 @@ export default function PredictPage() {
     
     // 将选中的项目ID作为查询参数传递
     const ids = selectedProjects.join(",")
-    router.push(`/funding/predict/edit?ids=${ids}&year=${currentMonth.year}&month=${currentMonth.month}`)
+    router.push(`/funding/actual/edit?ids=${ids}&year=${currentMonth.year}&month=${currentMonth.month}`)
   }, [selectedProjects, router, toast, currentMonth, projects])
 
   // 处理批量提交
@@ -245,7 +245,7 @@ export default function PredictPage() {
       })
       
       // 调用API批量提交
-      const response = await fetch("/api/funding/predict/batch-submit", {
+      const response = await fetch("/api/funding/actual/batch-submit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -307,7 +307,7 @@ export default function PredictPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">资金需求预测填报</h1>
+        <h1 className="text-3xl font-bold tracking-tight">实际支付填报</h1>
         <Button 
           variant="outline" 
           onClick={() => fetchProjects(true)}

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { services } from '@/lib/services'
 import { ServiceError } from '@/lib/services/types'
 import { parseSession } from '@/lib/auth/session'
-import { Role } from '@prisma/client'
+import { Role } from '@/lib/enums'
 import { UserService } from '@/lib/services/user.service'
 
 // GET /api/users - 获取用户列表

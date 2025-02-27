@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Role, Organization } from "@prisma/client"
+import { Organization } from "@prisma/client"
 import { User } from "./page"
 import { apiClient } from "@/lib/api-client"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { X } from 'lucide-react'
+import { Role } from "@/lib/enums"
 
 // 角色标签映射
 const roleLabels: Record<Role, string> = {
@@ -336,11 +337,11 @@ export function UserForm({ open, onOpenChange, onSubmit, initialData, isLoading 
                           <SelectValue placeholder="选择角色" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="ADMIN">管理员</SelectItem>
-                          <SelectItem value="REPORTER">填报员</SelectItem>
-                          <SelectItem value="FINANCE">财务</SelectItem>
-                          <SelectItem value="AUDITOR">审计</SelectItem>
-                          <SelectItem value="OBSERVER">观察者</SelectItem>
+                          <SelectItem value={Role.ADMIN}>管理员</SelectItem>
+                          <SelectItem value={Role.REPORTER}>填报员</SelectItem>
+                          <SelectItem value={Role.FINANCE}>财务</SelectItem>
+                          <SelectItem value={Role.AUDITOR}>审计</SelectItem>
+                          <SelectItem value={Role.OBSERVER}>观察者</SelectItem>
                         </SelectContent>
                       </Select>
                     </FormControl>
@@ -519,11 +520,11 @@ export function UserForm({ open, onOpenChange, onSubmit, initialData, isLoading 
                           <SelectValue placeholder="选择角色" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="ADMIN">管理员</SelectItem>
-                          <SelectItem value="REPORTER">填报员</SelectItem>
-                          <SelectItem value="FINANCE">财务</SelectItem>
-                          <SelectItem value="AUDITOR">审计</SelectItem>
-                          <SelectItem value="OBSERVER">观察者</SelectItem>
+                          <SelectItem value={Role.ADMIN}>管理员</SelectItem>
+                          <SelectItem value={Role.REPORTER}>填报员</SelectItem>
+                          <SelectItem value={Role.FINANCE}>财务</SelectItem>
+                          <SelectItem value={Role.AUDITOR}>审计</SelectItem>
+                          <SelectItem value={Role.OBSERVER}>观察者</SelectItem>
                         </SelectContent>
                       </Select>
                     </FormControl>

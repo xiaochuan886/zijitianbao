@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth-options";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
-// 提交资金需求预测
+// 提交实际支付
 export async function POST(req: NextRequest) {
   try {
     // 验证用户会话
@@ -16,6 +16,9 @@ export async function POST(req: NextRequest) {
 
     const userId = session.user.id;
     const body = await req.json();
+    
+    // 获取是否为用户填报（默认为用户填报）
+    const isUserReport = body.isUserReport !== false;
     
     // 基本参数校验
     if (!body.records || !body.projectInfo) {
@@ -29,25 +32,28 @@ export async function POST(req: NextRequest) {
     }
 
     // 整理出所有相关的子项目ID，用于检查用户是否已提交过
-    const subProjectIds = [...new Set(tempRecords.map((record: any) => record.subProjectId))];
+    const subProjectIds: string[] = Array.from(
+      new Set(tempRecords.map((record: any) => record.subProjectId as string))
+    );
     
     // 获取当前月份
     const { year, month } = body.projectInfo.nextMonth;
     
-    // 检查用户是否已经对这些项目提交过预测
+    // 检查用户是否已经对这些项目提交过实际支付
     const existingSubmissions = await db.record.findMany({
       where: {
         subProjectId: { in: subProjectIds },
         year: year,
         month: month,
         status: "submitted",
-        submittedBy: userId
+        submittedBy: userId,
+        ...(isUserReport ? { actualUser: { not: null } } : { actualFinance: { not: null } })
       }
     });
 
     if (existingSubmissions.length > 0) {
       return NextResponse.json({ 
-        error: "您已经对部分项目提交过预测，不能重复提交",
+        error: "您已经对部分项目提交过实际支付，不能重复提交",
         affectedProjects: existingSubmissions.map(e => e.subProjectId)
       }, { status: 400 });
     }
@@ -72,29 +78,53 @@ export async function POST(req: NextRequest) {
             where: {
               subProjectId: subProjectId,
               year: parseInt(yearStr),
-              month: parseInt(monthStr),
-              status: "submitted"
+              month: parseInt(monthStr)
             }
           });
           
           if (existingRecord) {
-            // 如果其他用户已提交，则跳过此记录，不覆盖
-            continue;
-          }
-          
-          // 创建新记录
-          await tx.record.create({
-            data: {
+            // 如果记录已存在，则更新记录
+            const updateData: Prisma.RecordUpdateInput = {
+              status: "submitted",
+              submittedBy: userId,
+              submittedAt: new Date(),
+              remark: body.remarks[id] || existingRecord.remark
+            };
+            
+            // 根据角色设置不同的字段
+            if (isUserReport) {
+              updateData.actualUser = value as number;
+            } else {
+              updateData.actualFinance = value as number;
+            }
+            
+            await tx.record.update({
+              where: { id: existingRecord.id },
+              data: updateData
+            });
+          } else {
+            // 创建新记录
+            const createData: Prisma.RecordUncheckedCreateInput = {
               subProjectId: subProjectId,
               year: parseInt(yearStr),
               month: parseInt(monthStr),
-              predicted: value as number,
               status: "submitted",
               submittedBy: userId,
               submittedAt: new Date(),
               remark: body.remarks[id] || ""
+            };
+            
+            // 根据角色设置不同的字段
+            if (isUserReport) {
+              createData.actualUser = value as number;
+            } else {
+              createData.actualFinance = value as number;
             }
-          });
+            
+            await tx.record.create({
+              data: createData
+            });
+          }
           
           count++;
         } else {
@@ -106,15 +136,23 @@ export async function POST(req: NextRequest) {
           if (record) {
             // 检查记录状态，只有草稿状态的记录可以被提交
             if (record.status === "draft") {
+              const updateData: Prisma.RecordUpdateInput = {
+                status: "submitted",
+                submittedBy: userId,
+                submittedAt: new Date(),
+                remark: body.remarks[id] || record.remark
+              };
+              
+              // 根据角色设置不同的字段
+              if (isUserReport) {
+                updateData.actualUser = value as number;
+              } else {
+                updateData.actualFinance = value as number;
+              }
+              
               await tx.record.update({
                 where: { id },
-                data: {
-                  predicted: value as number,
-                  status: "submitted",
-                  submittedBy: userId,
-                  submittedAt: new Date(),
-                  remark: body.remarks[id] || ""
-                }
+                data: updateData
               });
               
               count++;
@@ -132,7 +170,7 @@ export async function POST(req: NextRequest) {
     });
     
   } catch (error) {
-    console.error("提交资金需求预测失败", error);
+    console.error("提交实际支付失败", error);
     return NextResponse.json({ error: "提交失败，请稍后重试" }, { status: 500 });
   }
 } 

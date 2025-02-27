@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { Prisma } from "@prisma/client";
 
-// 保存资金需求预测草稿
+// 保存实际支付草稿
 export async function POST(req: NextRequest) {
   try {
     // 获取用户会话
@@ -18,13 +18,14 @@ export async function POST(req: NextRequest) {
 
     // 获取请求数据
     const data = await req.json();
-    const { records, remarks, projectInfo } = data;
+    const { records, remarks, projectInfo, isUserReport = true } = data;
 
     console.log("保存API收到数据:", JSON.stringify({
       recordsCount: Object.keys(records).length,
       remarksCount: remarks ? Object.keys(remarks).length : 0,
       hasProjectInfo: !!projectInfo,
-      tempRecords: projectInfo?.tempRecords?.length || 0
+      tempRecords: projectInfo?.tempRecords?.length || 0,
+      isUserReport: isUserReport
     }, null, 2));
 
     // 打印更详细的记录数据以进行调试
@@ -61,9 +62,12 @@ export async function POST(req: NextRequest) {
     
     for (const [recordId, value] of Object.entries(records)) {
       try {
+        // 根据角色确定要更新的字段
+        const fieldToUpdate = isUserReport ? "actualUser" : "actualFinance";
+        
         // 如果是临时ID，需要创建新记录
         if (recordId.startsWith('temp-')) {
-          console.log(`处理临时记录: ${recordId}, 值: ${value}`);
+          console.log(`处理临时记录: ${recordId}, 值: ${value}, 字段: ${fieldToUpdate}`);
           
           // 从临时ID中解析信息 (temp-subProjectId-fundTypeId-year-month)
           const parts = recordId.split('-');
@@ -74,7 +78,7 @@ export async function POST(req: NextRequest) {
             const year = parseInt(parts[3]);
             const month = parseInt(parts[4]);
             
-            console.log(`解析临时记录ID: 子项目ID=${subProjectId}, 资金类型=${fundTypeId}, 年=${year}, 月=${month}, 值=${value}`);
+            console.log(`解析临时记录ID: 子项目ID=${subProjectId}, 资金类型=${fundTypeId}, 年=${year}, 月=${month}, 值=${value}, 字段=${fieldToUpdate}`);
             
             // 确保解析出的值是有效的
             if (!subProjectId || isNaN(year) || isNaN(month)) {
@@ -106,15 +110,23 @@ export async function POST(req: NextRequest) {
               
               try {
                 // 更新已存在的记录
+                const updateData: Prisma.RecordUpdateInput = {
+                  status: "draft",
+                  submittedBy: session?.user?.id || "temp-user-id",
+                  remark: remarks?.[recordId] || "", 
+                  updatedAt: new Date(),
+                };
+                
+                // 根据角色设置不同的字段
+                if (isUserReport) {
+                  updateData.actualUser = value === null ? null : parseFloat(String(value));
+                } else {
+                  updateData.actualFinance = value === null ? null : parseFloat(String(value));
+                }
+                
                 const updatePromise = db.record.update({
                   where: { id: existingRecord.id },
-                  data: {
-                    predicted: value === null ? null : parseFloat(String(value)),
-                    status: "draft",
-                    submittedBy: session?.user?.id || "temp-user-id",
-                    remark: remarks?.[recordId] || "", 
-                    updatedAt: new Date(),
-                  } as Prisma.RecordUpdateInput,
+                  data: updateData,
                 });
                 
                 updatePromises.push(updatePromise);
@@ -123,24 +135,32 @@ export async function POST(req: NextRequest) {
                 console.error(`更新记录失败: ${existingRecord.id}`, updateError);
               }
             } else {
-              console.log(`未找到现有记录，创建新记录: 子项目=${subProjectId}, 年=${year}, 月=${month}`);
+              console.log(`未找到现有记录，创建新记录: 子项目=${subProjectId}, 年=${year}, 月=${month}, 字段=${fieldToUpdate}`);
               
               try {
                 // 创建新记录
                 createdRecords.push({ recordId, subProjectId, year, month, value });
                 
+                const createData: Prisma.RecordUncheckedCreateInput = {
+                  subProjectId,
+                  year,
+                  month,
+                  status: "draft",
+                  submittedBy: session?.user?.id || "temp-user-id",
+                  remark: remarks?.[recordId] || "", 
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                };
+                
+                // 根据角色设置不同的字段
+                if (isUserReport) {
+                  createData.actualUser = value === null ? null : parseFloat(String(value));
+                } else {
+                  createData.actualFinance = value === null ? null : parseFloat(String(value));
+                }
+                
                 const createPromise = db.record.create({
-                  data: {
-                    subProjectId,
-                    year,
-                    month,
-                    predicted: value === null ? null : parseFloat(String(value)),
-                    status: "draft",
-                    submittedBy: session?.user?.id || "temp-user-id",
-                    remark: remarks?.[recordId] || "", 
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                  } as Prisma.RecordUncheckedCreateInput,
+                  data: createData,
                 });
                 
                 updatePromises.push(createPromise);
@@ -152,19 +172,27 @@ export async function POST(req: NextRequest) {
             console.error(`临时记录ID格式无效，无法解析: ${recordId}`);
           }
         } else {
-          console.log(`更新现有记录: ${recordId}, 值: ${value}`);
+          console.log(`更新现有记录: ${recordId}, 值: ${value}, 字段: ${fieldToUpdate}`);
           
           try {
             // 更新现有记录
+            const updateData: Prisma.RecordUpdateInput = {
+              status: "draft",
+              submittedBy: session?.user?.id || "temp-user-id",
+              remark: remarks?.[recordId] || "", 
+              updatedAt: new Date(),
+            };
+            
+            // 根据角色设置不同的字段
+            if (isUserReport) {
+              updateData.actualUser = value === null ? null : parseFloat(String(value));
+            } else {
+              updateData.actualFinance = value === null ? null : parseFloat(String(value));
+            }
+            
             const updatePromise = db.record.update({
               where: { id: recordId },
-              data: {
-                predicted: value === null ? null : parseFloat(String(value)),
-                status: "draft",
-                submittedBy: session?.user?.id || "temp-user-id",
-                remark: remarks?.[recordId] || "", 
-                updatedAt: new Date(),
-              } as Prisma.RecordUpdateInput,
+              data: updateData,
             });
             
             updatePromises.push(updatePromise);
@@ -205,7 +233,7 @@ export async function POST(req: NextRequest) {
       total: results.length
     });
   } catch (error) {
-    console.error("保存资金需求预测草稿失败", error);
+    console.error("保存实际支付草稿失败", error);
     // 记录更详细的错误信息
     if (error instanceof Error) {
       console.error("错误详情:", {
@@ -216,7 +244,7 @@ export async function POST(req: NextRequest) {
     }
     
     return NextResponse.json(
-      { error: "保存资金需求预测草稿失败", details: error instanceof Error ? error.message : String(error) },
+      { error: "保存实际支付草稿失败", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

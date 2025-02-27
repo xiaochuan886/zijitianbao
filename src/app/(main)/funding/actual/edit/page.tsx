@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Save, Upload, ArrowLeft } from "lucide-react"
 import { debounce } from "lodash"
+import { Separator } from "@/components/ui/separator"
 
 // 定义数据类型
 interface FundRecord {
@@ -39,6 +40,8 @@ interface FundRecord {
   year: number
   month: number
   predicted: number | null
+  actualUser: number | null
+  actualFinance: number | null
   status: string
   remark: string
 }
@@ -62,10 +65,14 @@ interface ProjectData {
   }[]
 }
 
-export default function PredictEditPage() {
+export default function ActualEditPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  
+  // 获取角色参数，默认为user
+  const role = searchParams.get('role') || 'user'
+  const isUserRole = role === 'user'
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -190,7 +197,7 @@ export default function PredictEditPage() {
       console.log(`保存草稿: ${Object.keys(recordsRef.current).length}条记录，${tempRecords.length}条临时记录`);
       
       // 调用API保存，使用完整的记录对象
-      const response = await fetch("/api/funding/predict/save", {
+      const response = await fetch("/api/funding/actual/save", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -258,7 +265,7 @@ export default function PredictEditPage() {
   }, []);
   
   // 计算年度汇总
-  const calculateYearTotal = useCallback((subProjectId: string, fundTypeId: string) => {
+  const calculateYearTotal = useCallback((subProjectId: string, fundTypeId: string, year: number) => {
     let total = 0;
     const currentProjects = projectsRef.current;
     const currentRecords = recordsRef.current;
@@ -289,49 +296,86 @@ export default function PredictEditPage() {
     return total;
   }, []);
   
-  // 手动保存
-  const handleSave = useCallback(async () => {
-    if (!hasChangesRef.current) return;
+  // 获取临时记录列表
+  const getTempRecords = useCallback(() => {
+    const tempRecords = [];
+    
+    for (const recordId in recordsRef.current) {
+      if (recordId.startsWith('temp-')) {
+        const [_, subProjectId, fundTypeId, year, month] = recordId.split('-');
+        
+        if (subProjectId && fundTypeId && year && month) {
+          const amount = recordsRef.current[recordId];
+          const remark = remarksRef.current[recordId] || "";
+          
+          if (amount !== null) {
+            tempRecords.push({
+              id: recordId,
+              subProjectId,
+              fundTypeId,
+              year: parseInt(year),
+              month: parseInt(month),
+              value: amount,
+              remark
+            });
+          }
+        }
+      }
+    }
+    
+    return tempRecords;
+  }, []);
+  
+  // 保存更改
+  const saveChanges = useCallback(async () => {
+    if (!hasChangesRef.current) {
+      toast({
+        title: "信息",
+        description: "没有需要保存的更改",
+      });
+      return;
+    }
+    
+    if (savingRef.current) return;
     
     try {
       setSaving(true);
+      savingRef.current = true;
       
-      // 收集临时记录信息，提供更多上下文
-      const tempRecords = Object.entries(recordsRef.current)
-        .filter(([id]) => id.startsWith('temp-'))
-        .map(([id, value]) => {
-          const parts = id.split('-');
-          if (parts.length >= 5) {
-            return {
-              id,
-              subProjectId: parts[1],
-              fundTypeId: parts[2],
-              year: parseInt(parts[3]),
-              month: parseInt(parts[4]),
-              value,
-              remark: remarksRef.current[id] || ""
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
+      // 获取所有已修改的记录
+      const changedRecords: Record<string, number | null> = {};
+      const changedRemarks: Record<string, string> = {};
       
-      // 减少不必要的日志输出
-      console.log(`手动保存: ${Object.keys(recordsRef.current).length}条记录，${tempRecords.length}条临时记录`);
+      Object.keys(recordsRef.current).forEach((key) => {
+        if (recordsRef.current[key] !== originalRecordsRef.current[key]) {
+          changedRecords[key] = recordsRef.current[key];
+        }
+      });
       
-      // 调用API保存，使用完整的记录对象
-      const response = await fetch("/api/funding/predict/save", {
+      Object.keys(remarksRef.current).forEach((key) => {
+        if (remarksRef.current[key] !== originalRemarksRef.current[key]) {
+          changedRemarks[key] = remarksRef.current[key];
+        }
+      });
+      
+      // 准备要提交的项目数据
+      const projectInfo = {
+        projectIds: projectsRef.current.map(p => p.id),
+        nextMonth: nextMonth,
+        tempRecords: getTempRecords(),
+      };
+      
+      // 调用API保存更改
+      const response = await fetch("/api/funding/actual/save", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          records: recordsRef.current,
-          remarks: remarksRef.current,
-          projectInfo: {
-            tempRecords,
-            nextMonth: nextMonth
-          }
+          records: changedRecords,
+          remarks: changedRemarks,
+          projectInfo,
+          isUserReport: isUserRole
         }),
       });
       
@@ -340,80 +384,64 @@ export default function PredictEditPage() {
         throw new Error(errorData.error || "保存失败");
       }
       
-      // 更新原始记录
+      const result = await response.json();
+      
+      // 更新原始记录，以便下次比较
       setOriginalRecords({...recordsRef.current});
       setOriginalRemarks({...remarksRef.current});
+      originalRecordsRef.current = {...recordsRef.current};
+      originalRemarksRef.current = {...remarksRef.current};
+      
+      // 重置变更标记
       setHasChanges(false);
+      hasChangesRef.current = false;
       
-      // 显示成功提示，并在2秒后自动消失
-      const { dismiss } = toast({
-        title: "成功",
-        description: "数据已保存",
+      toast({
+        title: "保存成功",
+        description: `已保存 ${result.created + result.updated} 条记录`,
       });
-      
-      // 2秒后强制关闭提示
-      setTimeout(() => {
-        dismiss();
-      }, 2000);
-      
     } catch (error) {
       console.error("保存失败", error);
       toast({
-        title: "错误",
+        title: "保存失败",
         description: error instanceof Error ? error.message : "保存失败",
         variant: "destructive"
       });
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
-  }, [toast]);
+  }, [nextMonth, toast, isUserRole]);
   
-  // 提交
+  // 防抖保存，避免频繁调用API
+  const debouncedSave = useCallback(
+    debounce(() => {
+      if (hasChangesRef.current) {
+        saveChanges();
+      }
+    }, 2000),
+    [saveChanges]
+  );
+  
+  // 提交项目
   const handleSubmit = useCallback(async () => {
+    // 先保存所有更改
+    if (hasChangesRef.current) {
+      await saveChanges();
+    }
+    
     try {
       setSubmitting(true);
       
-      let hasEmptyValues = false;
+      // 准备要提交的项目数据
+      const projectInfo = {
+        projectIds: projectsRef.current.map(p => p.id),
+        nextMonth: nextMonth,
+        tempRecords: getTempRecords(),
+      };
       
-      Object.entries(recordsRef.current).forEach(([recordId, value]) => {
-        if (value === null) {
-          hasEmptyValues = true;
-        }
-      });
-      
-      // 收集临时记录信息
-      const tempRecords = Object.entries(recordsRef.current)
-        .filter(([id]) => id.startsWith('temp-'))
-        .map(([id, value]) => {
-          const parts = id.split('-');
-          if (parts.length >= 5) {
-            return {
-              id,
-              subProjectId: parts[1],
-              fundTypeId: parts[2],
-              year: parseInt(parts[3]),
-              month: parseInt(parts[4]),
-              value,
-              remark: remarksRef.current[id] || ""
-            };
-          }
-          return null;
-        })
-        .filter(Boolean);
-      
-      // 数据校验
-      if (hasEmptyValues) {
-        toast({
-          title: "警告",
-          description: "存在未填写的数据，请填写完整后提交",
-          variant: "destructive"
-        });
-        setSubmitting(false);
-        return;
-      }
-      
-      // 调用API提交
-      const response = await fetch("/api/funding/predict/submit", {
+      // 调用API提交实际支付
+      const response = await fetch("/api/funding/actual/submit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -421,10 +449,8 @@ export default function PredictEditPage() {
         body: JSON.stringify({
           records: recordsRef.current,
           remarks: remarksRef.current,
-          projectInfo: {
-            tempRecords,
-            nextMonth: nextMonth
-          }
+          projectInfo,
+          isUserReport: isUserRole
         }),
       });
       
@@ -433,24 +459,26 @@ export default function PredictEditPage() {
         throw new Error(errorData.error || "提交失败");
       }
       
+      const result = await response.json();
+      
       toast({
-        title: "成功",
-        description: "数据已提交",
+        title: "提交成功",
+        description: `已提交 ${result.count} 条记录`,
       });
       
-      // 提交成功后返回列表页
-      router.push("/funding/predict");
+      // 返回列表页
+      router.push("/funding/actual");
     } catch (error) {
       console.error("提交失败", error);
       toast({
-        title: "错误",
+        title: "提交失败",
         description: error instanceof Error ? error.message : "提交失败",
         variant: "destructive"
       });
     } finally {
       setSubmitting(false);
     }
-  }, [router, toast, nextMonth]);
+  }, [saveChanges, nextMonth, getTempRecords, router, toast, isUserRole]);
   
   // 获取项目数据
   const fetchData = useCallback(async () => {
@@ -458,8 +486,8 @@ export default function PredictEditPage() {
       setLoading(true);
       
       // 获取查询参数
-      const id = searchParams.get("id");
       const ids = searchParams.get("ids");
+      const id = searchParams.get("id");
       const year = searchParams.get("year") || new Date().getFullYear().toString();
       const month = searchParams.get("month") || (new Date().getMonth() + 2).toString();
       
@@ -474,101 +502,63 @@ export default function PredictEditPage() {
           description: "缺少必要的项目ID参数",
           variant: "destructive"
         });
-        router.push("/funding/predict");
+        router.push("/funding/actual");
         return;
       }
       
-      // 构建API请求
-      const fetchPromises = [];
+      // 构造API请求URL
+      const url = ids 
+        ? `/api/funding/actual/batch?ids=${ids}&year=${year}&month=${month}&role=${role}` 
+        : `/api/funding/actual/${id}?year=${year}&month=${month}&role=${role}`;
       
-      if (id) {
-        // 单个项目
-        fetchPromises.push(
-          fetch(`/api/funding/predict/${id}?year=${year}&month=${month}`)
-            .then(response => {
-              if (!response.ok) {
-                throw new Error("获取项目详情失败");
-              }
-              return response.json();
-            })
-        );
-      } else if (ids) {
-        // 多个项目
-        const idArray = ids.split(',');
-        for (const projectId of idArray) {
-          fetchPromises.push(
-            fetch(`/api/funding/predict/${projectId}?year=${year}&month=${month}`)
-              .then(response => {
-                if (!response.ok) {
-                  throw new Error(`获取项目 ${projectId} 详情失败`);
-                }
-                return response.json();
-              })
-          );
-        }
+      // 获取项目数据
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error("获取项目详情失败");
       }
       
-      const projectsData = await Promise.all(fetchPromises);
+      const data = await response.json();
       
-      // 移除过多的日志输出，保留最关键的
-      console.log(`成功获取到${projectsData.length}个项目的数据`);
-      
+      // 处理批量和单个项目的数据结构差异
+      const projectsData = Array.isArray(data) ? data : [data];
       setProjects(projectsData);
+      projectsRef.current = projectsData;
       
       // 初始化记录和备注
       const initialRecords: Record<string, number | null> = {};
       const initialRemarks: Record<string, string> = {};
       
-      projectsData.forEach(project => {
-        project.subProjects.forEach((subProject: any) => {
-          subProject.fundTypes.forEach((fundType: any) => {
-            // 检查是否存在当前月份的记录
-            const currentMonthRecords = fundType.records.filter(
-              (record: FundRecord) => record.year === parseInt(year) && record.month === parseInt(month)
-            );
-            
-            // 如果没有当前月份的记录，需要确保有相关记录显示
-            if (currentMonthRecords.length === 0) {
-              // 创建一个前端临时记录对象用于显示
-              const tempRecord: FundRecord = {
-                id: `temp-${subProject.id}-${fundType.id}-${year}-${month}`,
-                subProjectId: subProject.id,
-                subProjectName: subProject.name,
-                fundTypeId: fundType.id,
-                fundTypeName: fundType.name,
-                year: parseInt(year),
-                month: parseInt(month),
-                predicted: null,
-                status: "draft",
-                remark: ""
-              };
-              
-              // 添加到fundType.records中
-              fundType.records.push(tempRecord);
-              
-              // 同时添加到初始记录和备注中
-              initialRecords[tempRecord.id] = null;
-              initialRemarks[tempRecord.id] = "";
-            }
-            
-            // 正常处理所有记录
-            fundType.records.forEach((record: FundRecord) => {
-              if (record.year === parseInt(year) && record.month === parseInt(month)) {
-                initialRecords[record.id] = record.predicted;
+      projectsData.forEach((project) => {
+        project.subProjects.forEach((subProject) => {
+          subProject.fundTypes.forEach((fundType) => {
+            if (fundType.records.length === 0) {
+              // 如果没有记录，创建临时记录
+              const tempId = `temp-${subProject.id}-${fundType.id}-${year}-${month}`;
+              initialRecords[tempId] = null;
+              initialRemarks[tempId] = "";
+            } else {
+              fundType.records.forEach((record: FundRecord) => {
+                // 根据角色获取对应的值
+                initialRecords[record.id] = isUserRole ? record.actualUser : record.actualFinance;
                 initialRemarks[record.id] = record.remark || "";
-              }
-            });
+              });
+            }
           });
         });
       });
-      
-      // 移除过多的日志输出
-      console.log(`初始化了${Object.keys(initialRecords).length}条记录`);
       
       setRecords(initialRecords);
       setRemarks(initialRemarks);
       setOriginalRecords({...initialRecords});
       setOriginalRemarks({...initialRemarks});
+      
+      // 更新引用
+      recordsRef.current = initialRecords;
+      remarksRef.current = initialRemarks;
+      originalRecordsRef.current = {...initialRecords};
+      originalRemarksRef.current = {...initialRemarks};
+      
       setLoading(false);
     } catch (error) {
       console.error("获取数据失败", error);
@@ -578,9 +568,9 @@ export default function PredictEditPage() {
         variant: "destructive"
       });
       setLoading(false);
-      router.push("/funding/predict");
+      router.push("/funding/actual");
     }
-  }, [searchParams, toast, router]);
+  }, [searchParams, toast, router, role, isUserRole]);
   
   // 监听记录和备注变化，检查是否有变更并更新hasChanges状态
   useEffect(() => {
@@ -608,29 +598,28 @@ export default function PredictEditPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.push("/funding/predict")}>
+          <Button variant="outline" onClick={() => router.push("/funding/actual")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
           </Button>
-          <h1 className="text-3xl font-bold tracking-tight">资金需求预测填报</h1>
+          <h1 className="text-3xl font-bold tracking-tight">实际支付填报 ({isUserRole ? "填报人视图" : "财务视图"})</h1>
         </div>
+        
         <div className="flex gap-2">
           <Button 
             variant="outline" 
-            onClick={handleSave}
+            onClick={saveChanges}
             disabled={saving || !hasChanges}
           >
             <Save className="mr-2 h-4 w-4" />
-            保存
-            {saving && "..."}
+            {saving ? "保存中..." : "保存"}
           </Button>
           
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button disabled={submitting}>
                 <Upload className="mr-2 h-4 w-4" />
-                提交
-                {submitting && "..."}
+                {submitting ? "提交中..." : "提交"}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -649,100 +638,94 @@ export default function PredictEditPage() {
         </div>
       </div>
       
-      <div className="space-y-8">
-        {loading ? (
-          <div className="text-center py-8">加载中...</div>
-        ) : (
-          projects.map(project => (
-            <Card key={project.id} className="overflow-hidden">
-              <CardHeader className="bg-muted">
-                <CardTitle>
-                  {project.organization.name} ({project.organization.code}) - {project.name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[150px]">子项目</TableHead>
-                        <TableHead className="w-[150px]">资金需求类型</TableHead>
-                        <TableHead className="w-[150px]">年度汇总</TableHead>
-                        {/* 历史月份 */}
-                        {[1, 2, 3].filter(month => month < nextMonth.month).map(month => (
-                          <TableHead key={month} className="w-[150px]">
-                            {`${nextMonth.year}-${month.toString().padStart(2, '0')} (已提交)`}
-                          </TableHead>
-                        ))}
-                        {/* 当前月份 */}
-                        <TableHead className="w-[150px]">
-                          {`${nextMonth.year}-${nextMonth.month.toString().padStart(2, '0')} (可填报)`}
-                        </TableHead>
-                        <TableHead className="w-[200px]">备注</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {project.subProjects.map(subProject => (
-                        subProject.fundTypes.map(fundType => (
+      {loading ? (
+        <div className="text-center py-8">加载中...</div>
+      ) : (
+        projects.map(project => (
+          <Card key={project.id} className="overflow-hidden">
+            <CardHeader className="bg-muted">
+              <CardTitle>
+                {project.organization.name} ({project.organization.code}) - {project.name}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>子项目</TableHead>
+                      <TableHead>类型</TableHead>
+                      <TableHead className="text-right">预测金额</TableHead>
+                      <TableHead className="text-right">{isUserRole ? "实际金额" : "财务金额"}</TableHead>
+                      <TableHead className="text-right">年度累计</TableHead>
+                      <TableHead>备注</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {project.subProjects.map((subProject: {
+                      id: string;
+                      name: string;
+                      fundTypes: {
+                        id: string;
+                        name: string;
+                        records: FundRecord[];
+                      }[];
+                    }) => (
+                      subProject.fundTypes.map((fundType: {
+                        id: string;
+                        name: string;
+                        records: FundRecord[];
+                      }) => {
+                        // 获取当前月所有记录
+                        const currentMonthRecords = fundType.records.filter(
+                          r => r.year === nextMonth.year && r.month === nextMonth.month
+                        );
+                        
+                        // 如果没有当月记录，使用临时ID
+                        const recordId = currentMonthRecords.length > 0 
+                          ? currentMonthRecords[0].id 
+                          : `temp-${subProject.id}-${fundType.id}-${nextMonth.year}-${nextMonth.month}`;
+                        
+                        return (
                           <TableRow key={`${subProject.id}-${fundType.id}`}>
                             <TableCell>{subProject.name}</TableCell>
                             <TableCell>{fundType.name}</TableCell>
-                            <TableCell className="font-medium">
-                              {formatCurrency(calculateYearTotal(subProject.id, fundType.id))}
+                            <TableCell className="text-right">
+                              {currentMonthRecords.length > 0 && currentMonthRecords[0].predicted !== null
+                                ? formatCurrency(currentMonthRecords[0].predicted)
+                                : "-"}
                             </TableCell>
-                            {/* 历史月份数据（不可编辑） */}
-                            {[1, 2, 3].filter(month => month < nextMonth.month).map(month => {
-                              const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year);
-                              return (
-                                <TableCell key={month}>
-                                  {record ? formatCurrency(record.predicted) : ""}
-                                </TableCell>
-                              );
-                            })}
-                            {/* 当前月份数据（可填报） */}
                             <TableCell>
-                              {fundType.records
-                                .filter(record => {
-                                  // 确保只显示当前填报月份的记录，移除console.log
-                                  return record.year === nextMonth.year && record.month === nextMonth.month;
-                                })
-                                .map(record => (
-                                  <Input
-                                    key={record.id}
-                                    type="number"
-                                    value={records[record.id] === null ? "" : String(records[record.id])}
-                                    onChange={(e) => handleInputChange(record.id, e.target.value)}
-                                    placeholder="请输入金额"
-                                    className="w-full"
-                                  />
-                                ))}
+                              <Input
+                                type="number"
+                                value={records[recordId] === null ? "" : records[recordId]}
+                                onChange={(e) => handleInputChange(recordId, e.target.value)}
+                                placeholder="输入金额"
+                                className="text-right"
+                              />
                             </TableCell>
-                            {/* 备注 */}
+                            <TableCell className="text-right">
+                              {calculateYearTotal(subProject.id, fundType.id, nextMonth.year)}
+                            </TableCell>
                             <TableCell>
-                              {fundType.records
-                                .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
-                                .map(record => (
-                                  <Textarea
-                                    key={record.id}
-                                    value={remarks[record.id] || ""}
-                                    onChange={(e) => handleRemarkChange(record.id, e.target.value)}
-                                    placeholder="请输入备注"
-                                    className="w-full resize-none"
-                                    rows={2}
-                                  />
-                                ))}
+                              <Textarea
+                                value={remarks[recordId] || ""}
+                                onChange={(e) => handleRemarkChange(recordId, e.target.value)}
+                                placeholder="输入备注"
+                                className="min-h-[60px]"
+                              />
                             </TableCell>
                           </TableRow>
-                        ))
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+                        );
+                      })
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        ))
+      )}
     </div>
   )
 } 

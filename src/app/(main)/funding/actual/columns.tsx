@@ -40,10 +40,14 @@ export type Prediction = {
   project: string
   month: string
   status: string
+  actualUserStatus?: string
+  actualFinanceStatus?: string
   subProjectCount?: number
   remarks?: { subProject: string, content: string, period: string }[]
   remark?: string
   year: string
+  actualUser?: number | null
+  actualFinance?: number | null
 }
 
 export const columns: ColumnDef<Prediction>[] = [
@@ -83,27 +87,24 @@ export const columns: ColumnDef<Prediction>[] = [
   },
   {
     accessorKey: "month",
-    header: "预测月份",
+    header: "填报月份",
   },
   {
-    accessorKey: "status",
-    header: "状态",
+    accessorKey: "actualUserStatus",
+    header: "填报人状态",
     cell: ({ row }) => {
-      const status = row.getValue("status") as string;
+      const prediction = row.original;
+      const status = prediction.actualUserStatus || "未填写";
       
       let color = "";
       let text = "";
       
       switch (status) {
-        case "未填写":
-          color = "bg-gray-200";
-          text = "未填写";
-          break;
-        case "草稿":
+        case "draft":
           color = "bg-yellow-200";
           text = "草稿";
           break;
-        case "已提交":
+        case "submitted":
           color = "bg-green-200";
           text = "已提交";
           break;
@@ -113,7 +114,40 @@ export const columns: ColumnDef<Prediction>[] = [
           break;
         default:
           color = "bg-gray-200";
-          text = status;
+          text = "未填写";
+      }
+      
+      return (
+        <Badge className={`${color} text-gray-900`}>{text}</Badge>
+      );
+    },
+  },
+  {
+    accessorKey: "actualFinanceStatus",
+    header: "填报财务状态",
+    cell: ({ row }) => {
+      const prediction = row.original;
+      const status = prediction.actualFinanceStatus || "未填写";
+      
+      let color = "";
+      let text = "";
+      
+      switch (status) {
+        case "draft":
+          color = "bg-yellow-200";
+          text = "草稿";
+          break;
+        case "submitted":
+          color = "bg-green-200";
+          text = "已提交";
+          break;
+        case "pending_withdrawal":
+          color = "bg-blue-200";
+          text = "撤回审核中";
+          break;
+        default:
+          color = "bg-gray-200";
+          text = "未填写";
       }
       
       return (
@@ -191,8 +225,8 @@ export const columns: ColumnDef<Prediction>[] = [
     },
   },
   {
-    id: "actions",
-    header: "操作",
+    id: "userActions",
+    header: "填报人操作",
     cell: ({ row }) => {
       const router = useRouter()
       const { toast } = useToast()
@@ -203,8 +237,8 @@ export const columns: ColumnDef<Prediction>[] = [
       // 提交项目的函数
       const handleSubmit = async () => {
         try {
-          // 调用API提交预测
-          const response = await fetch(`/api/funding/predict/submit-single/${prediction.id}`, {
+          // 调用API提交实际支付
+          const response = await fetch(`/api/funding/actual/submit-single/${prediction.id}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -212,6 +246,7 @@ export const columns: ColumnDef<Prediction>[] = [
             body: JSON.stringify({
               year: prediction.year,
               month: prediction.month,
+              isUserReport: true
             }),
           });
           
@@ -238,17 +273,18 @@ export const columns: ColumnDef<Prediction>[] = [
         }
       };
       
+      // 获取用户状态
+      const userStatus = prediction.actualUserStatus || "未填写";
+      
       return (
         <div className="flex items-center gap-2">
           {/* 查看详情按钮 - 除了未填写和草稿状态外都显示 */}
-          {prediction.status !== "未填写" && prediction.status !== "草稿" && (
+          {userStatus !== "未填写" && userStatus !== "draft" && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                const year = new Date().getFullYear()
-                const month = new Date().getMonth() + 2
-                window.location.href = `/funding/predict/view?id=${prediction.id}&year=${year}&month=${month}`
+                window.location.href = `/funding/actual/view?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}&role=user`
               }}
               className="h-8 px-2 py-0"
             >
@@ -258,14 +294,12 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 填报按钮 - 只对未填写和草稿状态可用 */}
-          {(prediction.status === "未填写" || prediction.status === "草稿") && (
+          {(userStatus === "未填写" || userStatus === "draft") && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                const year = new Date().getFullYear()
-                const month = new Date().getMonth() + 2
-                window.location.href = `/funding/predict/edit?id=${prediction.id}&year=${year}&month=${month}`
+                window.location.href = `/funding/actual/edit?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}&role=user`
               }}
               className="h-8 px-2 py-0"
             >
@@ -275,7 +309,7 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 提交按钮 - 对草稿状态可用 */}
-          {prediction.status === "草稿" && (
+          {userStatus === "draft" && (
             <Button
               variant="outline"
               size="sm"
@@ -288,7 +322,7 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 撤回申请按钮 - 只对已提交状态可用 */}
-          {prediction.status === "已提交" && (
+          {userStatus === "submitted" && (
             <Button
               variant="outline"
               size="sm"
@@ -301,7 +335,165 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 取消撤回申请按钮 - 只对撤回审核中状态可用 */}
-          {prediction.status === "pending_withdrawal" && (
+          {userStatus === "pending_withdrawal" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCancelWithdrawalOpen(true)}
+              className="h-8 px-2 py-0"
+            >
+              <XCircle className="h-4 w-4" />
+              <span className="ml-1">取消撤回</span>
+            </Button>
+          )}
+          
+          <WithdrawalRequestDialog
+            open={open}
+            setOpen={setOpen}
+            projectId={prediction.id}
+            projectName={prediction.project}
+            onComplete={() => {
+              // 刷新数据
+              router.refresh()
+              // 提示用户刷新页面
+              toast({
+                title: "撤回申请已提交",
+                description: "状态已更新为「撤回申请待审批」"
+              })
+            }}
+          />
+          
+          <CancelWithdrawalDialog
+            open={cancelWithdrawalOpen}
+            setOpen={setCancelWithdrawalOpen}
+            projectId={prediction.id}
+            projectName={prediction.project}
+            onComplete={() => {
+              // 刷新数据
+              router.refresh()
+              // 提示用户刷新页面
+              toast({
+                title: "已取消撤回申请",
+                description: "状态已更新为「已提交」"
+              })
+            }}
+          />
+        </div>
+      )
+    },
+  },
+  {
+    id: "financeActions",
+    header: "填报财务操作",
+    cell: ({ row }) => {
+      const router = useRouter()
+      const { toast } = useToast()
+      const prediction = row.original
+      const [open, setOpen] = useState(false)
+      const [cancelWithdrawalOpen, setCancelWithdrawalOpen] = useState(false)
+      
+      // 提交项目的函数
+      const handleSubmit = async () => {
+        try {
+          // 调用API提交实际支付
+          const response = await fetch(`/api/funding/actual/submit-single/${prediction.id}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              year: prediction.year,
+              month: prediction.month,
+              isUserReport: false
+            }),
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "提交失败");
+          }
+          
+          // 显示成功提示
+          toast({
+            title: "提交成功",
+            description: "项目已成功提交",
+          });
+          
+          // 刷新页面
+          router.refresh();
+        } catch (error) {
+          console.error("提交失败", error);
+          toast({
+            title: "提交失败",
+            description: error instanceof Error ? error.message : "提交失败",
+            variant: "destructive"
+          });
+        }
+      };
+      
+      // 获取财务状态
+      const financeStatus = prediction.actualFinanceStatus || "未填写";
+      
+      return (
+        <div className="flex items-center gap-2">
+          {/* 查看详情按钮 - 除了未填写和草稿状态外都显示 */}
+          {financeStatus !== "未填写" && financeStatus !== "draft" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.location.href = `/funding/actual/view?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}&role=finance`
+              }}
+              className="h-8 px-2 py-0"
+            >
+              <Eye className="h-4 w-4" />
+              <span className="ml-1">查看</span>
+            </Button>
+          )}
+          
+          {/* 填报按钮 - 只对未填写和草稿状态可用 */}
+          {(financeStatus === "未填写" || financeStatus === "draft") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.location.href = `/funding/actual/edit?id=${prediction.id}&year=${prediction.year}&month=${prediction.month}&role=finance`
+              }}
+              className="h-8 px-2 py-0"
+            >
+              <FileEdit className="h-4 w-4" />
+              <span className="ml-1">填报</span>
+            </Button>
+          )}
+          
+          {/* 提交按钮 - 对草稿状态可用 */}
+          {financeStatus === "draft" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSubmit}
+              className="h-8 px-2 py-0"
+            >
+              <Upload className="h-4 w-4" />
+              <span className="ml-1">提交</span>
+            </Button>
+          )}
+          
+          {/* 撤回申请按钮 - 只对已提交状态可用 */}
+          {financeStatus === "submitted" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOpen(true)}
+              className="h-8 px-2 py-0"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span className="ml-1">撤回</span>
+            </Button>
+          )}
+          
+          {/* 取消撤回申请按钮 - 只对撤回审核中状态可用 */}
+          {financeStatus === "pending_withdrawal" && (
             <Button
               variant="outline"
               size="sm"

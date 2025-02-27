@@ -1,7 +1,7 @@
 import { prisma } from '../prisma'
 import { ServiceError } from './types'
 import { hash } from 'bcryptjs'
-import { Role } from '@prisma/client'
+import { Role } from '@/lib/enums'
 
 // 用户查询参数接口
 export interface UserQueryParams {

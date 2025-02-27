@@ -1,4 +1,4 @@
-import { Role } from '@prisma/client'
+import { Role } from '@/lib/enums'
 
 // 资源类型
 export type Resource = 

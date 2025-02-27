@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Role } from "@prisma/client"
+import { Role } from "@/lib/enums"
 import { User } from "./page"
 import { Checkbox } from "@/components/ui/checkbox"
 

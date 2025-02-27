@@ -7,7 +7,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { MoreHorizontal, Building2, Trash2, Edit } from "lucide-react"
-import { Organization, Role } from "@prisma/client"
+import { Organization } from "@prisma/client"
+import { Role } from "@/lib/enums"
 import { DataTableColumnHeader } from "./data-table-column-header"
 import { DataTableRowActions } from "./data-table-row-actions"
 

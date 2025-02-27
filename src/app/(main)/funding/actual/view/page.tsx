@@ -50,6 +50,8 @@ interface FundRecord {
   year: number
   month: number
   predicted: number | null
+  actualUser: number | null
+  actualFinance: number | null
   status: string
   remark: string
 }
@@ -58,6 +60,8 @@ interface ProjectData {
   id: string
   name: string
   status: string
+  userStatus?: string
+  financeStatus?: string
   organization: {
     id: string
     name: string
@@ -74,10 +78,14 @@ interface ProjectData {
   }[]
 }
 
-export default function PredictViewPage() {
+export default function ActualViewPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  
+  // 获取角色参数，默认为user
+  const role = searchParams.get('role') || 'user'
+  const isUserRole = role === 'user'
   
   const [loading, setLoading] = useState(true)
   const [project, setProject] = useState<ProjectData | null>(null)
@@ -111,9 +119,11 @@ export default function PredictViewPage() {
         subProject.fundTypes.forEach(fundType => {
           if (fundType.id === fundTypeId) {
             fundType.records.forEach(record => {
+              // 根据角色获取相应的金额数据
+              const amount = isUserRole ? record.actualUser : record.actualFinance;
               // 只计算有效的记录
-              if (record.predicted !== null) {
-                total += record.predicted;
+              if (amount !== null) {
+                total += amount;
               }
             });
           }
@@ -122,7 +132,7 @@ export default function PredictViewPage() {
     });
     
     return total;
-  }, [project]);
+  }, [project, isUserRole]);
   
   // 提交项目
   const handleSubmit = useCallback(async () => {
@@ -131,8 +141,8 @@ export default function PredictViewPage() {
     try {
       setSubmitting(true);
       
-      // 调用API提交预测
-      const response = await fetch(`/api/funding/predict/submit-single/${project.id}`, {
+      // 调用API提交实际支付
+      const response = await fetch(`/api/funding/actual/submit-single/${project.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -140,6 +150,7 @@ export default function PredictViewPage() {
         body: JSON.stringify({
           year: nextMonth.year,
           month: nextMonth.month,
+          isUserReport: isUserRole
         }),
       });
       
@@ -155,7 +166,7 @@ export default function PredictViewPage() {
       });
       
       // 返回列表页
-      router.push("/funding/predict");
+      router.push("/funding/actual");
     } catch (error) {
       console.error("提交失败", error);
       toast({
@@ -166,7 +177,7 @@ export default function PredictViewPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [project, nextMonth, router, toast]);
+  }, [project, nextMonth, router, toast, isUserRole]);
   
   // 提交撤回申请
   const handleWithdrawalRequest = useCallback(async () => {
@@ -197,7 +208,7 @@ export default function PredictViewPage() {
         });
         
         // 返回列表页
-        router.push("/funding/predict");
+        router.push("/funding/actual");
       }
     } catch (error) {
       console.error("提交撤回申请失败", error);
@@ -221,7 +232,7 @@ export default function PredictViewPage() {
       setSubmitting(true);
       
       // 实现取消撤回申请的API调用
-      const response = await fetch(`/api/funding/predict/withdrawal/cancel/${project.id}`, {
+      const response = await fetch(`/api/funding/actual/withdrawal/cancel/${project.id}`, {
         method: "POST"
       });
       
@@ -236,7 +247,7 @@ export default function PredictViewPage() {
       });
       
       // 返回列表页
-      router.push("/funding/predict");
+      router.push("/funding/actual");
     } catch (error) {
       console.error("取消撤回申请失败", error);
       toast({
@@ -270,12 +281,12 @@ export default function PredictViewPage() {
           description: "缺少必要的项目ID参数",
           variant: "destructive"
         });
-        router.push("/funding/predict");
+        router.push("/funding/actual");
         return;
       }
       
       // 获取项目数据
-      const response = await fetch(`/api/funding/predict/${id}?year=${year}&month=${month}`);
+      const response = await fetch(`/api/funding/actual/${id}?year=${year}&month=${month}&role=${role}`);
       
       if (!response.ok) {
         throw new Error("获取项目详情失败");
@@ -292,7 +303,8 @@ export default function PredictViewPage() {
       projectData.subProjects.forEach((subProject: any) => {
         subProject.fundTypes.forEach((fundType: any) => {
           fundType.records.forEach((record: FundRecord) => {
-            initialRecords[record.id] = record.predicted;
+            // 根据角色选择不同的字段
+            initialRecords[record.id] = isUserRole ? record.actualUser : record.actualFinance;
             initialRemarks[record.id] = record.remark || "";
           });
         });
@@ -309,24 +321,36 @@ export default function PredictViewPage() {
         variant: "destructive"
       });
       setLoading(false);
-      router.push("/funding/predict");
+      router.push("/funding/actual");
     }
-  }, [searchParams, toast, router]);
+  }, [searchParams, toast, router, role, isUserRole]);
   
   // 初始化
   useEffect(() => {
     fetchData();
   }, [fetchData]);
   
+  // 获取当前角色下的状态
+  const getCurrentStatus = useCallback(() => {
+    if (!project) return "";
+    
+    // 根据角色返回不同的状态
+    if (isUserRole) {
+      return project.userStatus || project.status;
+    } else {
+      return project.financeStatus || project.status;
+    }
+  }, [project, isUserRole]);
+  
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.push("/funding/predict")}>
+          <Button variant="outline" onClick={() => router.push("/funding/actual")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
           </Button>
-          <h1 className="text-3xl font-bold tracking-tight">资金需求预测详情</h1>
+          <h1 className="text-3xl font-bold tracking-tight">实际支付详情 ({isUserRole ? "填报人视图" : "财务视图"})</h1>
         </div>
       </div>
       
@@ -373,9 +397,11 @@ export default function PredictViewPage() {
                           {/* 历史月份数据 */}
                           {[1, 2, 3].filter(month => month < nextMonth.month).map(month => {
                             const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year);
+                            // 根据角色显示不同的数据
+                            const amount = record ? (isUserRole ? record.actualUser : record.actualFinance) : null;
                             return (
                               <TableCell key={month}>
-                                {record ? formatCurrency(record.predicted) : ""}
+                                {amount !== null ? formatCurrency(amount) : ""}
                               </TableCell>
                             );
                           })}
@@ -383,15 +409,19 @@ export default function PredictViewPage() {
                           <TableCell>
                             {fundType.records
                               .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
-                              .map(record => (
-                                <Input
-                                  key={record.id}
-                                  type="text"
-                                  value={formatCurrency(record.predicted)}
-                                  readOnly
-                                  className="w-full bg-muted cursor-not-allowed"
-                                />
-                              ))}
+                              .map(record => {
+                                // 根据角色显示不同的数据
+                                const amount = isUserRole ? record.actualUser : record.actualFinance;
+                                return (
+                                  <Input
+                                    key={record.id}
+                                    type="text"
+                                    value={amount !== null ? formatCurrency(amount) : ""}
+                                    readOnly
+                                    className="w-full bg-muted cursor-not-allowed"
+                                  />
+                                );
+                              })}
                           </TableCell>
                           {/* 备注 */}
                           <TableCell>
@@ -430,11 +460,11 @@ export default function PredictViewPage() {
             </CardContent>
             <CardFooter className="flex justify-end gap-2 p-4 bg-muted/50">
               {/* 填报按钮 - 只对未填写和草稿状态可用 */}
-              {(project.status === "未填写" || project.status === "草稿") && (
+              {(getCurrentStatus() === "未填写" || getCurrentStatus() === "草稿") && (
                 <Button 
                   variant="outline"
                   size="sm"
-                  onClick={() => router.push(`/funding/predict/edit?id=${project.id}&year=${nextMonth.year}&month=${nextMonth.month}`)}
+                  onClick={() => router.push(`/funding/actual/edit?id=${project.id}&year=${nextMonth.year}&month=${nextMonth.month}&role=${role}`)}
                   className="h-8 px-2 py-0"
                 >
                   <FileEdit className="h-4 w-4" />
@@ -443,7 +473,7 @@ export default function PredictViewPage() {
               )}
               
               {/* 提交按钮 - 对草稿状态可用 */}
-              {project.status === "草稿" && (
+              {getCurrentStatus() === "草稿" && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button 
@@ -471,7 +501,7 @@ export default function PredictViewPage() {
               )}
               
               {/* 撤回申请按钮 - 对已提交状态可用 */}
-              {project.status === "已提交" && (
+              {getCurrentStatus() === "已提交" && (
                 <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
                   <DialogTrigger asChild>
                     <Button 
@@ -525,7 +555,7 @@ export default function PredictViewPage() {
               )}
               
               {/* 取消撤回申请按钮 - 对待审核状态可用 */}
-              {project.status === "pending_withdrawal" && (
+              {getCurrentStatus() === "pending_withdrawal" && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button 
@@ -559,4 +589,4 @@ export default function PredictViewPage() {
       </div>
     </div>
   )
-} 
+}
