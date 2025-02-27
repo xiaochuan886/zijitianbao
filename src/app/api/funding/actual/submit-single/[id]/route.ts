@@ -3,28 +3,27 @@ import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 
-// 批量提交资金需求预测
-export async function POST(req: NextRequest) {
+// 提交单个项目的资金需求预测
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
+    // 获取项目ID
+    const projectId = params.id;
+    
     // 获取用户会话
     const session = await getServerSession(authOptions);
     
     // 临时解决方案：即使没有会话也继续执行，不返回401错误
-    // 在生产环境中应该删除这段代码，保留下面的授权检查
-    // if (!session || !session.user) {
-    //   return NextResponse.json({ error: "未授权访问" }, { status: 401 });
-    // }
-
+    let userId = "temp-user-id";
+    if (session && session.user) {
+      userId = session.user.id;
+    }
+    
     // 获取请求数据
     const data = await req.json();
-    const { projectIds, year, month } = data;
-
-    if (!projectIds || !Array.isArray(projectIds) || projectIds.length === 0) {
-      return NextResponse.json(
-        { error: "无效的项目ID列表" },
-        { status: 400 }
-      );
-    }
+    const { year, month } = data;
 
     if (!year || !month) {
       return NextResponse.json(
@@ -37,15 +36,20 @@ export async function POST(req: NextRequest) {
     const records = await db.record.findMany({
       where: {
         subProject: {
-          projectId: {
-            in: projectIds,
-          },
+          projectId: projectId,
         },
         year: parseInt(year),
         month: parseInt(month),
         status: "draft", // 只提交草稿状态的记录
       },
     });
+
+    if (records.length === 0) {
+      return NextResponse.json(
+        { error: "未找到相关的草稿记录，请先填写数据" },
+        { status: 404 }
+      );
+    }
 
     // 检查是否有未填写的数据
     const hasEmptyValues = records.some(record => record.predicted === null);
@@ -62,7 +66,7 @@ export async function POST(req: NextRequest) {
         where: { id: record.id },
         data: {
           status: "submitted",
-          submittedBy: session?.user?.id || "temp-user-id",
+          submittedBy: userId,
           submittedAt: new Date(),
           updatedAt: new Date(),
         },
@@ -76,9 +80,9 @@ export async function POST(req: NextRequest) {
       count: records.length
     });
   } catch (error) {
-    console.error("批量提交资金需求预测失败", error);
+    console.error("提交单个项目资金需求预测失败", error);
     return NextResponse.json(
-      { error: "批量提交资金需求预测失败" },
+      { error: "提交失败，请稍后重试" },
       { status: 500 }
     );
   }

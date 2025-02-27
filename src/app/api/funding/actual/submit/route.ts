@@ -1,123 +1,138 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
-// 验证请求数据
-const submitSchema = z.object({
-  records: z.record(z.string(), z.number().nullable()),
-  remarks: z.record(z.string(), z.string().nullable()),
-  isUserReport: z.boolean().default(true), // 区分填报人和财务填报
-});
-
-export async function POST(req: Request) {
+// 提交资金需求预测
+export async function POST(req: NextRequest) {
   try {
-    // 获取用户会话
+    // 验证用户会话
     const session = await getServerSession(authOptions);
-    
-    // 临时解决方案：即使没有会话也继续执行，不返回401错误
-    let userId = "temp-user-id";
-    if (session && session.user) {
-      userId = session.user.id;
+    if (!session || !session.user) {
+      return NextResponse.json({ error: "未授权操作" }, { status: 401 });
     }
 
-    // 解析请求体
+    const userId = session.user.id;
     const body = await req.json();
     
-    // 验证请求数据
-    const result = submitSchema.safeParse(body);
-    if (!result.success) {
-      return NextResponse.json({ 
-        error: "请求数据格式错误", 
-        details: result.error.format() 
-      }, { status: 400 });
+    // 基本参数校验
+    if (!body.records || !body.projectInfo) {
+      return NextResponse.json({ error: "提交数据格式不正确" }, { status: 400 });
     }
-    
-    const { records, remarks, isUserReport } = result.data;
 
-    // 获取所有要更新的记录ID
-    const recordIds = Object.keys(records);
+    // 获取临时记录列表，用于确定检查项目
+    const tempRecords = body.projectInfo.tempRecords || [];
+    if (tempRecords.length === 0) {
+      return NextResponse.json({ error: "没有可提交的记录" }, { status: 400 });
+    }
+
+    // 整理出所有相关的子项目ID，用于检查用户是否已提交过
+    const subProjectIds = [...new Set(tempRecords.map((record: any) => record.subProjectId))];
     
-    if (recordIds.length === 0) {
+    // 获取当前月份
+    const { year, month } = body.projectInfo.nextMonth;
+    
+    // 检查用户是否已经对这些项目提交过预测
+    const existingSubmissions = await db.record.findMany({
+      where: {
+        subProjectId: { in: subProjectIds },
+        year: year,
+        month: month,
+        status: "submitted",
+        submittedBy: userId
+      }
+    });
+
+    if (existingSubmissions.length > 0) {
       return NextResponse.json({ 
-        error: "没有要提交的记录" 
+        error: "您已经对部分项目提交过预测，不能重复提交",
+        affectedProjects: existingSubmissions.map(e => e.subProjectId)
       }, { status: 400 });
     }
     
-    // 查询这些记录是否存在并检查状态
-    const existingRecords = await db.record.findMany({
-      where: {
-        id: {
-          in: recordIds
+    // 开始事务
+    const result = await db.$transaction(async (tx) => {
+      let count = 0;
+      
+      // 处理所有记录
+      for (const [id, value] of Object.entries(body.records)) {
+        // 检查是否为临时记录ID
+        if (id.startsWith('temp-')) {
+          // 解析临时ID获取信息
+          const [_, subProjectId, fundTypeId, yearStr, monthStr] = id.split('-');
+          
+          if (!subProjectId || !fundTypeId || !yearStr || !monthStr) {
+            continue;
+          }
+          
+          // 检查是否有其他用户已经提交过该记录
+          const existingRecord = await tx.record.findFirst({
+            where: {
+              subProjectId: subProjectId,
+              year: parseInt(yearStr),
+              month: parseInt(monthStr),
+              status: "submitted"
+            }
+          });
+          
+          if (existingRecord) {
+            // 如果其他用户已提交，则跳过此记录，不覆盖
+            continue;
+          }
+          
+          // 创建新记录
+          await tx.record.create({
+            data: {
+              subProjectId: subProjectId,
+              year: parseInt(yearStr),
+              month: parseInt(monthStr),
+              predicted: value as number,
+              status: "submitted",
+              submittedBy: userId,
+              submittedAt: new Date(),
+              remark: body.remarks[id] || ""
+            }
+          });
+          
+          count++;
+        } else {
+          // 处理已存在的记录
+          const record = await tx.record.findUnique({
+            where: { id }
+          });
+          
+          if (record) {
+            // 检查记录状态，只有草稿状态的记录可以被提交
+            if (record.status === "draft") {
+              await tx.record.update({
+                where: { id },
+                data: {
+                  predicted: value as number,
+                  status: "submitted",
+                  submittedBy: userId,
+                  submittedAt: new Date(),
+                  remark: body.remarks[id] || ""
+                }
+              });
+              
+              count++;
+            }
+          }
         }
       }
+      
+      return { count };
     });
     
-    // 验证所有记录是否存在
-    if (existingRecords.length !== recordIds.length) {
-      const missingRecordIds = recordIds.filter(
-        id => !existingRecords.some(record => record.id === id)
-      );
-      
-      return NextResponse.json({ 
-        error: "部分记录不存在", 
-        missingRecordIds 
-      }, { status: 400 });
-    }
-    
-    // 验证记录状态，只有草稿状态的记录才能提交
-    const nonDraftRecords = existingRecords.filter(
-      record => record.status !== "draft" && record.status !== "pending_withdrawal"
-    );
-    
-    if (nonDraftRecords.length > 0 && process.env.NODE_ENV !== "development") {
-      return NextResponse.json({ 
-        error: "只有草稿或待撤回状态的记录才能提交", 
-        recordIds: nonDraftRecords.map(record => record.id) 
-      }, { status: 400 });
-    }
-    
-    // 更新记录
-    const updatePromises = recordIds.map(async recordId => {
-      const updateData: any = {
-        status: "submitted",
-        submittedBy: userId,
-        submittedAt: new Date()
-      };
-      
-      // 根据填报角色更新不同的字段
-      if (isUserReport) {
-        updateData.actualUser = records[recordId];
-      } else {
-        updateData.actualFinance = records[recordId];
-      }
-      
-      // 更新备注
-      if (remarks[recordId] !== undefined) {
-        updateData.remark = remarks[recordId];
-      }
-      
-      return db.record.update({
-        where: { id: recordId },
-        data: updateData
-      });
-    });
-    
-    // 执行所有更新操作
-    await Promise.all(updatePromises);
-    
-    return NextResponse.json({
-      success: true,
-      message: "记录提交成功",
-      submittedRecords: recordIds.length
+    return NextResponse.json({ 
+      message: "提交成功", 
+      count: result.count 
     });
     
   } catch (error) {
-    console.error("提交记录失败", error);
-    return NextResponse.json({ 
-      error: "提交记录失败，请稍后重试", 
-      details: error instanceof Error ? error.message : String(error)
-    }, { status: 500 });
+    console.error("提交资金需求预测失败", error);
+    return NextResponse.json({ error: "提交失败，请稍后重试" }, { status: 500 });
   }
 } 

@@ -2,21 +2,20 @@
 
 import { toast } from "sonner";
 
-// 客户端API函数，用于保存实际支付草稿
-export const saveActualPaymentDrafts = async (records, remarks = "", isUserReport = true) => {
+// 客户端API函数，用于提交撤回申请
+export const submitWithdrawalRequest = async (recordId, reason) => {
   try {
-    console.log("客户端保存实际支付草稿:", { records, remarks, isUserReport });
+    console.log("客户端发送撤回申请:", { recordId, reason });
     
     // 使用浏览器原生fetch API
-    const response = await fetch("/api/funding/actual/save", {
+    const response = await fetch("/api/funding/predict/withdrawal-v2", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        records,
-        remarks,
-        isUserReport
+        recordId,
+        reason,
       }),
     });
 
@@ -31,62 +30,15 @@ export const saveActualPaymentDrafts = async (records, remarks = "", isUserRepor
       }
       
       // 处理400错误
-      if (response.status === 400) {
-        throw new Error(data.error || "保存草稿失败");
+      if (response.status === 400 && data.currentStatus) {
+        throw new Error(`只有已提交的记录才能申请撤回，当前状态: ${data.currentStatus}`);
       }
       
-      throw new Error(data.error || "保存草稿失败");
+      throw new Error(data.error || "提交撤回申请失败");
     }
     
-    // 成功保存草稿
-    toast.success(data.message || `已成功保存 ${data.count || records.length} 条记录`);
-    
-    return { success: true, data };
-  } catch (error) {
-    console.error("保存实际支付草稿失败:", error);
-    toast.error(error.message || "保存草稿失败");
-    return { success: false, error };
-  }
-};
-
-// 客户端API函数，用于提交实际支付记录
-export const submitActualPayments = async (records, remarks = "", isUserReport = true) => {
-  try {
-    console.log("客户端提交实际支付记录:", { records, remarks, isUserReport });
-    
-    // 使用浏览器原生fetch API
-    const response = await fetch("/api/funding/actual/submit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        records,
-        remarks,
-        isUserReport
-      }),
-    });
-
-    // 获取完整的响应数据，无论成功或失败
-    const data = await response.json();
-    console.log("API响应:", { status: response.status, data });
-
-    if (!response.ok) {
-      // 处理404错误
-      if (response.status === 404) {
-        throw new Error(data.message || "找不到对应的记录，请刷新页面后重试");
-      }
-      
-      // 处理400错误
-      if (response.status === 400) {
-        throw new Error(data.error || "提交记录失败");
-      }
-      
-      throw new Error(data.error || "提交记录失败");
-    }
-    
-    // 成功提交记录
-    toast.success(data.message || `已成功提交 ${data.count || records.length} 条记录`);
+    // 成功提交撤回申请
+    toast.success(data.message || "撤回申请已提交，等待管理员审核");
     
     // 添加自动刷新页面功能
     setTimeout(() => {
@@ -95,51 +47,40 @@ export const submitActualPayments = async (records, remarks = "", isUserReport =
 
     return { success: true, data };
   } catch (error) {
-    console.error("提交实际支付记录失败:", error);
-    toast.error(error.message || "提交记录失败");
+    console.error("提交撤回申请失败:", error);
+    toast.error(error.message || "提交撤回申请失败");
     return { success: false, error };
   }
 };
 
-// 客户端API函数，用于批量提交实际支付记录
-export const batchSubmitActualPayments = async (projectIds, year, month, isUserReport = true) => {
+// 客户端API函数，用于取消撤回申请
+export const cancelWithdrawalRequest = async (projectId) => {
   try {
-    console.log("客户端批量提交实际支付记录:", { projectIds, year, month, isUserReport });
+    console.log("客户端发送取消撤回申请:", { projectId });
     
     // 使用浏览器原生fetch API
-    const response = await fetch("/api/funding/actual/batch-submit", {
+    const response = await fetch(`/api/funding/predict/withdrawal/cancel/${projectId}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectIds,
-        year,
-        month,
-        isUserReport
-      }),
+      }
     });
 
     // 获取完整的响应数据，无论成功或失败
     const data = await response.json();
-    console.log("API响应:", { status: response.status, data });
+    console.log("取消撤回API响应:", { status: response.status, data });
 
     if (!response.ok) {
       // 处理404错误
       if (response.status === 404) {
-        throw new Error(data.message || "找不到对应的记录，请刷新页面后重试");
+        throw new Error(data.message || "找不到待撤回的记录，请刷新页面后重试");
       }
       
-      // 处理400错误
-      if (response.status === 400) {
-        throw new Error(data.error || "批量提交记录失败");
-      }
-      
-      throw new Error(data.error || "批量提交记录失败");
+      throw new Error(data.error || "取消撤回申请失败");
     }
     
-    // 成功批量提交记录
-    toast.success(data.message || `已成功批量提交 ${data.count || 0} 条记录`);
+    // 成功取消撤回申请
+    toast.success(data.message || "已取消撤回申请");
     
     // 添加自动刷新页面功能
     setTimeout(() => {
@@ -148,37 +89,48 @@ export const batchSubmitActualPayments = async (projectIds, year, month, isUserR
 
     return { success: true, data };
   } catch (error) {
-    console.error("批量提交实际支付记录失败:", error);
-    toast.error(error.message || "批量提交记录失败");
+    console.error("取消撤回申请失败:", error);
+    toast.error(error.message || "取消撤回申请失败");
     return { success: false, error };
   }
 };
 
-// 客户端API函数，用于获取元数据（组织和部门列表）
-export const fetchActualPaymentMetadata = async () => {
+// 测试API连接状态的函数
+export const testApiConnection = async () => {
   try {
-    console.log("获取实际支付元数据");
+    // 测试撤回API
+    const withdrawalResponse = await fetch("/api/funding/predict/withdrawal", {
+      method: "HEAD",
+    });
     
-    // 使用浏览器原生fetch API
-    const response = await fetch("/api/funding/actual/meta", {
+    // 测试测试版API
+    const testResponse = await fetch("/api/funding/predict/withdrawal-v2", {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+    });
+    
+    // 输出测试结果
+    console.log("API连接测试结果:", {
+      withdrawalApi: {
+        status: withdrawalResponse.status,
+        ok: withdrawalResponse.ok
+      },
+      testApi: {
+        status: testResponse.status,
+        ok: testResponse.ok,
+        data: await testResponse.json()
       }
     });
-
-    // 获取完整的响应数据，无论成功或失败
-    const data = await response.json();
-    console.log("元数据API响应:", { status: response.status, data });
-
-    if (!response.ok) {
-      throw new Error(data.error || "获取元数据失败");
-    }
     
-    return { success: true, data };
+    return {
+      success: true,
+      withdrawalApiStatus: withdrawalResponse.status,
+      testApiStatus: testResponse.status
+    };
   } catch (error) {
-    console.error("获取实际支付元数据失败:", error);
-    toast.error(error.message || "获取元数据失败");
-    return { success: false, error };
+    console.error("API连接测试失败:", error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }; 

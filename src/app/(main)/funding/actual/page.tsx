@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/ui/data-table"
 import { FileEdit, Upload, RotateCcw } from "lucide-react"
-import { columns } from "./columns"
-import type { ActualPayment } from "./columns"
+import { columns, Prediction } from "./columns"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -17,83 +16,46 @@ import {
   SelectValue 
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger
-} from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
-import { fetchActualPaymentMetadata, batchSubmitActualPayments } from "./client-api"
-import type { ColumnDef } from "@tanstack/react-table"
-import { Label } from "@/components/ui/label"
 
-// 定义类型
-interface Project extends ActualPayment {
-  budget?: number;
-}
-
-interface ApiError {
-  message: string;
-}
-
-// DataTable所需的Column类型
-interface Column {
-  accessorKey?: string
-  id?: string
-  header: string
-  cell?: (props: { row: any }) => React.ReactNode
-}
-
-export default function ActualPaymentPage() {
+export default function PredictPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<Prediction[]>([])
   const [selectedProjects, setSelectedProjects] = useState<string[]>([])
   const [filters, setFilters] = useState({
     organization: "all",
     department: "all",
     project: "",
-    status: "all",
-    isUserReport: true // 默认为填报人视角
+    status: "all"
   })
   const prevFiltersRef = useRef(filters)
   const [organizations, setOrganizations] = useState<{value: string, label: string}[]>([])
   const [departments, setDepartments] = useState<{value: string, label: string}[]>([])
   const [statuses] = useState([
-    { value: "draft", label: "草稿" },
-    { value: "submitted", label: "已提交" },
-    { value: "pending_withdrawal", label: "待撤回" }
+    { value: "未填写", label: "未填写" },
+    { value: "草稿", label: "草稿" },
+    { value: "已提交", label: "已提交" },
+    { value: "pending_withdrawal", label: "撤回审核中" }
   ])
   const [currentMonth, setCurrentMonth] = useState<{year: number, month: number}>({
     year: new Date().getFullYear(),
-    month: new Date().getMonth() // 当前月
+    month: new Date().getMonth() + 2 // 下个月
   })
   const [submitting, setSubmitting] = useState(false)
   const [debouncedFetch, setDebouncedFetch] = useState(false)
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const [activeTab, setActiveTab] = useState("user") // "user" 或 "finance"
 
-  // 获取可填报月份（当前月往前推3个月）
-  const getAvailableMonth = useCallback(() => {
+  // 获取当前月份的下一个月
+  const getNextMonth = useCallback(() => {
     const now = new Date()
     const year = now.getFullYear()
-    const month = now.getMonth() // getMonth() 从 0 开始
-    return { year, month: month + 1 } // 转换为1-12月格式
+    const month = now.getMonth() + 2 // +1 是下个月，+1 是因为 getMonth() 从 0 开始
+    return { year, month }
   }, [])
 
-  // 将列定义转换为DataTable所需的格式
-  const tableColumns = useMemo(() => {
-    return columns.map(col => ({
-      id: col.id || '',
-      header: typeof col.header === 'string' ? col.header : (col.id || ''),
-      accessorKey: 'accessorKey' in col ? col.accessorKey as string : undefined,
-      cell: col.cell
-    }));
-  }, []);
-
-  // 获取项目列表
+  // 获取项目列表 - 优化数据加载逻辑
   const fetchProjects = useCallback(async (forceRefresh = false) => {
     try {
       // 如果正在加载中，取消之前的请求
@@ -114,14 +76,14 @@ export default function ActualPaymentPage() {
       
       setLoading(true)
       
-      // 获取当前可填报月份
-      const availableMonth = getAvailableMonth()
-      setCurrentMonth(availableMonth)
+      // 获取下个月
+      const nextMonth = getNextMonth()
+      setCurrentMonth(nextMonth)
       
       // 构建查询参数
       const params = new URLSearchParams()
-      params.append("year", availableMonth.year.toString())
-      params.append("month", availableMonth.month.toString())
+      params.append("year", nextMonth.year.toString())
+      params.append("month", nextMonth.month.toString())
       
       if (filters.organization !== "all") {
         params.append("organizationId", filters.organization)
@@ -139,14 +101,11 @@ export default function ActualPaymentPage() {
         params.append("status", filters.status)
       }
       
-      // 是否为用户报表
-      params.append("isUserReport", String(filters.isUserReport))
-      
       // 添加缓存控制参数，避免浏览器缓存
       params.append("_t", Date.now().toString())
       
       // 调用API获取项目列表
-      const response = await fetch(`/api/funding/actual?${params.toString()}`, {
+      const response = await fetch(`/api/funding/predict?${params.toString()}`, {
         // 添加缓存控制头，避免浏览器缓存
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -161,16 +120,24 @@ export default function ActualPaymentPage() {
       
       const data = await response.json()
       
-      // 首次加载时，获取所有机构和部门
+      // 首次加载时，获取所有机构和部门（不受筛选影响）
       if (!organizations.length || !departments.length) {
         try {
-          const metaResult = await fetchActualPaymentMetadata()
-          if (metaResult.success) {
-            setOrganizations(metaResult.data.organizations.map((org: any) => ({ 
+          const metaResponse = await fetch(`/api/funding/predict/meta`, {
+            // 添加缓存控制头，避免浏览器缓存
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          })
+          if (metaResponse.ok) {
+            const metaData = await metaResponse.json()
+            setOrganizations(metaData.organizations.map((org: any) => ({ 
               value: org.id, 
-              label: `${org.name} ${org.code ? `(${org.code})` : ''}` 
+              label: `${org.name} (${org.code})` 
             })))
-            setDepartments(metaResult.data.departments.map((dep: any) => ({ 
+            setDepartments(metaData.departments.map((dep: any) => ({ 
               value: dep.id, 
               label: dep.name 
             })))
@@ -180,48 +147,38 @@ export default function ActualPaymentPage() {
         }
       }
       
-      // 更新项目列表
-      setProjects(data.projects || [])
+      // 使用函数式更新，避免闭包问题
+      setProjects(data)
       setLoading(false)
     } catch (error) {
       console.error("获取项目列表失败", error)
       toast({
         title: "错误",
-        description: error instanceof Error ? error.message : "获取项目列表失败",
+        description: "获取项目列表失败",
         variant: "destructive"
       })
       setLoading(false)
     }
-  }, [filters, prevFiltersRef, projects.length, organizations.length, departments.length, getAvailableMonth])
+  }, [filters, getNextMonth, toast, organizations.length, departments.length, projects.length])
 
   // 处理筛选条件变化 - 添加防抖处理
-  const handleFilterChange = useCallback((field: string, value: string) => {
-    const newFilters = { ...filters, [field]: value };
-    setFilters(newFilters);
+  const handleFilterChange = useCallback((newFilters: typeof filters) => {
+    setFilters(newFilters)
     
     // 设置防抖标志
-    setDebouncedFetch(true);
+    setDebouncedFetch(true)
     
     // 清除之前的定时器
     if (fetchTimeoutRef.current) {
-      clearTimeout(fetchTimeoutRef.current);
+      clearTimeout(fetchTimeoutRef.current)
     }
     
     // 设置新的定时器，延迟500ms执行查询
     fetchTimeoutRef.current = setTimeout(() => {
-      setDebouncedFetch(false);
-      fetchProjects(true);
-    }, 500);
-  }, [filters, fetchProjects]);
-
-  // 处理角色切换
-  const handleRoleChange = useCallback((role: string) => {
-    setActiveTab(role);
-    const newFilters = { ...filters, isUserReport: role === "user" };
-    setFilters(newFilters);
-    // 角色切换立即刷新
-    setTimeout(() => fetchProjects(true), 0);
-  }, [filters, fetchProjects]);
+      setDebouncedFetch(false)
+      fetchProjects(true)
+    }, 500)
+  }, [fetchProjects])
 
   // 处理批量填报
   const handleBatchEdit = useCallback(() => {
@@ -233,16 +190,16 @@ export default function ActualPaymentPage() {
       return
     }
     
-    // 检查是否所有选中的项目都可编辑（草稿或待撤回状态）
+    // 检查是否所有选中的项目都可编辑（草稿或未填写状态）
     const hasNonEditableProjects = selectedProjects.some(id => {
       const project = projects.find(p => p.id === id)
-      return project && project.status !== "draft" && project.status !== "pending_withdrawal"
+      return project && project.status !== "草稿" && project.status !== "未填写"
     })
     
     if (hasNonEditableProjects) {
       toast({
         title: "警告",
-        description: "只有草稿和待撤回状态的项目才能编辑",
+        description: "只有草稿和未填写状态的项目才能编辑",
         variant: "destructive"
       })
       return
@@ -250,13 +207,8 @@ export default function ActualPaymentPage() {
     
     // 将选中的项目ID作为查询参数传递
     const ids = selectedProjects.join(",")
-    router.push(`/funding/actual/edit/batch-edit?ids=${ids}&year=${currentMonth.year}&month=${currentMonth.month}&isUserReport=${filters.isUserReport}`)
-  }, [selectedProjects, router, toast, currentMonth, projects, filters.isUserReport])
-
-  // 处理单个编辑
-  const handleSingleEdit = useCallback((projectId: string) => {
-    router.push(`/funding/actual/edit/${projectId}?year=${currentMonth.year}&month=${currentMonth.month}&isUserReport=${filters.isUserReport}`)
-  }, [router, currentMonth, filters.isUserReport])
+    router.push(`/funding/predict/edit?ids=${ids}&year=${currentMonth.year}&month=${currentMonth.month}`)
+  }, [selectedProjects, router, toast, currentMonth, projects])
 
   // 处理批量提交
   const handleBatchSubmit = useCallback(async () => {
@@ -269,15 +221,15 @@ export default function ActualPaymentPage() {
     }
     
     // 检查是否有未填写的项目
-    const hasInvalidProjects = selectedProjects.some(id => {
+    const hasUnfilledProjects = selectedProjects.some(id => {
       const project = projects.find(p => p.id === id)
-      return project && project.status !== "draft" && project.status !== "pending_withdrawal"
+      return project && project.status === "未填写"
     })
     
-    if (hasInvalidProjects) {
+    if (hasUnfilledProjects) {
       toast({
         title: "警告",
-        description: "只有草稿和待撤回状态的项目才能提交",
+        description: "选中的项目中包含未填写的项目，请先填报后再提交",
         variant: "destructive"
       })
       return
@@ -287,37 +239,42 @@ export default function ActualPaymentPage() {
       setSubmitting(true)
       
       // 显示正在提交提示
-      toast({
+      const submittingToast = toast({
         title: "提交中",
         description: `正在提交 ${selectedProjects.length} 个项目，请稍候...`,
       })
       
       // 调用API批量提交
-      const result = await batchSubmitActualPayments(
-        selectedProjects,
-        currentMonth.year,
-        currentMonth.month,
-        filters.isUserReport
-      )
+      const response = await fetch("/api/funding/predict/batch-submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectIds: selectedProjects,
+          year: currentMonth.year,
+          month: currentMonth.month,
+        }),
+      })
       
-      if (result.success) {
-        // 显示成功提示
-        toast({
-          title: "提交成功",
-          description: `已成功提交 ${result.data.submittedRecords || 0} 个项目`,
-        })
-        
-        // 刷新项目列表
-        fetchProjects(true)
-      } else {
-        toast({
-          title: "提交失败",
-          description: result.error && typeof result.error === 'object' && 'message' in result.error 
-            ? String(result.error.message) 
-            : "批量提交失败",
-          variant: "destructive"
-        })
+      // 关闭提交中的提示
+      submittingToast.dismiss()
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "批量提交失败")
       }
+      
+      const result = await response.json()
+      
+      // 显示成功提示
+      toast({
+        title: "提交成功",
+        description: `已成功提交 ${result.count} 个项目`,
+      })
+      
+      // 刷新项目列表
+      fetchProjects(true)
     } catch (error) {
       console.error("批量提交失败", error)
       toast({
@@ -328,7 +285,7 @@ export default function ActualPaymentPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [selectedProjects, projects, currentMonth, fetchProjects, toast, filters.isUserReport])
+  }, [selectedProjects, projects, currentMonth, fetchProjects, toast])
 
   // 初始化
   useEffect(() => {
@@ -350,27 +307,25 @@ export default function ActualPaymentPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">实际支付填报</h1>
+        <h1 className="text-3xl font-bold tracking-tight">资金需求预测填报</h1>
         <Button 
           variant="outline" 
           onClick={() => fetchProjects(true)}
           disabled={loading}
         >
-          {loading ? <span className="animate-spin mr-2">⟳</span> : <RotateCcw className="mr-2 h-4 w-4" />}
-          {loading ? "加载中..." : "刷新"}
+          {loading ? (
+            <>
+              <span className="animate-spin mr-2">⟳</span>
+              加载中...
+            </>
+          ) : (
+            <>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              刷新
+            </>
+          )}
         </Button>
       </div>
-      
-      <Tabs 
-        value={activeTab} 
-        onValueChange={handleRoleChange}
-        className="w-full"
-      >
-        <TabsList className="grid w-[400px] grid-cols-2">
-          <TabsTrigger value="user">填报人</TabsTrigger>
-          <TabsTrigger value="finance">财务</TabsTrigger>
-        </TabsList>
-      </Tabs>
       
       <Card>
         <CardHeader>
@@ -379,14 +334,13 @@ export default function ActualPaymentPage() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <Label>机构</Label>
+              <label className="text-sm font-medium">机构</label>
               <Select
                 value={filters.organization}
-                onValueChange={(value) => handleFilterChange("organization", value)}
-                disabled={loading || organizations.length === 0}
+                onValueChange={(value) => handleFilterChange({...filters, organization: value})}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="选择机构" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
@@ -400,14 +354,13 @@ export default function ActualPaymentPage() {
             </div>
             
             <div className="space-y-2">
-              <Label>部门</Label>
+              <label className="text-sm font-medium">部门</label>
               <Select
                 value={filters.department}
-                onValueChange={(value) => handleFilterChange("department", value)}
-                disabled={loading || departments.length === 0}
+                onValueChange={(value) => handleFilterChange({...filters, department: value})}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="选择部门" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
@@ -421,24 +374,22 @@ export default function ActualPaymentPage() {
             </div>
             
             <div className="space-y-2">
-              <Label>项目</Label>
+              <label className="text-sm font-medium">项目</label>
               <Input
                 placeholder="输入项目名称或编码"
                 value={filters.project}
-                onChange={(e) => handleFilterChange("project", e.target.value)}
-                disabled={loading}
+                onChange={(e) => handleFilterChange({...filters, project: e.target.value})}
               />
             </div>
             
             <div className="space-y-2">
-              <Label>状态</Label>
+              <label className="text-sm font-medium">状态</label>
               <Select
                 value={filters.status}
-                onValueChange={(value) => handleFilterChange("status", value)}
-                disabled={loading}
+                onValueChange={(value) => handleFilterChange({...filters, status: value})}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="选择状态" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
@@ -460,8 +411,7 @@ export default function ActualPaymentPage() {
                   organization: "all",
                   department: "all",
                   project: "",
-                  status: "all",
-                  isUserReport: filters.isUserReport // 保持角色不变
+                  status: "all"
                 }
                 setFilters(resetFilters)
                 // 重置后立即刷新
@@ -483,7 +433,7 @@ export default function ActualPaymentPage() {
       </Card>
       
       <DataTable
-        columns={columns as any[]}
+        columns={columns as any}
         data={projects}
         loading={loading}
         onSelectedRowsChange={handleSelectedRowsChange}
@@ -498,26 +448,26 @@ export default function ActualPaymentPage() {
             loading ||
             selectedProjects.some(id => {
               const project = projects.find(p => p.id === id)
-              return project && project.status !== "draft" && project.status !== "pending_withdrawal"
+              return project && project.status !== "草稿" && project.status !== "未填写"
             })
           }
         >
           <FileEdit className="mr-2 h-4 w-4" />
           批量填报
         </Button>
-        <Button
+        <Button 
           onClick={handleBatchSubmit}
           disabled={
             selectedProjects.length === 0 || 
-            loading || 
-            submitting ||
+            submitting || 
+            loading ||
             selectedProjects.some(id => {
               const project = projects.find(p => p.id === id)
-              return project && project.status !== "draft" && project.status !== "pending_withdrawal"
+              return project && project.status !== "草稿"
             })
           }
         >
-          {submitting ? <span className="animate-spin mr-2">⟳</span> : <Upload className="mr-2 h-4 w-4" />}
+          <Upload className="mr-2 h-4 w-4" />
           {submitting ? "提交中..." : "批量提交"}
         </Button>
       </div>
