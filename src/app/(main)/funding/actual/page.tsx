@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/components/ui/use-toast"
 import { fetchActualPaymentMetadata, batchSubmitActualPayments } from "./client-api"
 import type { ColumnDef } from "@tanstack/react-table"
+import { Label } from "@/components/ui/label"
 
 // 定义类型
 interface Project extends ActualPayment {
@@ -85,10 +86,10 @@ export default function ActualPaymentPage() {
   // 将列定义转换为DataTable所需的格式
   const tableColumns = useMemo(() => {
     return columns.map(col => ({
-      id: col.id,
-      header: typeof col.header === 'string' ? col.header : col.id || '',
-      accessorKey: 'accessorKey' in col ? (col as any).accessorKey : undefined,
-      cell: col.cell as ((props: { row: any }) => React.ReactNode)
+      id: col.id || '',
+      header: typeof col.header === 'string' ? col.header : (col.id || ''),
+      accessorKey: 'accessorKey' in col ? col.accessorKey as string : undefined,
+      cell: col.cell
     }));
   }, []);
 
@@ -191,32 +192,36 @@ export default function ActualPaymentPage() {
       })
       setLoading(false)
     }
-  }, [filters, getAvailableMonth, toast, organizations.length, departments.length, projects.length])
+  }, [filters, prevFiltersRef, projects.length, organizations.length, departments.length, getAvailableMonth])
 
   // 处理筛选条件变化 - 添加防抖处理
-  const handleFilterChange = useCallback((newFilters: typeof filters) => {
-    setFilters(newFilters)
+  const handleFilterChange = useCallback((field: string, value: string) => {
+    const newFilters = { ...filters, [field]: value };
+    setFilters(newFilters);
     
     // 设置防抖标志
-    setDebouncedFetch(true)
+    setDebouncedFetch(true);
     
     // 清除之前的定时器
     if (fetchTimeoutRef.current) {
-      clearTimeout(fetchTimeoutRef.current)
+      clearTimeout(fetchTimeoutRef.current);
     }
     
     // 设置新的定时器，延迟500ms执行查询
     fetchTimeoutRef.current = setTimeout(() => {
-      setDebouncedFetch(false)
-      fetchProjects(true)
-    }, 500)
-  }, [fetchProjects])
+      setDebouncedFetch(false);
+      fetchProjects(true);
+    }, 500);
+  }, [filters, fetchProjects]);
 
   // 处理角色切换
   const handleRoleChange = useCallback((role: string) => {
-    setActiveTab(role)
-    handleFilterChange({...filters, isUserReport: role === "user"})
-  }, [filters, handleFilterChange])
+    setActiveTab(role);
+    const newFilters = { ...filters, isUserReport: role === "user" };
+    setFilters(newFilters);
+    // 角色切换立即刷新
+    setTimeout(() => fetchProjects(true), 0);
+  }, [filters, fetchProjects]);
 
   // 处理批量填报
   const handleBatchEdit = useCallback(() => {
@@ -351,21 +356,16 @@ export default function ActualPaymentPage() {
           onClick={() => fetchProjects(true)}
           disabled={loading}
         >
-          {loading ? (
-            <>
-              <span className="animate-spin mr-2">⟳</span>
-              加载中...
-            </>
-          ) : (
-            <>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              刷新
-            </>
-          )}
+          {loading ? <span className="animate-spin mr-2">⟳</span> : <RotateCcw className="mr-2 h-4 w-4" />}
+          {loading ? "加载中..." : "刷新"}
         </Button>
       </div>
       
-      <Tabs value={activeTab} onValueChange={handleRoleChange} className="w-full">
+      <Tabs 
+        value={activeTab} 
+        onValueChange={handleRoleChange}
+        className="w-full"
+      >
         <TabsList className="grid w-[400px] grid-cols-2">
           <TabsTrigger value="user">填报人</TabsTrigger>
           <TabsTrigger value="finance">财务</TabsTrigger>
@@ -379,13 +379,14 @@ export default function ActualPaymentPage() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">机构</label>
+              <Label>机构</Label>
               <Select
                 value={filters.organization}
-                onValueChange={(value) => handleFilterChange({...filters, organization: value})}
+                onValueChange={(value) => handleFilterChange("organization", value)}
+                disabled={loading || organizations.length === 0}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="选择机构" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
@@ -399,13 +400,14 @@ export default function ActualPaymentPage() {
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">部门</label>
+              <Label>部门</Label>
               <Select
                 value={filters.department}
-                onValueChange={(value) => handleFilterChange({...filters, department: value})}
+                onValueChange={(value) => handleFilterChange("department", value)}
+                disabled={loading || departments.length === 0}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="选择部门" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
@@ -419,22 +421,24 @@ export default function ActualPaymentPage() {
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">项目</label>
+              <Label>项目</Label>
               <Input
                 placeholder="输入项目名称或编码"
                 value={filters.project}
-                onChange={(e) => handleFilterChange({...filters, project: e.target.value})}
+                onChange={(e) => handleFilterChange("project", e.target.value)}
+                disabled={loading}
               />
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">状态</label>
+              <Label>状态</Label>
               <Select
                 value={filters.status}
-                onValueChange={(value) => handleFilterChange({...filters, status: value})}
+                onValueChange={(value) => handleFilterChange("status", value)}
+                disabled={loading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="选择状态" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
@@ -479,7 +483,7 @@ export default function ActualPaymentPage() {
       </Card>
       
       <DataTable
-        columns={tableColumns}
+        columns={columns as any[]}
         data={projects}
         loading={loading}
         onSelectedRowsChange={handleSelectedRowsChange}
@@ -501,19 +505,19 @@ export default function ActualPaymentPage() {
           <FileEdit className="mr-2 h-4 w-4" />
           批量填报
         </Button>
-        <Button 
+        <Button
           onClick={handleBatchSubmit}
           disabled={
             selectedProjects.length === 0 || 
-            submitting || 
-            loading ||
+            loading || 
+            submitting ||
             selectedProjects.some(id => {
               const project = projects.find(p => p.id === id)
               return project && project.status !== "draft" && project.status !== "pending_withdrawal"
             })
           }
         >
-          <Upload className="mr-2 h-4 w-4" />
+          {submitting ? <span className="animate-spin mr-2">⟳</span> : <Upload className="mr-2 h-4 w-4" />}
           {submitting ? "提交中..." : "批量提交"}
         </Button>
       </div>

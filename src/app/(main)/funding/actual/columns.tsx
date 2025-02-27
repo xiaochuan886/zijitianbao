@@ -91,6 +91,9 @@ export const columns: ColumnDef<ActualPayment>[] = [
   {
     accessorKey: "name",
     header: "项目",
+    cell: ({ row }) => {
+      return row.original.name || '-';
+    }
   },
   {
     accessorKey: "period",
