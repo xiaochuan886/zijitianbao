@@ -110,7 +110,7 @@ const ExtendedRecordStatus = {
   ...RecordStatus,
   APPROVED: "approved",
   REJECTED: "rejected",
-  UNFILLED: "UNFILLED"
+  UNFILLED: "unfilled"
 }
 
 // 状态映射
@@ -157,20 +157,36 @@ export default function PredictV2Page() {
 
   // 分离待处理和已处理的记录
   const pendingRecords = useMemo(() => {
-    return records.filter(r => 
-      r.status === RecordStatus.DRAFT || 
-      r.status === ExtendedRecordStatus.REJECTED ||
-      r.status === ExtendedRecordStatus.UNFILLED
-    )
-  }, [records])
+    // 记录一下状态枚举值，以便调试
+    console.log('状态枚举值:', {
+      DRAFT: RecordStatus.DRAFT,
+      SUBMITTED: RecordStatus.SUBMITTED,
+      PENDING_WITHDRAWAL: RecordStatus.PENDING_WITHDRAWAL,
+      APPROVED: ExtendedRecordStatus.APPROVED,
+      REJECTED: ExtendedRecordStatus.REJECTED,
+      UNFILLED: ExtendedRecordStatus.UNFILLED
+    });
+    
+    return records.filter(r => {
+      // 确保比较时不区分大小写
+      const recordStatus = r.status.toLowerCase();
+      
+      return recordStatus === RecordStatus.DRAFT.toLowerCase() || 
+             recordStatus === ExtendedRecordStatus.REJECTED.toLowerCase() ||
+             recordStatus === ExtendedRecordStatus.UNFILLED.toLowerCase();
+    });
+  }, [records]);
   
   const processedRecords = useMemo(() => {
-    return records.filter(r => 
-      r.status === RecordStatus.SUBMITTED || 
-      r.status === ExtendedRecordStatus.APPROVED || 
-      r.status === RecordStatus.PENDING_WITHDRAWAL
-    )
-  }, [records])
+    return records.filter(r => {
+      // 确保比较时不区分大小写
+      const recordStatus = r.status.toLowerCase();
+      
+      return recordStatus === RecordStatus.SUBMITTED.toLowerCase() || 
+             recordStatus === ExtendedRecordStatus.APPROVED.toLowerCase() || 
+             recordStatus === RecordStatus.PENDING_WITHDRAWAL.toLowerCase();
+    });
+  }, [records]);
 
   // 处理选中记录变化
   const handleRecordSelection = useCallback((recordId: string) => {
@@ -467,7 +483,7 @@ export default function PredictV2Page() {
     <div className="space-y-4">
       <SimplePageHeader 
         title="资金需求预测填报 V2" 
-        description={`当前填报月份: ${currentMonth.label}`}
+        description={`当前填报月份: ${currentMonth.year}年${currentMonth.month}月`}
       />
       
       <SimpleFilterCard>
@@ -506,7 +522,13 @@ export default function PredictV2Page() {
                 ...projectCategories.map(category => ({ value: category.id, label: category.name }))
               ]}
               value={filters.projectCategoryId || "all"}
-              onChange={(value) => handleFilterChange("projectCategoryId", value)}
+              onChange={(value) => {
+                console.log('选择项目分类:', value);
+                // 当项目分类变化时，重置项目和子项目的选择
+                handleFilterChange("projectCategoryId", value);
+                handleFilterChange("projectId", "all");
+                handleFilterChange("subProjectId", "all");
+              }}
               placeholder="选择项目分类"
             />
           </div>
@@ -514,12 +536,53 @@ export default function PredictV2Page() {
           <div>
             <label className="text-sm font-medium">项目</label>
             <Combobox
-              options={[
-                { value: "all", label: "全部项目" },
-                ...getProjectsByCategory(filters.projectCategoryId).map(project => ({ value: project.id, label: project.name }))
-              ]}
+              options={(() => {
+                // 检查是否有项目数据
+                if (!projects || projects.length === 0) {
+                  console.log('没有可用的项目数据 - 从数据库获取的项目总数: 0');
+                  return [
+                    { value: "all", label: "暂无项目数据" }
+                  ];
+                }
+                
+                // 如果没有选择项目分类或选择了"全部分类"，则显示所有项目
+                if (!filters.projectCategoryId || filters.projectCategoryId === 'all') {
+                  console.log('显示所有项目，数量:', projects.length);
+                  return [
+                    { value: "all", label: "全部项目" },
+                    ...projects.map(project => ({ 
+                      value: project.id, 
+                      label: project.name 
+                    }))
+                  ];
+                }
+                
+                // 尝试获取指定分类下的项目
+                const filteredProjects = getProjectsByCategory(filters.projectCategoryId);
+                console.log(`分类[${filters.projectCategoryId}]下的项目数量: ${filteredProjects.length}`);
+                
+                // 如果筛选结果为空，提供友好提示
+                if (filteredProjects.length === 0) {
+                  return [
+                    { value: "all", label: `该分类下暂无项目` }
+                  ];
+                }
+                
+                return [
+                  { value: "all", label: "全部项目" },
+                  ...filteredProjects.map(project => ({ 
+                    value: project.id, 
+                    label: project.name 
+                  }))
+                ];
+              })()}
               value={filters.projectId || "all"}
-              onChange={(value) => handleFilterChange("projectId", value)}
+              onChange={(value) => {
+                console.log('选择项目:', value);
+                // 当项目变化时，重置子项目的选择
+                handleFilterChange("projectId", value);
+                handleFilterChange("subProjectId", "all");
+              }}
               placeholder="选择项目"
             />
           </div>
@@ -527,10 +590,24 @@ export default function PredictV2Page() {
           <div>
             <label className="text-sm font-medium">子项目</label>
             <Combobox
-              options={[
-                { value: "all", label: "全部子项目" },
-                ...getSubProjectsByProject(filters.projectId).map(subProject => ({ value: subProject.id, label: subProject.name }))
-              ]}
+              options={(() => {
+                const subProjectOptions = getSubProjectsByProject(filters.projectId);
+                
+                // 如果没有子项目数据，提供友好提示
+                if (subProjectOptions.length === 0) {
+                  return [
+                    { value: "all", label: "暂无子项目数据" }
+                  ];
+                }
+                
+                return [
+                  { value: "all", label: "全部子项目" },
+                  ...subProjectOptions.map(subProject => ({ 
+                    value: subProject.id, 
+                    label: subProject.name 
+                  }))
+                ];
+              })()}
               value={filters.subProjectId || "all"}
               onChange={(value) => handleFilterChange("subProjectId", value)}
               placeholder="选择子项目"
@@ -551,46 +628,29 @@ export default function PredictV2Page() {
           </div>
           
           <div>
-            <label className="text-sm font-medium">年份</label>
-            <Combobox
-              options={[
-                { value: (currentMonth.year - 1).toString(), label: `${currentMonth.year - 1}年` },
-                { value: currentMonth.year.toString(), label: `${currentMonth.year}年` },
-                { value: (currentMonth.year + 1).toString(), label: `${currentMonth.year + 1}年` }
-              ]}
-              value={filters.year || currentMonth.year.toString()}
-              onChange={(value) => handleFilterChange("year", value)}
-              placeholder="选择年份"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium">月份</label>
-            <Combobox
-              options={Array.from({ length: 12 }, (_, i) => i + 1).map(month => ({
-                value: month.toString(),
-                label: `${month}月`
-              }))}
-              value={filters.month || currentMonth.month.toString()}
-              onChange={(value) => handleFilterChange("month", value)}
-              placeholder="选择月份"
-            />
-          </div>
-          
-          <div>
             <label className="text-sm font-medium">状态</label>
             <Combobox
               options={[
                 { value: "all", label: "全部状态" },
                 { value: RecordStatus.DRAFT, label: "草稿" },
                 { value: RecordStatus.SUBMITTED, label: "已提交" },
+                { value: RecordStatus.PENDING_WITHDRAWAL, label: "待撤回" },
                 { value: ExtendedRecordStatus.APPROVED, label: "已审核" },
                 { value: ExtendedRecordStatus.REJECTED, label: "已拒绝" },
-                { value: RecordStatus.PENDING_WITHDRAWAL, label: "待撤回" },
                 { value: ExtendedRecordStatus.UNFILLED, label: "未填写" }
               ]}
               value={filters.status || "all"}
-              onChange={(value) => handleFilterChange("status", value)}
+              onChange={(value) => {
+                console.log(`选择状态: ${value}, 显示文本: ${statusMap[value]?.label || value}`);
+                // 确保状态值始终是小写的
+                if (value !== 'all') {
+                  const statusValue = value.toLowerCase();
+                  console.log(`将状态值标准化为小写: ${statusValue}`);
+                  handleFilterChange("status", statusValue);
+                } else {
+                  handleFilterChange("status", value);
+                }
+              }}
               placeholder="选择状态"
             />
           </div>

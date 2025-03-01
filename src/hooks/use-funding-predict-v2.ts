@@ -144,10 +144,15 @@ export function useFundingPredictV2(
   // 获取元数据（机构、部门）
   const fetchMetadata = useCallback(async () => {
     // 如果已经加载过元数据，不再重复加载
-    if (metaLoadedRef.current) return;
+    if (metaLoadedRef.current) {
+      console.log('元数据已加载，跳过重复加载');
+      return;
+    }
     
     try {
+      console.log('开始获取元数据...');
       const response = await fetch(`/api/funding/predict/meta`, {
+        method: 'GET',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
@@ -157,6 +162,47 @@ export function useFundingPredictV2(
       
       if (response.ok) {
         const data = await response.json();
+        console.log('获取到元数据:', {
+          organizations: data.organizations?.length || 0,
+          departments: data.departments?.length || 0,
+          projectCategories: data.projectCategories?.length || 0,
+          projects: data.projects?.length || 0,
+          subProjects: data.subProjects?.length || 0,
+          fundTypes: data.fundTypes?.length || 0,
+        });
+        
+        // 检查项目数据
+        if (data.projects && data.projects.length > 0) {
+          console.log('项目数据示例:', data.projects.slice(0, 3));
+          
+          // 检查项目分类ID是否存在
+          const projectsWithCategory = data.projects.filter((p: { categoryId?: string }) => p.categoryId);
+          console.log(`项目总数: ${data.projects.length}, 有分类ID的项目数: ${projectsWithCategory.length}`);
+          
+          if (projectsWithCategory.length === 0) {
+            console.warn('警告: 所有项目都没有分类ID (categoryId)');
+          }
+          
+          // 检查每个分类下有多少项目
+          if (data.projectCategories && data.projectCategories.length > 0) {
+            const categoryCounts: Record<string, number> = {};
+            data.projectCategories.forEach((cat: { id: string; name: string }) => {
+              const count = data.projects.filter((p: { categoryId?: string }) => p.categoryId === cat.id).length;
+              categoryCounts[cat.name] = count;
+            });
+            console.log('各分类下的项目数量:', categoryCounts);
+          }
+        } else {
+          console.warn('未获取到项目数据');
+        }
+        
+        // 检查项目分类数据
+        if (data.projectCategories && data.projectCategories.length > 0) {
+          console.log('项目分类数据示例:', data.projectCategories.slice(0, 3));
+        } else {
+          console.warn('未获取到项目分类数据');
+        }
+        
         setOrganizations(data.organizations || []);
         setDepartments(data.departments || []);
         setProjectCategories(data.projectCategories || []);
@@ -165,7 +211,12 @@ export function useFundingPredictV2(
         setFundTypes(data.fundTypes || []);
         metaLoadedRef.current = true;
       } else {
-        console.error(`获取预测填报元数据失败`);
+        console.error(`获取预测填报元数据失败`, await response.text());
+        toast({
+          title: "获取元数据失败",
+          description: "请刷新页面重试",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error(`获取预测填报元数据失败`, error);
@@ -184,52 +235,61 @@ export function useFundingPredictV2(
     const month = currentMonthRef.current;
     const currentPagination = paginationRef.current;
     
+    // 添加调试日志查看筛选条件
+    console.log('构建查询参数，当前筛选条件:', JSON.stringify(currentFilters, null, 2));
+    
     if (currentFilters.organizationId && currentFilters.organizationId !== 'all') {
       params.append("organizationId", currentFilters.organizationId);
+      console.log(`添加组织筛选条件: ${currentFilters.organizationId}`);
     }
     
     if (currentFilters.departmentId && currentFilters.departmentId !== 'all') {
       params.append("departmentId", currentFilters.departmentId);
+      console.log(`添加部门筛选条件: ${currentFilters.departmentId}`);
     }
     
     if (currentFilters.projectCategoryId && currentFilters.projectCategoryId !== 'all') {
       params.append("projectCategoryId", currentFilters.projectCategoryId);
+      console.log(`添加项目分类筛选条件: ${currentFilters.projectCategoryId}`);
     }
     
     if (currentFilters.projectId && currentFilters.projectId !== 'all') {
       params.append("projectId", currentFilters.projectId);
+      console.log(`添加项目筛选条件: ${currentFilters.projectId}`);
     }
     
     if (currentFilters.subProjectId && currentFilters.subProjectId !== 'all') {
       params.append("subProjectId", currentFilters.subProjectId);
+      console.log(`添加子项目筛选条件: ${currentFilters.subProjectId}`);
     }
     
     if (currentFilters.fundTypeId && currentFilters.fundTypeId !== 'all') {
       params.append("fundTypeId", currentFilters.fundTypeId);
+      console.log(`添加资金类型筛选条件: ${currentFilters.fundTypeId}`);
     }
     
     if (currentFilters.status && currentFilters.status !== 'all') {
-      params.append("status", currentFilters.status);
+      // 确保状态值是小写的，与后端API匹配
+      const statusValue = currentFilters.status.toLowerCase();
+      params.append("status", statusValue);
+      console.log(`添加状态筛选条件: ${statusValue}`);
     }
     
-    // 如果筛选条件中有年月，使用筛选条件的年月，否则使用当前月份
-    if (currentFilters.year) {
-      params.append("year", currentFilters.year);
-    } else {
-      params.append("year", month.year.toString());
-    }
+    // 使用当前月份作为默认年月参数
+    params.append("year", month.year.toString());
+    console.log(`添加默认年份: ${month.year}`);
     
-    if (currentFilters.month) {
-      params.append("month", currentFilters.month);
-    } else {
-      params.append("month", month.month.toString().padStart(2, "0"));
-    }
+    params.append("month", month.month.toString());
+    console.log(`添加默认月份: ${month.month}`);
     
     // 添加分页参数
     params.append("page", currentPagination.page.toString());
     params.append("pageSize", currentPagination.pageSize.toString());
     
-    return params.toString();
+    const queryString = params.toString();
+    console.log('最终查询参数:', queryString);
+    
+    return queryString;
   }, []);
 
   // 获取预测记录列表
@@ -239,11 +299,15 @@ export function useFundingPredictV2(
     }
     
     try {
+      console.log('开始获取预测记录列表...');
+      
       // 调用API获取预测记录列表
       const queryParams = buildQueryParams();
       // 添加缓存控制参数
       const cacheParam = `_t=${Date.now().toString()}`;
       const fullQueryString = queryParams ? `${queryParams}&${cacheParam}` : cacheParam;
+      
+      console.log(`请求API: /api/funding/predict-v2?${fullQueryString}`);
       
       const response = await fetch(`/api/funding/predict-v2?${fullQueryString}`, {
         headers: {
@@ -254,10 +318,14 @@ export function useFundingPredictV2(
       });
       
       if (!response.ok) {
-        throw new Error("获取预测记录列表失败");
+        const errorText = await response.text();
+        console.error(`API响应错误: ${response.status}`, errorText);
+        throw new Error(`获取预测记录列表失败: ${response.status} ${errorText}`);
       }
       
       const data: PaginatedResponse<PredictRecord> = await response.json();
+      console.log(`获取到 ${data.items.length} 条记录，共 ${data.total} 条`);
+      
       setRecords(data.items || []);
       setPagination({
         page: data.page,
@@ -421,10 +489,60 @@ export function useFundingPredictV2(
 
   // 获取特定项目分类下的项目
   const getProjectsByCategory = useCallback((categoryId: string | undefined) => {
+    console.log('getProjectsByCategory 被调用:', { categoryId, projectsCount: projects.length });
+    
+    // 如果没有选择分类或选择了"全部"，返回所有项目
     if (!categoryId || categoryId === 'all') {
+      console.log('返回所有项目，数量:', projects.length);
       return projects;
     }
-    return projects.filter(project => project.categoryId === categoryId);
+    
+    // 检查项目数据是否有正确的categoryId字段
+    const hasValidProjectsWithCategory = projects.some(project => project.categoryId === categoryId);
+    
+    // 如果没有任何项目匹配当前选择的分类ID，则检查项目数据是否有任何categoryId
+    if (!hasValidProjectsWithCategory) {
+      console.warn(`警告: 没有项目匹配分类ID: ${categoryId}`);
+      
+      // 检查是否有任何项目包含categoryId字段
+      const hasAnyCategoryId = projects.some(project => project.categoryId);
+      
+      if (!hasAnyCategoryId) {
+        console.warn('警告: 项目数据中没有任何项目包含categoryId字段，返回所有项目');
+        return projects;
+      }
+      
+      // 记录所有项目的分类ID，帮助调试
+      const categoryIds = Array.from(new Set(projects.map(p => p.categoryId).filter(Boolean)));
+      console.log('项目中存在的分类ID:', categoryIds);
+    }
+    
+    // 确保项目数据已加载并且有 categoryId 字段
+    const filteredProjects = projects.filter(project => {
+      // 特殊处理：如果项目没有分类ID但筛选器已选择了特定分类，仍然返回这些项目
+      // 这样可以确保即使数据不完整，用户仍能看到所有项目
+      if (!project.categoryId) {
+        // 返回true将无分类项目包含在结果中
+        // 设置为false则排除无分类项目
+        return false; 
+      }
+      
+      const match = project.categoryId === categoryId;
+      if (match) {
+        console.log('找到匹配的项目:', project);
+      }
+      return match;
+    });
+    
+    console.log('筛选后的项目数量:', filteredProjects.length);
+    
+    // 如果没有找到匹配的项目，提供所有项目作为后备选项
+    if (filteredProjects.length === 0) {
+      console.warn(`警告: 分类ID ${categoryId} 下没有找到任何项目，返回所有项目`);
+      return projects;
+    }
+    
+    return filteredProjects;
   }, [projects]);
 
   // 获取特定项目下的子项目
