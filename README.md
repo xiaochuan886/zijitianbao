@@ -917,6 +917,36 @@ A: 这通常表明Next.js识别了API路由的存在，但POST处理函数未正
   - 完善API接口
   - 更新文档
 
+## 数据库迁移说明
+
+系统正在进行数据库结构升级，从单一的 `Record` 表拆分为三个不同的表：
+
+1. `PredictRecord` - 预测记录表
+2. `ActualUserRecord` - 用户实际记录表
+3. `ActualFinRecord` - 财务实际记录表
+
+### 迁移进展
+
+- [x] 重新生成迁移文件并执行种子数据脚本
+- [x] 创建 `PredictRecordService` 服务
+- [x] 创建新的 API 路由 `/api/funding/predict-v2` 和 `/api/funding/predict-v2/save`
+- [x] 修改前端组件，使用新的 API 路由
+  - [x] 创建 `/funding/predict-v2/page.tsx` 页面，用于显示预测记录列表
+  - [x] 创建 `/funding/predict-v2/edit/page.tsx` 页面，用于编辑预测记录
+- [x] 创建 `ActualUserRecordService` 服务
+- [x] 创建新的 API 路由 `/api/funding/actual-v2` 和 `/api/funding/actual-v2/save`
+- [x] 修改前端组件，使用新的 API 路由
+  - [x] 创建 `/funding/actual-v2/page.tsx` 页面，用于显示实际资金记录列表
+  - [x] 创建 `/funding/actual-v2/edit/page.tsx` 页面，用于编辑实际资金记录
+- [ ] 创建 `ActualFinRecordService` 服务
+
+### 迁移注意事项
+
+1. 在迁移完成之前，系统将同时保留旧的 API 路由和新的 API 路由
+2. 新的 API 路由以 `-v2` 结尾，例如 `/api/funding/predict-v2`
+3. 迁移完成后，将删除旧的 API 路由和服务
+4. 新版页面路径同样以 `-v2` 结尾，例如 `/funding/predict-v2`
+5. 在迁移期间，用户可以同时访问旧版和新版页面，以确保平滑过渡
 ## 贡献指南
 
 1. Fork 项目

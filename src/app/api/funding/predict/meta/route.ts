@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 
-// 获取资金需求预测元数据（机构和部门）
+// 获取资金需求预测元数据（机构、部门、项目分类、项目、子项目和资金类型）
 export async function GET(req: NextRequest) {
   try {
     // 获取用户会话
@@ -38,9 +38,62 @@ export async function GET(req: NextRequest) {
       }
     });
 
+    // 获取所有项目分类
+    const projectCategories = await db.projectCategory.findMany({
+      select: {
+        id: true,
+        name: true
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    // 获取所有项目
+    const projects = await db.project.findMany({
+      where: {
+        status: 'active'
+      },
+      select: {
+        id: true,
+        name: true,
+        categoryId: true
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    // 获取所有子项目
+    const subProjects = await db.subProject.findMany({
+      select: {
+        id: true,
+        name: true,
+        projectId: true
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    // 获取所有资金类型
+    const fundTypes = await db.fundType.findMany({
+      select: {
+        id: true,
+        name: true
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
     return NextResponse.json({
       organizations,
-      departments
+      departments,
+      projectCategories,
+      projects,
+      subProjects,
+      fundTypes
     });
   } catch (error) {
     console.error("获取资金需求预测元数据失败", error);

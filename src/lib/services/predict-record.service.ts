@@ -133,13 +133,17 @@ export class PredictRecordService {
     { page, pageSize }: PaginationParams,
     { filters, sorting }: QueryParams
   ): Promise<PaginatedResponse<any>> {
-    const where = {
-      ...(filters?.subProjectId ? { subProjectId: filters.subProjectId } : {}),
+    const where: any = {
       ...(filters?.fundTypeId ? { fundTypeId: filters.fundTypeId } : {}),
       ...(filters?.year ? { year: parseInt(filters.year as string) } : {}),
       ...(filters?.month ? { month: parseInt(filters.month as string) } : {}),
       ...(filters?.status ? { status: filters.status } : {}),
       ...(filters?.submittedBy ? { submittedBy: filters.submittedBy } : {}),
+    };
+
+    // 特殊处理 subProjectId，它可能是一个对象 { in: [...] }
+    if (filters?.subProjectId) {
+      where.subProjectId = filters.subProjectId;
     }
 
     const [total, items] = await Promise.all([
