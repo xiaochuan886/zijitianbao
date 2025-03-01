@@ -258,82 +258,60 @@ export async function GET(req: NextRequest) {
     });
 
     // 使用更高效的方式处理项目状态和备注
-    const projectsWithStatus = projects.map((project) => {
-      // 收集所有相关记录
-      const allRecords = project.subProjects.flatMap(sp => sp.records);
-      
-      // 检查是否有记录
-      const hasRecords = allRecords.length > 0;
+    const projectsWithStatus = projects.flatMap((project) => {
+      // 如果项目没有子项目，返回空数组
+      if (!project.subProjects || project.subProjects.length === 0) {
+        return [];
+      }
 
-      // 获取项目状态 - 使用更简洁的逻辑
-      let projectStatus = "未填写";
-      let actualUserStatus = "未填写";
-      let actualFinanceStatus = "未填写";
-      
-      if (hasRecords) {
-        // 检查是否有任何记录是"pending_withdrawal"状态
-        if (allRecords.some(record => record.status === "pending_withdrawal")) {
-          projectStatus = "pending_withdrawal";
-        } 
-        // 检查是否全部是已提交状态
-        else if (allRecords.every(record => record.status === "submitted")) {
-          projectStatus = "已提交";
-        } 
-        else {
-          projectStatus = "草稿";
-        }
+      // 将每个子项目映射为单独的行
+      return project.subProjects.map(subProject => {
+        // 获取子项目的记录
+        const records = subProject.records || [];
+        const hasRecords = records.length > 0;
         
-        // 获取用户状态和财务状态
-        if (allRecords.length > 0) {
-          // 转换数据库状态为前端可显示的状态
-          const record = allRecords[0];
+        // 获取记录状态
+        let status = "未填写";
+        let actualUserStatus = "未填写";
+        let actualFinanceStatus = "未填写";
+        let actualUser = null;
+        let actualFinance = null;
+        let remark = "";
+        
+        if (hasRecords && records[0]) {
+          const record = records[0];
+          
+          // 设置状态
+          status = record.status || "未填写";
           actualUserStatus = record.actualUserStatus || "未填写";
           actualFinanceStatus = record.actualFinanceStatus || "未填写";
+          
+          // 设置数据
+          actualUser = record.actualUser;
+          actualFinance = record.actualFinance;
+          remark = record.remark || "";
         }
-      }
-
-      // 获取备注信息 - 使用更高效的方式
-      const remarks: RemarkItem[] = [];
-      let mainRemark = "";
-      
-      if (hasRecords) {
-        // 使用Map来避免重复处理相同的子项目
-        const processedSubProjects = new Map();
         
-        project.subProjects.forEach(sp => {
-          sp.records.forEach((record: any) => {
-            if (record.remark) {
-              // 添加到结构化备注列表
-              remarks.push({
-                subProject: sp.name,
-                content: record.remark,
-                period: `${record.year}-${record.month.toString().padStart(2, '0')}`
-              });
-              
-              // 保留第一个备注作为主备注
-              if (!mainRemark) {
-                mainRemark = record.remark;
-              }
-            }
-          });
-        });
-      }
-
-      // 返回处理后的项目数据
-      return {
-        id: project.id,
-        organization: `${project.organization.name} (${project.organization.code})`,
-        department: project.departments.map(d => d.name).join(", "),
-        project: project.code ? `${project.name} (${project.code})` : project.name,
-        month: month ? `${year}-${month.padStart(2, '0')}` : "",
-        status: projectStatus,
-        actualUserStatus: actualUserStatus,
-        actualFinanceStatus: actualFinanceStatus,
-        subProjectCount: project.subProjects.length,
-        remarks: remarks,
-        remark: mainRemark,
-        year: year || ""
-      };
+        // 返回处理后的子项目数据
+        return {
+          id: project.id, // 保留项目ID以便于操作
+          projectId: project.id,
+          subProjectId: subProject.id,
+          organization: `${project.organization.name} (${project.organization.code})`,
+          department: project.departments.map(d => d.name).join(", "),
+          project: project.code ? `${project.name} (${project.code})` : project.name,
+          subProject: subProject.name,
+          month: month ? `${year}-${month.padStart(2, '0')}` : "",
+          status: status,
+          actualUserStatus: actualUserStatus,
+          actualFinanceStatus: actualFinanceStatus,
+          actualUser: actualUser,
+          actualFinance: actualFinance,
+          remark: remark,
+          year: year || "",
+          recordId: hasRecords && records[0] ? records[0].id : null
+        };
+      });
     });
 
     // 如果指定了状态，进行过滤

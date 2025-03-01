@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
                   where: { id: existingRecord.id },
                   data: {
                     predicted: value === null ? null : parseFloat(String(value)),
-                    status: "draft",
+                    predictUserStatus: "draft",
                     submittedBy: session?.user?.id || "temp-user-id",
                     remark: remarks?.[recordId] || "", 
                     updatedAt: new Date(),
@@ -135,7 +135,8 @@ export async function POST(req: NextRequest) {
                     year,
                     month,
                     predicted: value === null ? null : parseFloat(String(value)),
-                    status: "draft",
+                    predictUserStatus: "draft",
+                    status: "draft", // 保留status字段兼容旧代码，但主要使用predictUserStatus
                     submittedBy: session?.user?.id || "temp-user-id",
                     remark: remarks?.[recordId] || "", 
                     createdAt: new Date(),
@@ -160,7 +161,7 @@ export async function POST(req: NextRequest) {
               where: { id: recordId },
               data: {
                 predicted: value === null ? null : parseFloat(String(value)),
-                status: "draft",
+                predictUserStatus: "draft",
                 submittedBy: session?.user?.id || "temp-user-id",
                 remark: remarks?.[recordId] || "", 
                 updatedAt: new Date(),

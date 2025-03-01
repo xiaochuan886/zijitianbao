@@ -45,9 +45,10 @@ export async function POST(req: Request) {
     }
     
     // 检查记录状态是否为已提交
-    if (record.status !== "submitted") {
+    if (record.predictUserStatus !== "submitted") {
       return NextResponse.json({ 
-        error: "只有已提交的记录才能申请撤回" 
+        error: "只有已提交的记录才能申请撤回",
+        currentStatus: record.predictUserStatus
       }, { status: 400 });
     }
     
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
     await db.record.update({
       where: { id: recordId },
       data: {
-        status: "pending_withdrawal",
+        predictUserStatus: "pending_withdrawal",
         remark: record.remark ? `${record.remark} | 撤回原因: ${reason}` : `撤回原因: ${reason}`
       }
     });
@@ -99,7 +100,7 @@ export async function GET(req: Request) {
     const [records, total] = await Promise.all([
       db.record.findMany({
         where: {
-          status: "pending_withdrawal"
+          predictUserStatus: "pending_withdrawal"
         },
         orderBy: {
           updatedAt: "desc"
@@ -120,7 +121,7 @@ export async function GET(req: Request) {
       }),
       db.record.count({
         where: {
-          status: "pending_withdrawal"
+          predictUserStatus: "pending_withdrawal"
         }
       })
     ]);

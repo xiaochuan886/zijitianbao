@@ -7,7 +7,8 @@ import { z } from "zod";
 // 验证请求数据
 const requestSchema = z.object({
   recordId: z.string(),
-  reason: z.string().min(5, "撤回原因至少需要5个字符").max(500, "撤回原因最多500个字符")
+  reason: z.string().min(5, "撤回原因至少需要5个字符").max(500, "撤回原因最多500个字符"),
+  isUserReport: z.boolean().optional().default(true)
 });
 
 // 提交撤回申请
@@ -33,7 +34,10 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
     
-    const { recordId, reason } = result.data;
+    const { recordId, reason, isUserReport = true } = result.data;
+    
+    // 确定状态字段
+    const statusField = isUserReport ? "actualUserStatus" : "actualFinanceStatus";
     
     // 查找记录是否存在
     const record = await db.record.findUnique({
@@ -44,10 +48,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "记录不存在" }, { status: 404 });
     }
     
+    // 获取当前状态
+    const currentStatus = isUserReport ? record.actualUserStatus : record.actualFinanceStatus;
+    
     // 检查记录状态是否为已提交
-    if (record.status !== "submitted") {
+    if ((currentStatus || record.status) !== "submitted") {
       return NextResponse.json({ 
-        error: "只有已提交的记录才能申请撤回" 
+        error: "只有已提交的记录才能申请撤回",
+        currentStatus: currentStatus || record.status
       }, { status: 400 });
     }
     
@@ -55,7 +63,8 @@ export async function POST(req: Request) {
     await db.record.update({
       where: { id: recordId },
       data: {
-        status: "pending_withdrawal",
+        status: "pending_withdrawal", // 保留status字段兼容旧代码
+        [statusField]: "pending_withdrawal", // 使用新的状态字段
         remark: record.remark ? `${record.remark} | 撤回原因: ${reason}` : `撤回原因: ${reason}`
       }
     });
@@ -94,12 +103,16 @@ export async function GET(req: Request) {
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
+    const isUserReport = url.searchParams.get("isUserReport") !== "false";
+    
+    // 确定状态字段
+    const statusField = isUserReport ? "actualUserStatus" : "actualFinanceStatus";
     
     // 简化版：直接查询状态为pending_withdrawal的记录
     const [records, total] = await Promise.all([
       db.record.findMany({
         where: {
-          status: "pending_withdrawal"
+          [statusField]: "pending_withdrawal"
         },
         orderBy: {
           updatedAt: "desc"
@@ -120,7 +133,7 @@ export async function GET(req: Request) {
       }),
       db.record.count({
         where: {
-          status: "pending_withdrawal"
+          [statusField]: "pending_withdrawal"
         }
       })
     ]);

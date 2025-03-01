@@ -52,6 +52,7 @@ model Organization {
   users                User[]             @relation("PrimaryOrganization")
   userOrganizations    UserOrganization[]
   projectOrganizations Project[]          @relation("ProjectOrganizations")
+  projectCategories    ProjectCategory[]  @relation("OrganizationCategories")
 
   @@index([name])
   @@index([code])
@@ -71,6 +72,23 @@ model Department {
   @@index([name])
 }
 
+// 项目分类表 (新增)
+model ProjectCategory {
+  id             String       @id @default(cuid())
+  name           String
+  code           String?
+  organizationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation("OrganizationCategories", fields: [organizationId], references: [id])
+  projects       Project[]    @relation("CategoryToProject")
+
+  @@unique([name, organizationId], name: "categorynameOrg")
+  @@index([organizationId])
+  @@index([name])
+  @@index([code])
+}
+
 // 项目状态枚举
 enum ProjectStatus {
   ACTIVE
@@ -85,10 +103,12 @@ model Project {
   startYear      Int
   hasRecords     Boolean        @default(false)
   organizationId String
+  categoryId     String?        // 新增项目分类ID字段
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   code           String?
   organization   Organization   @relation("PrimaryOrganization", fields: [organizationId], references: [id])
+  category       ProjectCategory? @relation("CategoryToProject", fields: [categoryId], references: [id]) // 新增项目分类关联
   subProjects    SubProject[]
   departments    Department[]   @relation("DepartmentToProject")
   organizations  Organization[] @relation("ProjectOrganizations")
@@ -99,6 +119,7 @@ model Project {
   @@index([status])
   @@index([startYear])
   @@index([organizationId])
+  @@index([categoryId]) // 新增索引
 }
 
 // 子项目表
@@ -348,4 +369,4 @@ model WithdrawalRequest {
   @@index([requesterId])
   @@index([status])
   @@index([createdAt])
-}
+} 

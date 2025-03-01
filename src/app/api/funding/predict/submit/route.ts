@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 整理出所有相关的子项目ID，用于检查用户是否已提交过
-    const subProjectIds = [...new Set(tempRecords.map((record: any) => record.subProjectId))];
+    const subProjectIds = Array.from(new Set(tempRecords.map((record: any) => record.subProjectId))) as string[];
     
     // 获取当前月份
     const { year, month } = body.projectInfo.nextMonth;
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         subProjectId: { in: subProjectIds },
         year: year,
         month: month,
-        status: "submitted",
+        predictUserStatus: "submitted",
         submittedBy: userId
       }
     });
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
               subProjectId: subProjectId,
               year: parseInt(yearStr),
               month: parseInt(monthStr),
-              status: "submitted"
+              predictUserStatus: "submitted"
             }
           });
           
@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
               year: parseInt(yearStr),
               month: parseInt(monthStr),
               predicted: value as number,
+              predictUserStatus: "submitted",
               status: "submitted",
               submittedBy: userId,
               submittedAt: new Date(),
@@ -105,12 +106,12 @@ export async function POST(req: NextRequest) {
           
           if (record) {
             // 检查记录状态，只有草稿状态的记录可以被提交
-            if (record.status === "draft") {
+            if (record.predictUserStatus === "draft") {
               await tx.record.update({
                 where: { id },
                 data: {
                   predicted: value as number,
-                  status: "submitted",
+                  predictUserStatus: "submitted",
                   submittedBy: userId,
                   submittedAt: new Date(),
                   remark: body.remarks[id] || ""

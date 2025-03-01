@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -33,11 +33,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft, FileEdit, Upload, RotateCcw, X } from "lucide-react"
-import { submitWithdrawalRequest } from "../client-api"
+import { submitWithdrawalRequest, cancelWithdrawalRequest } from "../client-api"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 // 定义数据类型
@@ -81,13 +80,11 @@ export default function PredictViewPage() {
   
   const [loading, setLoading] = useState(true)
   const [project, setProject] = useState<ProjectData | null>(null)
-  const [records, setRecords] = useState<Record<string, number | null>>({})
-  const [remarks, setRemarks] = useState<Record<string, string>>({})
   const [nextMonth, setNextMonth] = useState<{year: number, month: number}>({
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 2 // 下个月
   })
-  const [reason, setReason] = useState("")
+  const [withdrawalReason, setWithdrawalReason] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false)
   
@@ -97,14 +94,16 @@ export default function PredictViewPage() {
     return new Intl.NumberFormat("zh-CN", {
       style: "currency",
       currency: "CNY",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount)
-  }, []);
+  }, [])
   
   // 计算年度汇总
   const calculateYearTotal = useCallback((subProjectId: string, fundTypeId: string) => {
-    if (!project) return 0;
+    if (!project) return 0
     
-    let total = 0;
+    let total = 0
     
     project.subProjects.forEach(subProject => {
       if (subProject.id === subProjectId) {
@@ -113,23 +112,23 @@ export default function PredictViewPage() {
             fundType.records.forEach(record => {
               // 只计算有效的记录
               if (record.predicted !== null) {
-                total += record.predicted;
+                total += record.predicted
               }
-            });
+            })
           }
-        });
+        })
       }
-    });
+    })
     
-    return total;
-  }, [project]);
+    return total
+  }, [project])
   
   // 提交项目
   const handleSubmit = useCallback(async () => {
-    if (!project) return;
+    if (!project) return
     
     try {
-      setSubmitting(true);
+      setSubmitting(true)
       
       // 调用API提交预测
       const response = await fetch(`/api/funding/predict/submit-single/${project.id}`, {
@@ -141,182 +140,179 @@ export default function PredictViewPage() {
           year: nextMonth.year,
           month: nextMonth.month,
         }),
-      });
+      })
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "提交失败");
+        const errorData = await response.json()
+        throw new Error(errorData.error || "提交失败")
       }
       
       // 显示成功提示
       toast({
         title: "提交成功",
         description: "项目已成功提交",
-      });
+      })
       
       // 返回列表页
-      router.push("/funding/predict");
+      router.push("/funding/predict")
     } catch (error) {
-      console.error("提交失败", error);
+      console.error("提交失败", error)
       toast({
         title: "提交失败",
         description: error instanceof Error ? error.message : "提交失败",
         variant: "destructive"
-      });
+      })
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
-  }, [project, nextMonth, router, toast]);
+  }, [project, nextMonth, router, toast])
   
   // 提交撤回申请
   const handleWithdrawalRequest = useCallback(async () => {
-    if (!project) return;
+    if (!project) return
     
-    if (reason.trim().length < 5) {
+    if (withdrawalReason.trim().length < 5) {
       toast({
         title: "错误",
         description: "撤回原因至少需要5个字符",
         variant: "destructive"
-      });
-      return;
+      })
+      return
     }
     
     try {
-      setSubmitting(true);
+      setSubmitting(true)
       
       // 使用客户端API函数提交撤回申请
-      const result = await submitWithdrawalRequest(project.id, reason);
+      const result = await submitWithdrawalRequest(
+        project.id, 
+        undefined,
+        withdrawalReason
+      )
       
       // 关闭对话框
-      setWithdrawalDialogOpen(false);
+      setWithdrawalDialogOpen(false)
       
       if (result.success) {
         toast({
           title: "撤回申请已提交",
           description: "状态已更新为「撤回申请待审批」"
-        });
+        })
         
         // 返回列表页
-        router.push("/funding/predict");
+        router.push("/funding/predict")
       }
     } catch (error) {
-      console.error("提交撤回申请失败", error);
+      console.error("提交撤回申请失败", error)
       toast({
         title: "错误",
         description: error instanceof Error ? error.message : "提交撤回申请失败",
         variant: "destructive"
-      });
+      })
       // 即使出错也关闭对话框
-      setWithdrawalDialogOpen(false);
+      setWithdrawalDialogOpen(false)
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
-  }, [project, reason, router, toast]);
+  }, [project, withdrawalReason, router, toast])
   
   // 取消撤回申请
   const handleCancelWithdrawal = useCallback(async () => {
-    if (!project) return;
+    if (!project) return
     
     try {
-      setSubmitting(true);
+      setSubmitting(true)
       
-      // 实现取消撤回申请的API调用
-      const response = await fetch(`/api/funding/predict/withdrawal/cancel/${project.id}`, {
-        method: "POST"
-      });
+      // 使用客户端API取消撤回申请
+      const result = await cancelWithdrawalRequest(project.id)
       
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "取消撤回申请失败");
+      if (result.success) {
+        toast({
+          title: "成功",
+          description: "已取消撤回申请"
+        })
+        
+        // 返回列表页
+        router.push("/funding/predict")
       }
-      
-      toast({
-        title: "成功",
-        description: "已取消撤回申请"
-      });
-      
-      // 返回列表页
-      router.push("/funding/predict");
     } catch (error) {
-      console.error("取消撤回申请失败", error);
+      console.error("取消撤回申请失败", error)
       toast({
         title: "错误",
         description: error instanceof Error ? error.message : "取消撤回申请失败",
         variant: "destructive"
-      });
+      })
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
-  }, [project, router, toast]);
+  }, [project, router, toast])
   
   // 获取项目数据
   const fetchData = useCallback(async () => {
     try {
-      setLoading(true);
+      setLoading(true)
       
       // 获取查询参数
-      const id = searchParams.get("id");
-      const year = searchParams.get("year") || new Date().getFullYear().toString();
-      const month = searchParams.get("month") || (new Date().getMonth() + 2).toString();
+      const id = searchParams.get("id")
+      const year = searchParams.get("year") || new Date().getFullYear().toString()
+      const month = searchParams.get("month") || (new Date().getMonth() + 2).toString()
       
       setNextMonth({
         year: parseInt(year),
         month: parseInt(month)
-      });
+      })
       
       if (!id) {
         toast({
           title: "错误",
           description: "缺少必要的项目ID参数",
           variant: "destructive"
-        });
-        router.push("/funding/predict");
-        return;
+        })
+        router.push("/funding/predict")
+        return
       }
       
       // 获取项目数据
-      const response = await fetch(`/api/funding/predict/${id}?year=${year}&month=${month}`);
+      const response = await fetch(`/api/funding/predict/${id}?year=${year}&month=${month}`)
       
       if (!response.ok) {
-        throw new Error("获取项目详情失败");
+        throw new Error("获取项目详情失败")
       }
       
-      const projectData = await response.json();
+      const projectData = await response.json()
       
-      setProject(projectData);
-      
-      // 初始化记录和备注
-      const initialRecords: Record<string, number | null> = {};
-      const initialRemarks: Record<string, string> = {};
-      
-      projectData.subProjects.forEach((subProject: any) => {
-        subProject.fundTypes.forEach((fundType: any) => {
-          fundType.records.forEach((record: FundRecord) => {
-            initialRecords[record.id] = record.predicted;
-            initialRemarks[record.id] = record.remark || "";
-          });
-        });
-      });
-      
-      setRecords(initialRecords);
-      setRemarks(initialRemarks);
-      setLoading(false);
+      setProject(projectData)
+      setLoading(false)
     } catch (error) {
-      console.error("获取数据失败", error);
+      console.error("获取数据失败", error)
       toast({
         title: "错误",
         description: error instanceof Error ? error.message : "获取数据失败",
         variant: "destructive"
-      });
-      setLoading(false);
-      router.push("/funding/predict");
+      })
+      setLoading(false)
+      router.push("/funding/predict")
     }
-  }, [searchParams, toast, router]);
+  }, [searchParams, toast, router])
   
   // 初始化
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchData()
+  }, [fetchData])
+  
+  // 将状态代码映射为显示文本
+  const mapStatusText = useCallback((status: string) => {
+    const statusMap: Record<string, string> = {
+      "UNFILLED": "未填写",
+      "DRAFT": "草稿",
+      "SUBMITTED": "已提交",
+      "PENDING_WITHDRAWAL": "撤回申请待审批",
+      "APPROVED": "已批准",
+      "REJECTED": "已拒绝"
+    }
+    
+    return statusMap[status] || status
+  }, [])
   
   return (
     <div className="space-y-6">
@@ -336,9 +332,14 @@ export default function PredictViewPage() {
         ) : project ? (
           <Card className="overflow-hidden">
             <CardHeader className="bg-muted">
-              <CardTitle>
-                {project.organization.name} ({project.organization.code}) - {project.name}
-              </CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle>
+                  {project.organization.name} ({project.organization.code}) - {project.name}
+                </CardTitle>
+                <div className="text-sm font-medium">
+                  状态: <span className="text-primary">{mapStatusText(project.status)}</span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -372,12 +373,12 @@ export default function PredictViewPage() {
                           </TableCell>
                           {/* 历史月份数据 */}
                           {[1, 2, 3].filter(month => month < nextMonth.month).map(month => {
-                            const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year);
+                            const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year)
                             return (
                               <TableCell key={month}>
                                 {record ? formatCurrency(record.predicted) : ""}
                               </TableCell>
-                            );
+                            )
                           })}
                           {/* 当前月份数据 */}
                           <TableCell>
@@ -430,7 +431,7 @@ export default function PredictViewPage() {
             </CardContent>
             <CardFooter className="flex justify-end gap-2 p-4 bg-muted/50">
               {/* 填报按钮 - 只对未填写和草稿状态可用 */}
-              {(project.status === "未填写" || project.status === "草稿") && (
+              {(project.status === "UNFILLED" || project.status === "DRAFT") && (
                 <Button 
                   variant="outline"
                   size="sm"
@@ -443,7 +444,7 @@ export default function PredictViewPage() {
               )}
               
               {/* 提交按钮 - 对草稿状态可用 */}
-              {project.status === "草稿" && (
+              {project.status === "DRAFT" && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button 
@@ -471,7 +472,7 @@ export default function PredictViewPage() {
               )}
               
               {/* 撤回申请按钮 - 对已提交状态可用 */}
-              {project.status === "已提交" && (
+              {project.status === "SUBMITTED" && (
                 <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
                   <DialogTrigger asChild>
                     <Button 
@@ -499,8 +500,8 @@ export default function PredictViewPage() {
                         <Textarea
                           id="reason"
                           placeholder="请详细说明撤回原因..."
-                          value={reason}
-                          onChange={(e) => setReason(e.target.value)}
+                          value={withdrawalReason}
+                          onChange={(e) => setWithdrawalReason(e.target.value)}
                           className="min-h-[100px]"
                         />
                       </div>
@@ -515,7 +516,7 @@ export default function PredictViewPage() {
                       </Button>
                       <Button 
                         onClick={handleWithdrawalRequest}
-                        disabled={submitting || reason.trim().length < 5}
+                        disabled={submitting || withdrawalReason.trim().length < 5}
                       >
                         {submitting ? "提交中..." : "提交申请"}
                       </Button>
@@ -525,7 +526,7 @@ export default function PredictViewPage() {
               )}
               
               {/* 取消撤回申请按钮 - 对待审核状态可用 */}
-              {project.status === "pending_withdrawal" && (
+              {project.status === "PENDING_WITHDRAWAL" && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button 

@@ -92,6 +92,10 @@ pnpm dev
 │   │   └── globals.css # 全局样式
 │   ├── components/    # 组件
 │   │   ├── ui/       # UI基础组件
+│   │   ├── funding/  # 资金填报相关组件
+│   │   │   ├── filter-card.tsx  # 通用筛选卡片组件
+│   │   │   ├── action-buttons.tsx # 通用操作按钮组件
+│   │   │   └── page-header.tsx  # 通用页面标题组件
 │   │   ├── user-nav.tsx  # 用户导航组件
 │   │   ├── main-nav.tsx  # 主导航组件
 │   │   └── role-based-ui.tsx # 基于角色的UI控制组件
@@ -105,10 +109,14 @@ pnpm dev
 │   │   │   ├── organization.service.ts # 机构服务
 │   │   │   ├── project.service.ts # 项目服务
 │   │   │   └── record.service.ts  # 记录服务
+│   │   ├── funding-utils.ts # 资金填报工具函数
 │   │   ├── prisma.ts # Prisma客户端（单例模式）
 │   │   ├── auth.tsx  # 认证相关工具函数
 │   │   └── utils.ts  # 通用工具函数
 │   ├── hooks/        # 自定义Hook
+│   │   ├── use-funding-common.ts # 通用资金填报钩子
+│   │   ├── use-funding-actual.ts # 实际支付填报钩子
+│   │   └── use-funding-predict.ts # 预测填报钩子
 │   └── styles/       # 样式文件
 ├── prisma/           # Prisma配置和模型
 │   ├── schema.prisma # 数据库模型定义
@@ -149,6 +157,134 @@ pnpm dev
 # type: feat|fix|docs|style|refactor|test|chore
 # scope: 影响范围
 # subject: 简短描述
+```
+
+## 通用组件和钩子
+
+为了提高代码复用性和维护性，系统实现了一系列通用组件和钩子，用于资金填报相关功能。
+
+### 通用组件
+
+#### 1. FilterCard 筛选卡片组件
+
+`src/components/funding/filter-card.tsx` 提供了统一的筛选界面，用于过滤项目列表。
+
+**主要功能**：
+- 机构筛选（下拉选择）
+- 部门筛选（下拉选择）
+- 项目名称筛选（文本输入）
+- 状态筛选（下拉选择）
+- 重置筛选条件
+- 执行查询
+
+**使用示例**：
+```tsx
+<FilterCard
+  filters={filters}
+  organizations={organizations}
+  departments={departments}
+  onFilterChange={handleFilterChange}
+  onReset={handleResetFilters}
+  onSearch={() => fetchProjects(true)}
+  loading={loading}
+  debouncedFetch={debouncedFetch}
+/>
+```
+
+#### 2. ActionButtons 操作按钮组件
+
+`src/components/funding/action-buttons.tsx` 提供了统一的批量操作按钮，用于批量编辑和提交项目。
+
+**主要功能**：
+- 批量填报按钮
+- 批量提交按钮
+- 根据选中项目状态自动禁用/启用按钮
+- 显示加载状态
+
+**使用示例**：
+```tsx
+<ActionButtons
+  selectedCount={selectedProjects.length}
+  loading={loading}
+  submitting={submitting}
+  canEdit={canEditSelected}
+  canSubmit={canSubmitSelected}
+  onEdit={handleBatchEdit}
+  onSubmit={handleBatchSubmit}
+/>
+```
+
+#### 3. PageHeader 页面标题组件
+
+`src/components/funding/page-header.tsx` 提供了统一的页面标题和刷新按钮。
+
+**主要功能**：
+- 显示页面标题
+- 提供刷新按钮
+- 显示加载状态
+
+**使用示例**：
+```tsx
+<PageHeader 
+  title="实际支付填报"
+  loading={loading}
+  onRefresh={() => fetchProjects(true)}
+/>
+```
+
+### 通用钩子
+
+#### 1. useFundingCommon 通用资金填报钩子
+
+`src/hooks/use-funding-common.ts` 提供了资金填报页面通用的状态管理和数据处理逻辑。
+
+**主要功能**：
+- 管理加载状态
+- 管理项目列表数据
+- 管理筛选条件
+- 处理筛选条件变化（带防抖）
+- 获取机构和部门列表
+- 获取当前月份信息
+- 获取项目列表数据
+
+**使用示例**：
+```tsx
+const {
+  loading,
+  debouncedFetch,
+  projects,
+  filters,
+  handleFilterChange,
+  organizations,
+  departments,
+  currentMonth,
+  fetchProjects
+} = useFundingCommon<ProjectType>({
+  apiEndpoint: 'actual' // 或 'predict'
+})
+```
+
+### 通用工具函数
+
+#### 1. 项目分组工具
+
+`src/lib/funding-utils.ts` 提供了项目数据处理的通用工具函数。
+
+**主要功能**：
+- `groupProjects`: 将项目数据按机构和项目进行分组
+- `isProjectEditable`: 检查项目是否可编辑
+- `isProjectSubmittable`: 检查项目是否可提交
+
+**使用示例**：
+```tsx
+// 分组项目数据
+const groupedProjects = groupProjects(projects);
+
+// 检查项目是否可编辑
+const canEdit = isProjectEditable(project.status);
+
+// 检查项目是否可提交
+const canSubmit = isProjectSubmittable(project.status);
 ```
 
 ## 功能说明

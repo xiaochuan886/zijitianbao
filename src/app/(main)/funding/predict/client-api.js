@@ -2,36 +2,42 @@
 
 import { toast } from "sonner";
 
-// 客户端API函数，用于提交撤回申请
-export const submitWithdrawalRequest = async (recordId, reason) => {
+/**
+ * 提交撤回申请
+ * @param {string} projectId - 项目ID
+ * @param {string|undefined} subProjectId - 子项目ID，可选
+ * @param {string} reason - 撤回原因
+ * @returns {Promise<{success: boolean, data?: any, error?: any}>} - 操作结果
+ */
+export const submitWithdrawalRequest = async (projectId, subProjectId, reason) => {
   try {
-    console.log("客户端发送撤回申请:", { recordId, reason });
+    // 构建请求主体
+    const requestBody = {
+      projectId,
+      subProjectId,
+      reason
+    };
     
-    // 使用浏览器原生fetch API
-    const response = await fetch("/api/funding/predict/withdrawal-v2", {
+    // 发送撤回申请请求
+    const response = await fetch("/api/funding/predict/withdrawal", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        recordId,
-        reason,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
-    // 获取完整的响应数据，无论成功或失败
+    // 获取响应数据
     const data = await response.json();
-    console.log("API响应:", { status: response.status, data });
 
     if (!response.ok) {
-      // 处理404错误
+      // 处理各种错误情况
       if (response.status === 404) {
-        throw new Error(data.message || "找不到对应的记录，请刷新页面后重试");
+        throw new Error(data.message || "找不到对应的记录");
       }
       
-      // 处理400错误
-      if (response.status === 400 && data.currentStatus) {
-        throw new Error(`只有已提交的记录才能申请撤回，当前状态: ${data.currentStatus}`);
+      if (response.status === 400) {
+        throw new Error(data.message || "请求参数错误");
       }
       
       throw new Error(data.error || "提交撤回申请失败");
@@ -40,11 +46,6 @@ export const submitWithdrawalRequest = async (recordId, reason) => {
     // 成功提交撤回申请
     toast.success(data.message || "撤回申请已提交，等待管理员审核");
     
-    // 添加自动刷新页面功能
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500); // 延迟1.5秒后刷新，给用户足够时间看到成功消息
-
     return { success: true, data };
   } catch (error) {
     console.error("提交撤回申请失败:", error);
@@ -53,27 +54,39 @@ export const submitWithdrawalRequest = async (recordId, reason) => {
   }
 };
 
-// 客户端API函数，用于取消撤回申请
-export const cancelWithdrawalRequest = async (projectId) => {
+/**
+ * 取消撤回申请
+ * @param {string} projectId - 项目ID
+ * @param {string|undefined} subProjectId - 子项目ID，可选
+ * @returns {Promise<{success: boolean, data?: any, error?: any}>} - 操作结果
+ */
+export const cancelWithdrawalRequest = async (projectId, subProjectId) => {
   try {
-    console.log("客户端发送取消撤回申请:", { projectId });
+    // 构建URL
+    let url = `/api/funding/predict/withdrawal/cancel`;
     
-    // 使用浏览器原生fetch API
-    const response = await fetch(`/api/funding/predict/withdrawal/cancel/${projectId}`, {
+    // 添加查询参数
+    const params = new URLSearchParams();
+    params.append("projectId", projectId);
+    if (subProjectId) {
+      params.append("subProjectId", subProjectId);
+    }
+    
+    // 发送取消撤回请求
+    const response = await fetch(`${url}?${params.toString()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       }
     });
 
-    // 获取完整的响应数据，无论成功或失败
+    // 获取响应数据
     const data = await response.json();
-    console.log("取消撤回API响应:", { status: response.status, data });
 
     if (!response.ok) {
-      // 处理404错误
+      // 处理各种错误情况
       if (response.status === 404) {
-        throw new Error(data.message || "找不到待撤回的记录，请刷新页面后重试");
+        throw new Error(data.message || "找不到待撤回的记录");
       }
       
       throw new Error(data.error || "取消撤回申请失败");
@@ -82,16 +95,27 @@ export const cancelWithdrawalRequest = async (projectId) => {
     // 成功取消撤回申请
     toast.success(data.message || "已取消撤回申请");
     
-    // 添加自动刷新页面功能
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500); // 延迟1.5秒后刷新，给用户足够时间看到成功消息
-
     return { success: true, data };
   } catch (error) {
     console.error("取消撤回申请失败:", error);
     toast.error(error.message || "取消撤回申请失败");
     return { success: false, error };
+  }
+};
+
+/**
+ * 获取项目详情
+ * @param {string} projectId - 项目ID
+ * @param {number} year - 年份
+ * @param {number} month - 月份
+ * @returns {Promise<{success: boolean, data?: any, error?: any}>} - 操作结果
+ */
+export const getProjectDetails = async (projectId, year, month) => {
+  try {
+    //
+  } catch (error) {
+    console.error("获取项目详情失败:", error);
+    return { success: false, error: error.message };
   }
 };
 

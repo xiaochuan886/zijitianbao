@@ -52,7 +52,7 @@ export async function POST(
         subProject: {
           projectId: projectId,
         },
-        status: "pending_withdrawal",
+        predictUserStatus: "pending_withdrawal",
       },
     });
 
@@ -72,7 +72,7 @@ export async function POST(
     const updatePromises = records.map((record) =>
       db.record.update({
         where: { id: record.id },
-        data: { status: "submitted" },
+        data: { predictUserStatus: "submitted" },
       })
     );
 

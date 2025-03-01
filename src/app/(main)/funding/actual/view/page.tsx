@@ -39,44 +39,7 @@ import { Label } from "@/components/ui/label"
 import { ArrowLeft, FileEdit, Upload, RotateCcw, X } from "lucide-react"
 import { submitWithdrawalRequest } from "../client-api"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-
-// 定义数据类型
-interface FundRecord {
-  id: string
-  subProjectId: string
-  subProjectName: string
-  fundTypeId: string
-  fundTypeName: string
-  year: number
-  month: number
-  predicted: number | null
-  actualUser: number | null
-  actualFinance: number | null
-  status: string
-  remark: string
-}
-
-interface ProjectData {
-  id: string
-  name: string
-  status: string
-  userStatus?: string
-  financeStatus?: string
-  organization: {
-    id: string
-    name: string
-    code: string
-  }
-  subProjects: {
-    id: string
-    name: string
-    fundTypes: {
-      id: string
-      name: string
-      records: FundRecord[]
-    }[]
-  }[]
-}
+import { useFundingActual, ProjectData, FundRecord } from "@/hooks/use-funding-actual"
 
 export default function ActualViewPage() {
   const router = useRouter()
@@ -86,6 +49,9 @@ export default function ActualViewPage() {
   // 获取角色参数，默认为user
   const role = searchParams.get('role') || 'user'
   const isUserRole = role === 'user'
+  
+  // 使用自定义Hook获取共享功能
+  const { formatCurrency, calculateYearTotal } = useFundingActual(isUserRole)
   
   const [loading, setLoading] = useState(true)
   const [project, setProject] = useState<ProjectData | null>(null)
@@ -98,41 +64,6 @@ export default function ActualViewPage() {
   const [reason, setReason] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false)
-  
-  // 格式化金额
-  const formatCurrency = useCallback((amount: number | null) => {
-    if (amount === null) return ""
-    return new Intl.NumberFormat("zh-CN", {
-      style: "currency",
-      currency: "CNY",
-    }).format(amount)
-  }, []);
-  
-  // 计算年度汇总
-  const calculateYearTotal = useCallback((subProjectId: string, fundTypeId: string) => {
-    if (!project) return 0;
-    
-    let total = 0;
-    
-    project.subProjects.forEach(subProject => {
-      if (subProject.id === subProjectId) {
-        subProject.fundTypes.forEach(fundType => {
-          if (fundType.id === fundTypeId) {
-            fundType.records.forEach(record => {
-              // 根据角色获取相应的金额数据
-              const amount = isUserRole ? record.actualUser : record.actualFinance;
-              // 只计算有效的记录
-              if (amount !== null) {
-                total += amount;
-              }
-            });
-          }
-        });
-      }
-    });
-    
-    return total;
-  }, [project, isUserRole]);
   
   // 提交项目
   const handleSubmit = useCallback(async () => {

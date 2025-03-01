@@ -24,6 +24,7 @@ import {
   ChevronsRightIcon,
   Loader2
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // 扩展表格选项
 declare module "@tanstack/react-table" {
@@ -54,6 +55,8 @@ export interface DataTableProps {
   onPaginationChange?: (pagination: { page: number; pageSize: number }) => void
   loading?: boolean
   onSelectedRowsChange?: (selectedRowIds: string[]) => void
+  isGroupRow?: (row: any) => boolean
+  groupId?: (row: any) => string | undefined
 }
 
 export function DataTable({
@@ -62,7 +65,9 @@ export function DataTable({
   pagination,
   onPaginationChange,
   loading = false,
-  onSelectedRowsChange
+  onSelectedRowsChange,
+  isGroupRow = (row) => row.isGroupHeader === true,
+  groupId = (row) => row.groupId
 }: DataTableProps) {
   
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -185,15 +190,30 @@ export function DataTable({
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const isGroupHeader = isGroupRow(row.original);
+                
+                return (
+                  <TableRow 
+                    key={row.id}
+                    className={cn({
+                      "bg-muted/50 font-medium": isGroupHeader,
+                      "pl-10 border-l-4 border-l-primary/20": !isGroupHeader && groupId(row.original)
+                    })}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell 
+                        key={cell.id}
+                        className={cn({
+                          "font-medium": isGroupHeader && cell.column.id !== "select",
+                        })}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">

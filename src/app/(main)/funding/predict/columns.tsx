@@ -1,7 +1,7 @@
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import { FileEdit, Upload, RotateCcw, MoreHorizontal, Eye, X, XCircle } from "lucide-react"
+import { FileEdit, Upload, RotateCcw, MoreHorizontal, Eye, X, XCircle, ChevronRight, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
@@ -39,11 +39,17 @@ export type Prediction = {
   department: string
   project: string
   month: string
-  status: string
+  predictUserStatus?: string  // 添加专门用于子项目的用户状态字段
   subProjectCount?: number
   remarks?: { subProject: string, content: string, period: string }[]
   remark?: string
   year: string
+  projectId?: string
+  subProjectId?: string
+  subProject?: string
+  isGroupHeader?: boolean
+  groupId?: string
+  isGroupItem?: boolean
 }
 
 export const columns: ColumnDef<Prediction>[] = [
@@ -59,51 +65,105 @@ export const columns: ColumnDef<Prediction>[] = [
         aria-label="Select all"
       />
     ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-      />
-    ),
+    cell: ({ row }) => {
+      if (row.original.isGroupHeader) {
+        return null;
+      }
+      
+      return (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+        />
+      );
+    },
     enableSorting: false,
     enableHiding: false,
   },
   {
     accessorKey: "organization",
     header: "机构",
+    cell: ({ row }) => {
+      if (row.original.isGroupHeader) {
+        return (
+          <div className="flex items-center font-medium">
+            <ChevronRight className="h-4 w-4 mr-2" />
+            {row.original.organization}
+          </div>
+        );
+      }
+      return null;
+    }
   },
   {
     accessorKey: "department",
     header: "部门",
+    cell: ({ row }) => {
+      if (row.original.isGroupHeader) {
+        return row.original.department;
+      }
+      return null;
+    }
   },
   {
     accessorKey: "project",
     header: "项目",
+    cell: ({ row }) => {
+      if (row.original.isGroupHeader) {
+        return <span className="font-medium">{row.original.project}</span>;
+      }
+      return null;
+    }
+  },
+  {
+    accessorKey: "subProject",
+    header: "子项目",
+    cell: ({ row }) => {
+      if (!row.original.isGroupHeader) {
+        return <span className="font-medium">{row.original.subProject}</span>;
+      }
+      return null;
+    }
   },
   {
     accessorKey: "month",
     header: "预测月份",
+    cell: ({ row }) => {
+      if (!row.original.isGroupHeader) {
+        return row.original.month;
+      }
+      return null;
+    }
   },
   {
     accessorKey: "status",
     header: "状态",
     cell: ({ row }) => {
-      const status = row.getValue("status") as string;
+      if (row.original.isGroupHeader) {
+        return null;
+      }
+      
+      // 优先使用 predictUserStatus 字段
+      const prediction = row.original;
+      const status = prediction.predictUserStatus || "未填写";
       
       let color = "";
       let text = "";
       
       switch (status) {
         case "未填写":
+        case "unfilled":
           color = "bg-gray-200";
           text = "未填写";
           break;
         case "草稿":
+        case "draft":
           color = "bg-yellow-200";
           text = "草稿";
           break;
         case "已提交":
+        case "submitted":
           color = "bg-green-200";
           text = "已提交";
           break;
@@ -125,68 +185,37 @@ export const columns: ColumnDef<Prediction>[] = [
     accessorKey: "remark",
     header: "备注",
     cell: ({ row }) => {
+      if (row.original.isGroupHeader) {
+        return null;
+      }
+      
       const prediction = row.original;
-      const remarks = prediction.remarks || [];
-      const subProjectCount = prediction.subProjectCount || 0;
+      const remark = prediction.remark;
       
       // 如果没有任何备注信息，显示占位符
-      if (!remarks.length && !prediction.remark) {
+      if (!remark) {
         return <span className="text-gray-400">-</span>;
       }
       
-      // 如果只有主备注，没有子项目备注，显示主备注
-      if (!remarks.length && prediction.remark) {
-        return (
-          <TooltipProvider>
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
-                <span 
-                  className="text-gray-500 cursor-help truncate max-w-[200px] inline-block hover:bg-accent hover:text-accent-foreground rounded px-1"
-                  title={prediction.remark}
-                >
-                  {prediction.remark.length > 15 ? `${prediction.remark.substring(0, 15)}...` : prediction.remark}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top" align="start" sideOffset={5} className="bg-popover text-popover-foreground p-3 shadow-lg border rounded-md z-50">
-                <div className="max-w-xs">
-                  <p className="text-sm">{prediction.remark}</p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      }
-      
-      // 如果有子项目备注，只显示子项目备注，不显示主备注
+      // 显示备注内容
       return (
-        <div className="flex flex-col gap-2">
-          {subProjectCount > 0 && (
-            <span className="text-xs text-gray-500">共 {subProjectCount} 个子项目</span>
-          )}
-          <div className="flex flex-wrap gap-1">
-            {remarks.map((item, index) => (
-              <TooltipProvider key={index}>
-                <Tooltip delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <Badge 
-                      variant="outline" 
-                      className="cursor-help hover:bg-accent hover:text-accent-foreground"
-                      title={`${item.subProject} (${item.period}): ${item.content}`}
-                    >
-                      {`${item.subProject.substring(0, 6)}${item.subProject.length > 6 ? '...' : ''} - ${item.content.substring(0, 8)}${item.content.length > 8 ? '...' : ''} - ${item.period}`}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="start" sideOffset={5} className="bg-popover text-popover-foreground p-3 shadow-lg border rounded-md z-50">
-                    <div className="max-w-xs">
-                      <p className="font-semibold">{item.subProject} ({item.period})</p>
-                      <p className="text-sm mt-1">{item.content}</p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ))}
-          </div>
-        </div>
+        <TooltipProvider>
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <span 
+                className="text-gray-500 cursor-help truncate max-w-[200px] inline-block hover:bg-accent hover:text-accent-foreground rounded px-1"
+                title={remark}
+              >
+                {remark.length > 15 ? `${remark.substring(0, 15)}...` : remark}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="start" sideOffset={5} className="bg-popover text-popover-foreground p-3 shadow-lg border rounded-md z-50">
+              <div className="max-w-xs">
+                <p className="text-sm">{remark}</p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       );
     },
   },
@@ -194,17 +223,28 @@ export const columns: ColumnDef<Prediction>[] = [
     id: "actions",
     header: "操作",
     cell: ({ row }) => {
+      if (row.original.isGroupHeader) {
+        return null;
+      }
+      
       const router = useRouter()
       const { toast } = useToast()
       const prediction = row.original
       const [open, setOpen] = useState(false)
       const [cancelWithdrawalOpen, setCancelWithdrawalOpen] = useState(false)
       
+      // 获取实际的项目ID和子项目ID
+      const actualProjectId = prediction.projectId || prediction.id.split('_')[0];
+      const actualSubProjectId = prediction.subProjectId || (prediction.id.includes('_sub_') ? prediction.id.split('_sub_')[0] : prediction.id);
+      
+      // 获取状态 - 优先使用 predictUserStatus
+      const status = prediction.predictUserStatus || "未填写";
+      
       // 提交项目的函数
       const handleSubmit = async () => {
         try {
           // 调用API提交预测
-          const response = await fetch(`/api/funding/predict/submit-single/${prediction.id}`, {
+          const response = await fetch(`/api/funding/predict/submit-single/${actualProjectId}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -212,6 +252,7 @@ export const columns: ColumnDef<Prediction>[] = [
             body: JSON.stringify({
               year: prediction.year,
               month: prediction.month,
+              subProjectId: actualSubProjectId
             }),
           });
           
@@ -241,14 +282,14 @@ export const columns: ColumnDef<Prediction>[] = [
       return (
         <div className="flex items-center gap-2">
           {/* 查看详情按钮 - 除了未填写和草稿状态外都显示 */}
-          {prediction.status !== "未填写" && prediction.status !== "草稿" && (
+          {status !== "未填写" && status !== "草稿" && status !== "unfilled" && status !== "draft" && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
                 const year = new Date().getFullYear()
                 const month = new Date().getMonth() + 2
-                window.location.href = `/funding/predict/view?id=${prediction.id}&year=${year}&month=${month}`
+                window.location.href = `/funding/predict/view?id=${actualProjectId}&year=${year}&month=${month}&subProjectId=${actualSubProjectId}`
               }}
               className="h-8 px-2 py-0"
             >
@@ -258,14 +299,14 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 填报按钮 - 只对未填写和草稿状态可用 */}
-          {(prediction.status === "未填写" || prediction.status === "草稿") && (
+          {(status === "未填写" || status === "草稿" || status === "unfilled" || status === "draft") && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
                 const year = new Date().getFullYear()
                 const month = new Date().getMonth() + 2
-                window.location.href = `/funding/predict/edit?id=${prediction.id}&year=${year}&month=${month}`
+                window.location.href = `/funding/predict/edit?id=${actualProjectId}&year=${year}&month=${month}&subProjectId=${actualSubProjectId}`
               }}
               className="h-8 px-2 py-0"
             >
@@ -275,7 +316,7 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 提交按钮 - 对草稿状态可用 */}
-          {prediction.status === "草稿" && (
+          {(status === "草稿" || status === "draft") && (
             <Button
               variant="outline"
               size="sm"
@@ -288,7 +329,7 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 撤回申请按钮 - 只对已提交状态可用 */}
-          {prediction.status === "已提交" && (
+          {(status === "已提交" || status === "submitted") && (
             <Button
               variant="outline"
               size="sm"
@@ -301,7 +342,7 @@ export const columns: ColumnDef<Prediction>[] = [
           )}
           
           {/* 取消撤回申请按钮 - 只对撤回审核中状态可用 */}
-          {prediction.status === "pending_withdrawal" && (
+          {status === "pending_withdrawal" && (
             <Button
               variant="outline"
               size="sm"
@@ -316,8 +357,10 @@ export const columns: ColumnDef<Prediction>[] = [
           <WithdrawalRequestDialog
             open={open}
             setOpen={setOpen}
-            projectId={prediction.id}
+            projectId={actualProjectId}
             projectName={prediction.project}
+            subProjectId={actualSubProjectId}
+            subProjectName={prediction.subProject}
             onComplete={() => {
               // 刷新数据
               router.refresh()
@@ -332,8 +375,10 @@ export const columns: ColumnDef<Prediction>[] = [
           <CancelWithdrawalDialog
             open={cancelWithdrawalOpen}
             setOpen={setCancelWithdrawalOpen}
-            projectId={prediction.id}
+            projectId={actualProjectId}
             projectName={prediction.project}
+            subProjectId={actualSubProjectId}
+            subProjectName={prediction.subProject}
             onComplete={() => {
               // 刷新数据
               router.refresh()
@@ -350,29 +395,33 @@ export const columns: ColumnDef<Prediction>[] = [
   },
 ]
 
-// 添加撤回申请按钮组件
-function WithdrawalRequestDialog({ 
-  open, 
-  setOpen, 
-  projectId, 
-  projectName, 
-  onComplete 
-}: { 
+interface WithdrawalRequestDialogProps {
   open: boolean;
   setOpen: (open: boolean) => void;
   projectId: string;
   projectName: string;
+  subProjectId?: string;
+  subProjectName?: string;
   onComplete?: () => void;
-}) {
+}
+
+function WithdrawalRequestDialog({ 
+  open, 
+  setOpen, 
+  projectId, 
+  projectName,
+  subProjectId,
+  subProjectName,
+  onComplete 
+}: WithdrawalRequestDialogProps) {
   const [reason, setReason] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
   
   const handleSubmit = async () => {
-    if (reason.trim().length < 5) {
+    if (!reason.trim()) {
       toast({
-        title: "错误",
-        description: "撤回原因至少需要5个字符",
+        title: "请输入撤回原因",
         variant: "destructive"
       })
       return
@@ -381,39 +430,43 @@ function WithdrawalRequestDialog({
     try {
       setSubmitting(true)
       
-      // 使用客户端API函数提交撤回申请
-      const result = await submitWithdrawalRequest(projectId, reason);
+      // 调用API请求撤回
+      const result = await submitWithdrawalRequest(projectId, subProjectId, reason)
       
-      // 无论成功或失败，都关闭对话框
-      setOpen(false);
+      if (!result.success) {
+        throw new Error("撤回请求失败")
+      }
       
-      // 如果成功，通知父组件刷新
-      if (result.success && onComplete) {
-        onComplete();
+      setOpen(false)
+      setReason("")
+      
+      if (onComplete) {
+        onComplete()
       }
     } catch (error) {
-      console.error("提交撤回申请失败", error);
+      console.error("撤回请求失败", error)
       toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "提交撤回申请失败",
+        title: "撤回请求失败",
+        description: error instanceof Error ? error.message : "请求失败",
         variant: "destructive"
-      });
-      // 即使出错也关闭对话框
-      setOpen(false);
+      })
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
   }
+  
+  // 构建对话框标题
+  const dialogTitle = subProjectName 
+    ? `申请撤回项目"${projectName}"的子项目"${subProjectName}"`
+    : `申请撤回项目"${projectName}"`;
   
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>提交撤回申请</DialogTitle>
+          <DialogTitle>申请撤回</DialogTitle>
           <DialogDescription>
-            项目: {projectName}
-            <br />
-            请填写撤回原因，管理员审核通过后将允许重新编辑。
+            {dialogTitle}，请填写撤回原因
           </DialogDescription>
         </DialogHeader>
         
@@ -422,26 +475,28 @@ function WithdrawalRequestDialog({
             <Label htmlFor="reason">撤回原因</Label>
             <Textarea
               id="reason"
-              placeholder="请详细说明撤回原因..."
+              placeholder="请输入撤回原因"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="min-h-[100px]"
             />
           </div>
         </div>
         
         <DialogFooter>
-          <Button 
-            variant="outline" 
-            onClick={() => setOpen(false)}
+          <Button
+            variant="outline"
+            onClick={() => {
+              setOpen(false)
+              setReason("")
+            }}
           >
             取消
           </Button>
-          <Button 
+          <Button
             onClick={handleSubmit}
-            disabled={submitting || reason.trim().length < 5}
+            disabled={submitting}
           >
-            {submitting ? "提交中..." : "提交申请"}
+            {submitting ? "提交中..." : "提交"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -449,20 +504,25 @@ function WithdrawalRequestDialog({
   )
 }
 
-// 添加取消撤回申请对话框组件
-function CancelWithdrawalDialog({ 
-  open, 
-  setOpen, 
-  projectId, 
-  projectName, 
-  onComplete 
-}: { 
+interface CancelWithdrawalDialogProps {
   open: boolean;
   setOpen: (open: boolean) => void;
   projectId: string;
   projectName: string;
+  subProjectId?: string;
+  subProjectName?: string;
   onComplete?: () => void;
-}) {
+}
+
+function CancelWithdrawalDialog({ 
+  open, 
+  setOpen, 
+  projectId, 
+  projectName,
+  subProjectId,
+  subProjectName,
+  onComplete 
+}: CancelWithdrawalDialogProps) {
   const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
   
@@ -470,29 +530,34 @@ function CancelWithdrawalDialog({
     try {
       setSubmitting(true)
       
-      // 使用客户端API函数取消撤回申请
-      const result = await cancelWithdrawalRequest(projectId);
+      // 调用API取消撤回请求
+      const result = await cancelWithdrawalRequest(projectId, subProjectId)
       
-      // 无论成功或失败，都关闭对话框
-      setOpen(false);
+      if (!result.success) {
+        throw new Error("取消撤回请求失败")
+      }
       
-      // 如果成功，通知父组件刷新
-      if (result.success && onComplete) {
-        onComplete();
+      setOpen(false)
+      
+      if (onComplete) {
+        onComplete()
       }
     } catch (error) {
-      console.error("取消撤回申请失败", error);
+      console.error("取消撤回请求失败", error)
       toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "取消撤回申请失败",
+        title: "取消撤回请求失败",
+        description: error instanceof Error ? error.message : "请求失败",
         variant: "destructive"
-      });
-      // 即使出错也关闭对话框
-      setOpen(false);
+      })
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
   }
+  
+  // 构建对话框描述
+  const dialogDescription = subProjectName 
+    ? `您确定要取消项目"${projectName}"的子项目"${subProjectName}"的撤回申请吗？`
+    : `您确定要取消项目"${projectName}"的撤回申请吗？`;
   
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -500,25 +565,22 @@ function CancelWithdrawalDialog({
         <DialogHeader>
           <DialogTitle>取消撤回申请</DialogTitle>
           <DialogDescription>
-            项目: {projectName}
-            <br />
-            确定要取消撤回申请吗？取消后项目状态将恢复为「已提交」。
+            {dialogDescription}
           </DialogDescription>
         </DialogHeader>
         
         <DialogFooter>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setOpen(false)}
           >
-            返回
+            取消
           </Button>
-          <Button 
+          <Button
             onClick={handleCancel}
             disabled={submitting}
-            variant="destructive"
           >
-            {submitting ? "处理中..." : "确认取消撤回申请"}
+            {submitting ? "提交中..." : "确认"}
           </Button>
         </DialogFooter>
       </DialogContent>

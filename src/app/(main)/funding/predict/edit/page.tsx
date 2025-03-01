@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
 import { Textarea } from "@/components/ui/textarea"
@@ -70,6 +70,7 @@ export default function PredictEditPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [project, setProject] = useState<ProjectData | null>(null)
   const [projects, setProjects] = useState<ProjectData[]>([])
   const [records, setRecords] = useState<Record<string, number | null>>({})
   const [remarks, setRemarks] = useState<Record<string, string>>({})
@@ -80,6 +81,7 @@ export default function PredictEditPage() {
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 2 // 下个月
   })
+  const [isBatchMode, setIsBatchMode] = useState(false)
   
   // 保存各种状态的引用，避免在依赖项中引起循环
   const recordsRef = useRef(records);
@@ -133,6 +135,8 @@ export default function PredictEditPage() {
     return new Intl.NumberFormat("zh-CN", {
       style: "currency",
       currency: "CNY",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount)
   }, []);
   
@@ -258,40 +262,34 @@ export default function PredictEditPage() {
   }, []);
   
   // 计算年度汇总
-  const calculateYearTotal = useCallback((subProjectId: string, fundTypeId: string) => {
-    let total = 0;
-    const currentProjects = projectsRef.current;
-    const currentRecords = recordsRef.current;
+  const calculateYearTotal = useCallback((subProjectId: string, fundTypeId: string, projectData: ProjectData | null = null) => {
+    const targetProject = projectData || project;
+    if (!targetProject) return 0;
     
-    currentProjects.forEach(project => {
-      project.subProjects.forEach(subProject => {
-        if (subProject.id === subProjectId) {
-          subProject.fundTypes.forEach(fundType => {
-            if (fundType.id === fundTypeId) {
-              fundType.records.forEach(record => {
-                // 只计算有效的记录
-                if (record.predicted !== null) {
-                  total += record.predicted;
-                } else {
-                  // 对于当前月份的临时记录，从currentRecords中获取值
-                  const recordKey = record.id;
-                  if (currentRecords[recordKey] !== null && currentRecords[recordKey] !== undefined) {
-                    total += currentRecords[recordKey] as number;
-                  }
-                }
-              });
-            }
-          });
-        }
-      });
+    let total = 0;
+    
+    targetProject.subProjects.forEach(subProject => {
+      if (subProject.id === subProjectId) {
+        subProject.fundTypes.forEach(fundType => {
+          if (fundType.id === fundTypeId) {
+            fundType.records.forEach(record => {
+              // 使用最新的记录值或原始值
+              const value = records[record.id] !== undefined ? records[record.id] : record.predicted;
+              if (value !== null) {
+                total += value;
+              }
+            });
+          }
+        });
+      }
     });
     
     return total;
-  }, []);
+  }, [project, records]);
   
   // 手动保存
   const handleSave = useCallback(async () => {
-    if (!hasChangesRef.current) return;
+    if (isBatchMode ? !projects.length : !project) return;
     
     try {
       setSaving(true);
@@ -366,7 +364,7 @@ export default function PredictEditPage() {
     } finally {
       setSaving(false);
     }
-  }, [toast]);
+  }, [toast, isBatchMode, project, projects, records, remarks, nextMonth]);
   
   // 提交
   const handleSubmit = useCallback(async () => {
@@ -459,7 +457,8 @@ export default function PredictEditPage() {
       
       // 获取查询参数
       const id = searchParams.get("id");
-      const ids = searchParams.get("ids");
+      const projectIds = searchParams.getAll("projectIds[]");
+      const subProjectIds = searchParams.getAll("subProjectIds[]");
       const year = searchParams.get("year") || new Date().getFullYear().toString();
       const month = searchParams.get("month") || (new Date().getMonth() + 2).toString();
       
@@ -468,59 +467,66 @@ export default function PredictEditPage() {
         month: parseInt(month)
       });
       
-      if (!ids && !id) {
-        toast({
-          title: "错误",
-          description: "缺少必要的项目ID参数",
-          variant: "destructive"
+      if (projectIds.length > 0 && subProjectIds.length > 0) {
+        setIsBatchMode(true);
+        
+        // 批量获取数据
+        const queryParams = new URLSearchParams();
+        projectIds.forEach((id, index) => {
+          queryParams.append("projectIds[]", id);
+          if (subProjectIds[index]) {
+            queryParams.append("subProjectIds[]", subProjectIds[index]);
+          }
         });
-        router.push("/funding/predict");
-        return;
-      }
-      
-      // 构建API请求
-      const fetchPromises = [];
-      
-      if (id) {
-        // 单个项目
-        fetchPromises.push(
-          fetch(`/api/funding/predict/${id}?year=${year}&month=${month}`)
-            .then(response => {
-              if (!response.ok) {
-                throw new Error("获取项目详情失败");
-              }
-              return response.json();
-            })
-        );
-      } else if (ids) {
-        // 多个项目
-        const idArray = ids.split(',');
-        for (const projectId of idArray) {
-          fetchPromises.push(
-            fetch(`/api/funding/predict/${projectId}?year=${year}&month=${month}`)
-              .then(response => {
-                if (!response.ok) {
-                  throw new Error(`获取项目 ${projectId} 详情失败`);
-                }
-                return response.json();
-              })
-          );
+        queryParams.append("year", year);
+        queryParams.append("month", month);
+        
+        const response = await fetch(`/api/funding/predict/batch?${queryParams.toString()}`);
+        
+        if (!response.ok) {
+          throw new Error("获取项目详情失败");
         }
-      }
-      
-      const projectsData = await Promise.all(fetchPromises);
-      
-      // 移除过多的日志输出，保留最关键的
-      console.log(`成功获取到${projectsData.length}个项目的数据`);
-      
-      setProjects(projectsData);
-      
-      // 初始化记录和备注
-      const initialRecords: Record<string, number | null> = {};
-      const initialRemarks: Record<string, string> = {};
-      
-      projectsData.forEach(project => {
-        project.subProjects.forEach((subProject: any) => {
+        
+        const projectsData = await response.json();
+        
+        setProjects(projectsData);
+        
+        // 初始化记录和备注
+        const initialRecords: Record<string, number | null> = {};
+        const initialRemarks: Record<string, string> = {};
+        
+        projectsData.forEach((projectData: ProjectData) => {
+          projectData.subProjects.forEach((subProject) => {
+            subProject.fundTypes.forEach((fundType) => {
+              fundType.records.forEach((record: FundRecord) => {
+                initialRecords[record.id] = record.predicted;
+                initialRemarks[record.id] = record.remark || "";
+              });
+            });
+          });
+        });
+        
+        setRecords(initialRecords);
+        setRemarks(initialRemarks);
+      } else if (id) {
+        setIsBatchMode(false);
+        
+        // 获取单个项目数据
+        const response = await fetch(`/api/funding/predict/${id}?year=${year}&month=${month}`);
+        
+        if (!response.ok) {
+          throw new Error("获取项目详情失败");
+        }
+        
+        const projectData = await response.json();
+        
+        setProject(projectData);
+        
+        // 初始化记录和备注
+        const initialRecords: Record<string, number | null> = {};
+        const initialRemarks: Record<string, string> = {};
+        
+        projectData.subProjects.forEach((subProject: any) => {
           subProject.fundTypes.forEach((fundType: any) => {
             // 检查是否存在当前月份的记录
             const currentMonthRecords = fundType.records.filter(
@@ -560,13 +566,15 @@ export default function PredictEditPage() {
             });
           });
         });
-      });
+        
+        // 移除过多的日志输出
+        console.log(`初始化了${Object.keys(initialRecords).length}条记录`);
+        
+        setRecords(initialRecords);
+        setRemarks(initialRemarks);
+      }
       
-      // 移除过多的日志输出
-      console.log(`初始化了${Object.keys(initialRecords).length}条记录`);
-      
-      setRecords(initialRecords);
-      setRemarks(initialRemarks);
+      // 更新原始记录
       setOriginalRecords({...initialRecords});
       setOriginalRemarks({...initialRemarks});
       setLoading(false);
@@ -604,144 +612,265 @@ export default function PredictEditPage() {
     // };
   }, [fetchData]);
   
+  // 确认离开编辑页前的提示
+  useEffect(() => {
+    if (!hasChanges) return
+    
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ""
+    }
+    
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+    }
+  }, [hasChanges])
+  
+  // 渲染单个项目编辑表格
+  const renderSingleProjectTable = () => {
+    if (!project) return null
+    
+    return (
+      <Card className="overflow-hidden">
+        <CardHeader className="bg-muted">
+          <CardTitle>
+            {project.organization.name} ({project.organization.code}) - {project.name}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[150px]">子项目</TableHead>
+                  <TableHead className="w-[150px]">资金需求类型</TableHead>
+                  <TableHead className="w-[150px]">年度汇总</TableHead>
+                  {/* 历史月份 */}
+                  {[1, 2, 3].filter(month => month < nextMonth.month).map(month => (
+                    <TableHead key={month} className="w-[150px]">
+                      {`${nextMonth.year}-${month.toString().padStart(2, '0')}`}
+                    </TableHead>
+                  ))}
+                  {/* 当前月份 */}
+                  <TableHead className="w-[150px]">
+                    {`${nextMonth.year}-${nextMonth.month.toString().padStart(2, '0')}`}
+                  </TableHead>
+                  <TableHead className="w-[200px]">备注</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {project.subProjects.map(subProject => (
+                  subProject.fundTypes.map(fundType => (
+                    <TableRow key={`${subProject.id}-${fundType.id}`}>
+                      <TableCell>{subProject.name}</TableCell>
+                      <TableCell>{fundType.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {formatCurrency(calculateYearTotal(subProject.id, fundType.id))}
+                      </TableCell>
+                      {/* 历史月份数据 */}
+                      {[1, 2, 3].filter(month => month < nextMonth.month).map(month => {
+                        const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year)
+                        return (
+                          <TableCell key={month}>
+                            {record ? formatCurrency(record.predicted) : ""}
+                          </TableCell>
+                        )
+                      })}
+                      {/* 当前月份数据 */}
+                      <TableCell>
+                        {fundType.records
+                          .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
+                          .map(record => (
+                            <Input
+                              key={record.id}
+                              type="text"
+                              value={records[record.id] !== null ? formatCurrency(records[record.id]) : ""}
+                              onChange={(e) => handleInputChange(record.id, e.target.value)}
+                              placeholder="请输入金额"
+                              className="w-full"
+                            />
+                          ))}
+                      </TableCell>
+                      {/* 备注 */}
+                      <TableCell>
+                        {fundType.records
+                          .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
+                          .map(record => (
+                            <Textarea
+                              key={record.id}
+                              value={remarks[record.id] || ""}
+                              onChange={(e) => handleRemarkChange(record.id, e.target.value)}
+                              placeholder="请输入备注"
+                              className="w-full resize-none"
+                              rows={2}
+                            />
+                          ))}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+  
+  // 渲染批量项目编辑表格
+  const renderBatchProjectTables = () => {
+    if (!projects.length) return null
+    
+    return projects.map((projectData, index) => (
+      <Card key={projectData.id} className="overflow-hidden mb-6">
+        <CardHeader className="bg-muted">
+          <CardTitle>
+            {projectData.organization.name} ({projectData.organization.code}) - {projectData.name}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[150px]">子项目</TableHead>
+                  <TableHead className="w-[150px]">资金需求类型</TableHead>
+                  <TableHead className="w-[150px]">年度汇总</TableHead>
+                  {/* 历史月份 */}
+                  {[1, 2, 3].filter(month => month < nextMonth.month).map(month => (
+                    <TableHead key={month} className="w-[150px]">
+                      {`${nextMonth.year}-${month.toString().padStart(2, '0')}`}
+                    </TableHead>
+                  ))}
+                  {/* 当前月份 */}
+                  <TableHead className="w-[150px]">
+                    {`${nextMonth.year}-${nextMonth.month.toString().padStart(2, '0')}`}
+                  </TableHead>
+                  <TableHead className="w-[200px]">备注</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {projectData.subProjects.map(subProject => (
+                  subProject.fundTypes.map(fundType => (
+                    <TableRow key={`${projectData.id}-${subProject.id}-${fundType.id}`}>
+                      <TableCell>{subProject.name}</TableCell>
+                      <TableCell>{fundType.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {formatCurrency(calculateYearTotal(subProject.id, fundType.id, projectData))}
+                      </TableCell>
+                      {/* 历史月份数据 */}
+                      {[1, 2, 3].filter(month => month < nextMonth.month).map(month => {
+                        const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year)
+                        return (
+                          <TableCell key={month}>
+                            {record ? formatCurrency(record.predicted) : ""}
+                          </TableCell>
+                        )
+                      })}
+                      {/* 当前月份数据 */}
+                      <TableCell>
+                        {fundType.records
+                          .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
+                          .map(record => (
+                            <Input
+                              key={record.id}
+                              type="text"
+                              value={records[record.id] !== null ? formatCurrency(records[record.id]) : ""}
+                              onChange={(e) => handleInputChange(record.id, e.target.value)}
+                              placeholder="请输入金额"
+                              className="w-full"
+                            />
+                          ))}
+                      </TableCell>
+                      {/* 备注 */}
+                      <TableCell>
+                        {fundType.records
+                          .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
+                          .map(record => (
+                            <Textarea
+                              key={record.id}
+                              value={remarks[record.id] || ""}
+                              onChange={(e) => handleRemarkChange(record.id, e.target.value)}
+                              placeholder="请输入备注"
+                              className="w-full resize-none"
+                              rows={2}
+                            />
+                          ))}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    ))
+  }
+  
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.push("/funding/predict")}>
+          <Button variant="outline" onClick={() => {
+            if (hasChanges) {
+              if (window.confirm("您有未保存的更改，确定要离开吗？")) {
+                router.push("/funding/predict")
+              }
+            } else {
+              router.push("/funding/predict")
+            }
+          }}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
           </Button>
           <h1 className="text-3xl font-bold tracking-tight">资金需求预测填报</h1>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleSave}
-            disabled={saving || !hasChanges}
-          >
-            <Save className="mr-2 h-4 w-4" />
-            保存
-            {saving && "..."}
-          </Button>
-          
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button disabled={submitting}>
-                <Upload className="mr-2 h-4 w-4" />
-                提交
-                {submitting && "..."}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>确认提交</AlertDialogTitle>
-                <AlertDialogDescription>
-                  提交后数据将被锁定，不能再次修改。确定要提交吗？
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={handleSubmit}>确认提交</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
       </div>
       
       <div className="space-y-8">
         {loading ? (
           <div className="text-center py-8">加载中...</div>
+        ) : isBatchMode ? (
+          renderBatchProjectTables()
         ) : (
-          projects.map(project => (
-            <Card key={project.id} className="overflow-hidden">
-              <CardHeader className="bg-muted">
-                <CardTitle>
-                  {project.organization.name} ({project.organization.code}) - {project.name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[150px]">子项目</TableHead>
-                        <TableHead className="w-[150px]">资金需求类型</TableHead>
-                        <TableHead className="w-[150px]">年度汇总</TableHead>
-                        {/* 历史月份 */}
-                        {[1, 2, 3].filter(month => month < nextMonth.month).map(month => (
-                          <TableHead key={month} className="w-[150px]">
-                            {`${nextMonth.year}-${month.toString().padStart(2, '0')} (已提交)`}
-                          </TableHead>
-                        ))}
-                        {/* 当前月份 */}
-                        <TableHead className="w-[150px]">
-                          {`${nextMonth.year}-${nextMonth.month.toString().padStart(2, '0')} (可填报)`}
-                        </TableHead>
-                        <TableHead className="w-[200px]">备注</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {project.subProjects.map(subProject => (
-                        subProject.fundTypes.map(fundType => (
-                          <TableRow key={`${subProject.id}-${fundType.id}`}>
-                            <TableCell>{subProject.name}</TableCell>
-                            <TableCell>{fundType.name}</TableCell>
-                            <TableCell className="font-medium">
-                              {formatCurrency(calculateYearTotal(subProject.id, fundType.id))}
-                            </TableCell>
-                            {/* 历史月份数据（不可编辑） */}
-                            {[1, 2, 3].filter(month => month < nextMonth.month).map(month => {
-                              const record = fundType.records.find(r => r.month === month && r.year === nextMonth.year);
-                              return (
-                                <TableCell key={month}>
-                                  {record ? formatCurrency(record.predicted) : ""}
-                                </TableCell>
-                              );
-                            })}
-                            {/* 当前月份数据（可填报） */}
-                            <TableCell>
-                              {fundType.records
-                                .filter(record => {
-                                  // 确保只显示当前填报月份的记录，移除console.log
-                                  return record.year === nextMonth.year && record.month === nextMonth.month;
-                                })
-                                .map(record => (
-                                  <Input
-                                    key={record.id}
-                                    type="number"
-                                    value={records[record.id] === null ? "" : String(records[record.id])}
-                                    onChange={(e) => handleInputChange(record.id, e.target.value)}
-                                    placeholder="请输入金额"
-                                    className="w-full"
-                                  />
-                                ))}
-                            </TableCell>
-                            {/* 备注 */}
-                            <TableCell>
-                              {fundType.records
-                                .filter(record => record.year === nextMonth.year && record.month === nextMonth.month)
-                                .map(record => (
-                                  <Textarea
-                                    key={record.id}
-                                    value={remarks[record.id] || ""}
-                                    onChange={(e) => handleRemarkChange(record.id, e.target.value)}
-                                    placeholder="请输入备注"
-                                    className="w-full resize-none"
-                                    rows={2}
-                                  />
-                                ))}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+          renderSingleProjectTable()
         )}
+      </div>
+      
+      {/* 操作按钮 */}
+      <div className="flex justify-end gap-4">
+        <Button
+          variant="outline"
+          onClick={handleSave}
+          disabled={submitting || !hasChanges}
+        >
+          <Save className="mr-2 h-4 w-4" />
+          保存
+        </Button>
+        
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button disabled={submitting}>
+              <Upload className="mr-2 h-4 w-4" />
+              提交
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认提交</AlertDialogTitle>
+              <AlertDialogDescription>
+                提交后数据将被锁定，不能再次修改。确定要提交吗？
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={handleSubmit}>确认提交</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   )

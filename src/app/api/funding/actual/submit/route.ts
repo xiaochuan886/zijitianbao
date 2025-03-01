@@ -39,13 +39,16 @@ export async function POST(req: NextRequest) {
     // 获取当前月份
     const { year, month } = body.projectInfo.nextMonth;
     
+    // 确定状态字段
+    const statusField = isUserReport ? "actualUserStatus" : "actualFinanceStatus";
+    
     // 检查用户是否已经对这些项目提交过实际支付
     const existingSubmissions = await db.record.findMany({
       where: {
         subProjectId: { in: subProjectIds },
         year: year,
         month: month,
-        status: "submitted",
+        [statusField]: "submitted",
         submittedBy: userId,
         ...(isUserReport ? { actualUser: { not: null } } : { actualFinance: { not: null } })
       }
@@ -85,7 +88,8 @@ export async function POST(req: NextRequest) {
           if (existingRecord) {
             // 如果记录已存在，则更新记录
             const updateData: Prisma.RecordUpdateInput = {
-              status: "submitted",
+              status: "submitted", // 保留status字段兼容旧代码
+              [statusField]: "submitted", // 使用新的状态字段
               submittedBy: userId,
               submittedAt: new Date(),
               remark: body.remarks[id] || existingRecord.remark
@@ -108,7 +112,8 @@ export async function POST(req: NextRequest) {
               subProjectId: subProjectId,
               year: parseInt(yearStr),
               month: parseInt(monthStr),
-              status: "submitted",
+              status: "submitted", // 保留status字段兼容旧代码
+              [statusField]: "submitted", // 使用新的状态字段
               submittedBy: userId,
               submittedAt: new Date(),
               remark: body.remarks[id] || ""
@@ -135,9 +140,11 @@ export async function POST(req: NextRequest) {
           
           if (record) {
             // 检查记录状态，只有草稿状态的记录可以被提交
-            if (record.status === "draft") {
+            const currentStatus = isUserReport ? record.actualUserStatus : record.actualFinanceStatus;
+            if (currentStatus === "draft" || record.status === "draft") {
               const updateData: Prisma.RecordUpdateInput = {
-                status: "submitted",
+                status: "submitted", // 保留status字段兼容旧代码
+                [statusField]: "submitted", // 使用新的状态字段
                 submittedBy: userId,
                 submittedAt: new Date(),
                 remark: body.remarks[id] || record.remark
