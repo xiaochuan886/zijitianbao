@@ -36,16 +36,17 @@ declare module "@tanstack/react-table" {
   }
 }
 
-interface Column {
+// 兼容两种类型的列定义
+export interface Column {
   accessorKey?: string
   id?: string
-  header: string
-  cell?: (props: { row: any }) => React.ReactNode
+  header: any
+  cell?: any
 }
 
-export interface DataTableProps {
-  columns: Column[]
-  data: any[]
+export interface DataTableProps<T = any> {
+  columns: (ColumnDef<T> | Column)[]
+  data: T[]
   pagination?: {
     page: number
     pageSize: number
@@ -54,12 +55,12 @@ export interface DataTableProps {
   }
   onPaginationChange?: (pagination: { page: number; pageSize: number }) => void
   loading?: boolean
-  onSelectedRowsChange?: (selectedRowIds: string[]) => void
+  onSelectedRowsChange?: (selectedRowIds: Set<string>) => void
   isGroupRow?: (row: any) => boolean
   groupId?: (row: any) => string | undefined
 }
 
-export function DataTable({
+export function DataTable<T = any>({
   columns,
   data,
   pagination,
@@ -68,7 +69,7 @@ export function DataTable({
   onSelectedRowsChange,
   isGroupRow = (row) => row.isGroupHeader === true,
   groupId = (row) => row.groupId
-}: DataTableProps) {
+}: DataTableProps<T>) {
   
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -140,7 +141,7 @@ export function DataTable({
       const callback = onSelectedRowsChangeRef.current;
       if (callback && dataRef.current.length > 0) {
         const selectedIds = getSelectedRowIds();
-        callback(selectedIds);
+        callback(new Set(selectedIds));
       }
     });
     

@@ -1,7 +1,7 @@
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import { MoreHorizontal } from "lucide-react"
+import { MoreHorizontal, Edit, Eye, Archive } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -11,7 +11,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ProjectForm } from "./project-form"
 
 export type Project = {
   id: string
@@ -20,11 +19,26 @@ export type Project = {
   departments: string[]
   status: string
   startYear: number
+  category?: {
+    id: string
+    name: string
+    code?: string
+  }
   subProjects: Array<{
     name: string
     fundingType: string
   }>
   createdAt: Date
+}
+
+// 扩展CellContext类型，添加onEdit属性
+interface CellContextWithActions {
+  row: {
+    original: Project
+  }
+  onEdit?: (project: Project) => void
+  onView?: (project: Project) => void
+  onArchive?: (project: Project) => void
 }
 
 export const columns: ColumnDef<Project>[] = [
@@ -43,6 +57,15 @@ export const columns: ColumnDef<Project>[] = [
           </span>
         ))}
       </div>
+    ),
+  },
+  {
+    accessorKey: "category",
+    header: "项目分类",
+    cell: ({ row }) => (
+      <span className={row.original.category ? "px-2 py-1 rounded text-sm bg-purple-100 text-purple-800" : "text-gray-400"}>
+        {row.original.category ? row.original.category.name : "未分类"}
+      </span>
     ),
   },
   {
@@ -70,7 +93,7 @@ export const columns: ColumnDef<Project>[] = [
   },
   {
     id: "actions",
-    cell: ({ row, onEdit }) => {
+    cell: ({ row, onEdit, onView, onArchive }: CellContextWithActions) => {
       const project = row.original
 
       return (
@@ -87,11 +110,18 @@ export const columns: ColumnDef<Project>[] = [
               复制项目ID
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <ProjectForm initialData={project} onSubmit={(data) => onEdit({ ...data, id: project.id })} />
+            <DropdownMenuItem onClick={() => onEdit && onEdit(project)}>
+              <Edit className="mr-2 h-4 w-4" />
+              编辑项目
             </DropdownMenuItem>
-            <DropdownMenuItem>查看详情</DropdownMenuItem>
-            <DropdownMenuItem>归档项目</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onView && onView(project)}>
+              <Eye className="mr-2 h-4 w-4" />
+              查看详情
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onArchive && onArchive(project)}>
+              <Archive className="mr-2 h-4 w-4" />
+              归档项目
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )

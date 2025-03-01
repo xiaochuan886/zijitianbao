@@ -1,5 +1,15 @@
-import { PrismaClient, RecordStatus } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
+
+// 使用常量对象而不是枚举来定义 RecordStatus
+const RecordStatus = {
+  DRAFT: 'DRAFT',
+  UNFILLED: 'UNFILLED',
+  SUBMITTED: 'SUBMITTED',
+  PENDING_WITHDRAWAL: 'PENDING_WITHDRAWAL',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED'
+} as const;
 
 const prisma = new PrismaClient()
 
@@ -394,6 +404,19 @@ async function createPredictRecords(subProjects: any[], users: any[]) {
   
   // 获取所有子项目
   for (const subProject of subProjects) {
+    // 获取子项目关联的资金类型
+    const subProjectWithFundTypes = await prisma.subProject.findUnique({
+      where: { id: subProject.id },
+      include: { fundTypes: true }
+    })
+    
+    const fundTypes = subProjectWithFundTypes?.fundTypes || []
+    
+    if (fundTypes.length === 0) {
+      console.log(`警告: 子项目 ${subProject.name} 没有关联的资金类型，跳过创建记录`)
+      continue
+    }
+    
     // 创建过去3个月的记录
     for (let i = 1; i <= 3; i++) {
       let month = currentMonth - i
@@ -407,23 +430,41 @@ async function createPredictRecords(subProjects: any[], users: any[]) {
       // 随机选择一个用户
       const randomUser = users[Math.floor(Math.random() * users.length)]
       
-      // 创建记录 - 注意这里不再按资金类型循环，确保每个子项目每个月只有一条记录
-      try {
-        await prisma.predictRecord.create({
-          data: {
-            subProjectId: subProject.id,
-            year: year,
-            month: month,
-            amount: Math.floor(Math.random() * 1000000) / 100, // 生成两位小数的随机金额
-            status: "DRAFT" as RecordStatus,
-            remark: `${subProject.name} ${year}年${month}月预测`,
-            submittedBy: randomUser.id,
-            submittedAt: new Date(year, month - 1, Math.floor(Math.random() * 28) + 1)
+      // 为每个资金类型创建一条记录
+      for (const fundType of fundTypes) {
+        try {
+          // 检查记录是否已存在
+          const existingRecord = await (prisma as any).predictRecord.findFirst({
+            where: {
+              subProjectId: subProject.id,
+              fundTypeId: fundType.id,
+              year: year,
+              month: month
+            }
+          });
+          
+          if (!existingRecord) {
+            // 创建新记录
+            await (prisma as any).predictRecord.create({
+              data: {
+                subProjectId: subProject.id,
+                fundTypeId: fundType.id,
+                year: year,
+                month: month,
+                amount: Math.floor(Math.random() * 1000000) / 100,
+                status: RecordStatus.DRAFT,
+                remark: `${subProject.name} ${fundType.name} ${year}年${month}月预测`,
+                submittedBy: randomUser.id,
+                submittedAt: new Date(year, month - 1, Math.floor(Math.random() * 28) + 1)
+              }
+            });
+            console.log(`创建预测记录: ${subProject.name} ${fundType.name} ${year}年${month}月`);
+          } else {
+            console.log(`跳过重复记录: ${subProject.name} ${fundType.name} ${year}年${month}月`);
           }
-        })
-        console.log(`创建预测记录: ${subProject.name} ${year}年${month}月`)
-      } catch (error) {
-        console.log(`跳过重复记录: ${subProject.name} ${year}年${month}月`)
+        } catch (error) {
+          console.error(`创建记录失败: ${subProject.name} ${fundType.name} ${year}年${month}月`, error);
+        }
       }
     }
   }

@@ -1,6 +1,12 @@
 import { prisma } from '../prisma'
 import { PaginationParams, PaginatedResponse, QueryParams, ServiceError } from './types'
-import { Prisma, ProjectStatus } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+
+// 定义ProjectStatus枚举，与schema.prisma中的定义保持一致
+enum ProjectStatus {
+  ACTIVE = 'ACTIVE',
+  ARCHIVED = 'ARCHIVED'
+}
 
 export interface CreateProjectDto {
   name: string
@@ -214,12 +220,6 @@ export class ProjectService {
         subProjects: {
           include: {
             fundTypes: true,
-            records: {
-              orderBy: [
-                { year: 'desc' },
-                { month: 'desc' },
-              ],
-            },
           },
         },
       },
@@ -253,6 +253,9 @@ export class ProjectService {
       ...(filters?.departmentId
         ? { departments: { some: { id: filters.departmentId as string } } }
         : {}),
+      ...(filters?.categoryId
+        ? { categoryId: filters.categoryId as string }
+        : {}),
     }
 
     const [total, items] = await Promise.all([
@@ -262,14 +265,10 @@ export class ProjectService {
         include: {
           organizations: true,
           departments: true,
+          category: true,
           subProjects: {
             include: {
               fundTypes: true,
-              _count: {
-                select: {
-                  records: true,
-                },
-              },
             },
           },
         },
@@ -330,23 +329,24 @@ export class ProjectService {
   }
 
   async deleteSubProject(id: string) {
+    // 首先检查子项目是否存在
     const subProject = await prisma.subProject.findUnique({
       where: { id },
-      include: {
-        records: true,
-      },
     })
 
     if (!subProject) {
       throw new ServiceError(404, '子项目不存在')
     }
 
-    if (subProject.records.length > 0) {
-      throw new ServiceError(400, '子项目下存在资金记录，无法删除')
+    try {
+      // 尝试删除子项目
+      await prisma.subProject.delete({
+        where: { id },
+      })
+    } catch (error: any) {
+      // 如果删除失败，可能是因为存在外键约束
+      console.error('删除子项目失败:', error)
+      throw new ServiceError(400, '子项目下可能存在资金记录，无法删除')
     }
-
-    await prisma.subProject.delete({
-      where: { id },
-    })
   }
 } 

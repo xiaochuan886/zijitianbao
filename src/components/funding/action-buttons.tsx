@@ -11,6 +11,7 @@ interface ActionButtonsProps {
   canSubmit: boolean
   onEdit: () => void
   onSubmit: () => void
+  showSubmitButton?: boolean
 }
 
 export function ActionButtons({
@@ -20,7 +21,8 @@ export function ActionButtons({
   canEdit,
   canSubmit,
   onEdit,
-  onSubmit
+  onSubmit,
+  showSubmitButton = true
 }: ActionButtonsProps) {
   return (
     <div className="flex justify-end gap-2 mt-4">
@@ -36,18 +38,20 @@ export function ActionButtons({
         <FileEdit className="mr-2 h-4 w-4" />
         批量填报
       </Button>
-      <Button 
-        onClick={onSubmit}
-        disabled={
-          selectedCount === 0 || 
-          submitting || 
-          loading ||
-          !canSubmit
-        }
-      >
-        <Upload className="mr-2 h-4 w-4" />
-        {submitting ? "提交中..." : "批量提交"}
-      </Button>
+      {showSubmitButton && (
+        <Button 
+          onClick={onSubmit}
+          disabled={
+            selectedCount === 0 || 
+            submitting || 
+            loading ||
+            !canSubmit
+          }
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          {submitting ? "提交中..." : "批量提交"}
+        </Button>
+      )}
     </div>
   )
 } 

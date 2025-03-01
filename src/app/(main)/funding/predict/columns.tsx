@@ -40,6 +40,7 @@ export type Prediction = {
   project: string
   month: string
   predictUserStatus?: string  // 添加专门用于子项目的用户状态字段
+  status?: string  // 添加通用状态字段
   subProjectCount?: number
   remarks?: { subProject: string, content: string, period: string }[]
   remark?: string
@@ -47,6 +48,9 @@ export type Prediction = {
   projectId?: string
   subProjectId?: string
   subProject?: string
+  fundType?: string  // 添加资金需求类型字段
+  projectCategory?: string // 项目类型字段
+  predictMonth?: string // 添加预测月份字段
   isGroupHeader?: boolean
   groupId?: string
   isGroupItem?: boolean
@@ -107,6 +111,16 @@ export const columns: ColumnDef<Prediction>[] = [
     }
   },
   {
+    accessorKey: "projectCategory",
+    header: "项目类型",
+    cell: ({ row }) => {
+      if (row.original.isGroupHeader) {
+        return row.original.projectCategory;
+      }
+      return null;
+    }
+  },
+  {
     accessorKey: "project",
     header: "项目",
     cell: ({ row }) => {
@@ -121,17 +135,31 @@ export const columns: ColumnDef<Prediction>[] = [
     header: "子项目",
     cell: ({ row }) => {
       if (!row.original.isGroupHeader) {
-        return <span className="font-medium">{row.original.subProject}</span>;
+        return (
+          <div className="flex items-center">
+            <span className="ml-6 font-medium">{row.original.subProject}</span>
+          </div>
+        );
       }
       return null;
     }
   },
   {
-    accessorKey: "month",
+    accessorKey: "fundType",
+    header: "资金需求类型",
+    cell: ({ row }) => {
+      if (!row.original.isGroupHeader && row.original.fundType) {
+        return <span className="text-sm">{row.original.fundType}</span>;
+      }
+      return null;
+    }
+  },
+  {
+    accessorKey: "predictMonth",
     header: "预测月份",
     cell: ({ row }) => {
       if (!row.original.isGroupHeader) {
-        return row.original.month;
+        return <span className="text-sm">{row.original.month || row.original.predictMonth}</span>;
       }
       return null;
     }
@@ -146,7 +174,7 @@ export const columns: ColumnDef<Prediction>[] = [
       
       // 优先使用 predictUserStatus 字段
       const prediction = row.original;
-      const status = prediction.predictUserStatus || "未填写";
+      const status = prediction.predictUserStatus || prediction.status || "未填写";
       
       let color = "";
       let text = "";
@@ -238,7 +266,7 @@ export const columns: ColumnDef<Prediction>[] = [
       const actualSubProjectId = prediction.subProjectId || (prediction.id.includes('_sub_') ? prediction.id.split('_sub_')[0] : prediction.id);
       
       // 获取状态 - 优先使用 predictUserStatus
-      const status = prediction.predictUserStatus || "未填写";
+      const status = prediction.predictUserStatus || prediction.status || "未填写";
       
       // 提交项目的函数
       const handleSubmit = async () => {
@@ -444,7 +472,7 @@ function WithdrawalRequestDialog({
         onComplete()
       }
     } catch (error) {
-      console.error("撤回请求失败", error)
+      console.error("撤回请求失败", error);
       toast({
         title: "撤回请求失败",
         description: error instanceof Error ? error.message : "请求失败",

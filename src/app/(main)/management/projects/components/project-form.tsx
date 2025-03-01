@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,11 +11,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus } from 'lucide-react';
 import { OrganizationSelector } from './organization-selector';
 import { SubProjectForm } from './sub-project-form';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+
+// 项目分类接口
+interface ProjectCategory {
+  id: string;
+  name: string;
+  code?: string;
+  organizationId: string;
+}
 
 const projectSchema = z.object({
   name: z.string().min(2, '项目名称至少2个字符').max(100, '项目名称最多100个字符'),
   code: z.string().min(2, '项目编码至少2个字符').max(50, '项目编码最多50个字符'),
   startYear: z.number().min(2000, '开始年份不能早于2000年').max(2100, '开始年份不能晚于2100年'),
+  categoryId: z.string().optional(),
   departments: z.array(z.object({
     organizationId: z.string().min(1, '请选择机构'),
     departmentIds: z.array(z.string()).min(1, '至少选择一个部门')
@@ -36,6 +52,38 @@ interface ProjectFormProps {
 
 export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProps) {
   const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<ProjectCategory[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<string>('');
+
+  // 获取项目分类列表
+  const fetchCategories = async (organizationId?: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      let url = '/api/project-categories';
+      if (organizationId) {
+        url += `?organizationId=${organizationId}`;
+      }
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      if (data && data.items) {
+        setCategories(data.items);
+      } else if (Array.isArray(data)) {
+        setCategories(data);
+      } else {
+        console.error('项目分类数据格式不正确:', data);
+        setCategories([]);
+      }
+    } catch (error) {
+      console.error('获取项目分类列表失败:', error);
+      setCategories([]);
+    }
+  };
 
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
@@ -43,10 +91,40 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
       name: '',
       code: '',
       startYear: new Date().getFullYear(),
+      categoryId: '',
       departments: [{ organizationId: '', departmentIds: [] }],
       subProjects: [{ name: '', fundingTypes: [] }]
     }
   });
+
+  // 监听机构变化，更新分类列表
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      if (value?.departments?.[0]?.organizationId) {
+        const orgId = value.departments[0].organizationId;
+        if (orgId !== selectedOrgId) {
+          setSelectedOrgId(orgId);
+          fetchCategories(orgId);
+        }
+      }
+    });
+    
+    return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.watch, selectedOrgId]);
+
+  // 初始化时加载分类
+  useEffect(() => {
+    if (initialData?.departments && initialData.departments.length > 0) {
+      const orgId = initialData.departments[0].organizationId;
+      if (orgId) {
+        setSelectedOrgId(orgId);
+        fetchCategories(orgId);
+      }
+    } else {
+      fetchCategories();
+    }
+  }, [initialData]);
 
   const handleSubmit = async (data: ProjectFormValues) => {
     try {
@@ -149,6 +227,34 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
                       disabled={loading}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="categoryId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>项目分类</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={loading || categories.length === 0}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择项目分类" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {categories.map(category => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name} {category.code ? `(${category.code})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

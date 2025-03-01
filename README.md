@@ -7,11 +7,128 @@
 ### 主要功能
 - 多角色用户管理（管理员、填报人、填报财务、审核财务、观察员）
 - 机构与项目管理
+- 项目分类管理
 - 资金需求预测填报
 - 实际支付填报与审核
 - 数据分析与可视化
 - 灵活的数据导出功能
 - 填报撤回申请与审核功能
+
+## 项目分类功能
+
+项目分类功能允许用户对项目进行分类管理，便于项目的组织和查询。
+
+### 数据结构
+
+项目分类（ProjectCategory）包含以下字段：
+- id：唯一标识符
+- name：分类名称
+- code：分类编码（可选）
+- organizationId：所属机构ID
+- createdAt：创建时间
+- updatedAt：更新时间
+
+### API接口
+
+#### 获取项目分类列表
+- 请求方法：GET
+- 请求路径：/api/project-categories
+- 请求参数：
+  - page：页码（默认为1）
+  - pageSize：每页数量（默认为10）
+  - search：搜索关键词
+  - organizationId：机构ID
+  - sortBy：排序字段
+  - sortOrder：排序方式（asc或desc）
+- 响应数据：
+  ```json
+  {
+    "items": [
+      {
+        "id": "1",
+        "name": "基础设施",
+        "code": "A001",
+        "organizationId": "1",
+        "organization": {
+          "id": "1",
+          "name": "总公司"
+        },
+        "createdAt": "2023-01-01T00:00:00.000Z",
+        "updatedAt": "2023-01-01T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 10,
+    "totalPages": 1
+  }
+  ```
+
+#### 获取项目分类详情
+- 请求方法：GET
+- 请求路径：/api/project-categories/:id
+- 响应数据：
+  ```json
+  {
+    "id": "1",
+    "name": "基础设施",
+    "code": "A001",
+    "organizationId": "1",
+    "organization": {
+      "id": "1",
+      "name": "总公司"
+    },
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  }
+  ```
+
+#### 创建项目分类
+- 请求方法：POST
+- 请求路径：/api/project-categories
+- 请求数据：
+  ```json
+  {
+    "name": "基础设施",
+    "code": "A001",
+    "organizationId": "1"
+  }
+  ```
+- 响应数据：创建的项目分类对象
+
+#### 更新项目分类
+- 请求方法：PUT
+- 请求路径：/api/project-categories/:id
+- 请求数据：
+  ```json
+  {
+    "name": "基础设施更新",
+    "code": "A002",
+    "organizationId": "1"
+  }
+  ```
+- 响应数据：更新后的项目分类对象
+
+#### 删除项目分类
+- 请求方法：DELETE
+- 请求路径：/api/project-categories/:id
+- 响应数据：
+  ```json
+  {
+    "success": true
+  }
+  ```
+
+### 使用方法
+
+1. 管理员可以通过项目分类管理页面（/management/project-categories）创建、编辑和删除项目分类。
+2. 在创建或编辑项目时，可以选择项目所属的分类。
+3. 在项目列表页面，可以按分类筛选项目。
+
+### 权限控制
+
+- 只有管理员（ADMIN）角色可以创建、编辑和删除项目分类。
+- 所有角色都可以查看项目分类列表和详情。
 
 ## 快速开始
 
@@ -44,8 +161,43 @@ cp .env.example .env.local
 
 4. 数据库初始化
 ```bash
-pnpm prisma db push
+# 创建迁移文件并应用到数据库
+npx prisma migrate dev --name init
+
+# 或者重置数据库并应用所有迁移（会清除所有数据）
+npx prisma migrate reset --force
+
+# 仅生成Prisma客户端
+npx prisma generate
 ```
+
+数据库初始化会自动运行种子脚本 `prisma/seed.ts`，创建以下测试数据：
+- 用户：管理员、填报人、财务用户、审核用户
+- 机构和部门
+- 项目分类
+- 项目和子项目
+- 资金类型
+- 预测记录
+
+### 数据库结构
+
+系统使用 SQLite 数据库（开发环境），主要表结构如下：
+
+- `User` - 用户表
+- `Organization` - 机构表
+- `Department` - 部门表
+- `ProjectCategory` - 项目分类表
+- `Project` - 项目表
+- `SubProject` - 子项目表
+- `FundType` - 资金类型表
+- `PredictRecord` - 预测记录表
+- `ActualUserRecord` - 用户实际记录表
+- `ActualFinRecord` - 财务实际记录表
+- `AuditRecord` - 审核记录表
+- `WithdrawalRequest` - 提款请求表
+- `AuditLog` - 审计日志表
+
+详细的数据库结构定义请参考 `prisma/schema.prisma` 文件。
 
 5. 启动开发服务器
 ```bash
@@ -81,6 +233,7 @@ pnpm dev
 │   │   │       ├── page.tsx  # 管理首页
 │   │   │       ├── organizations/ # 机构管理
 │   │   │       ├── projects/     # 项目管理
+│   │   │       ├── project-categories/ # 项目分类管理
 │   │   │       └── users/        # 用户管理
 │   │   ├── login/      # 登录页面（独立布局）
 │   │   │   ├── layout.tsx # 登录布局
@@ -289,6 +442,60 @@ const canSubmit = isProjectSubmittable(project.status);
 
 ## 功能说明
 
+### 项目分类管理
+
+项目分类管理功能允许管理员对项目进行分类管理，便于项目的组织和查询。主要功能包括：
+
+1. **分类列表查看**：管理员可以查看所有项目分类，并根据名称进行搜索。
+2. **分类创建**：管理员可以创建新的项目分类，指定分类名称和所属机构。
+3. **分类编辑**：管理员可以编辑现有项目分类的名称。
+4. **分类删除**：管理员可以删除未被使用的项目分类。
+5. **项目关联**：在项目管理中，可以为项目指定分类，便于项目的组织和查询。
+
+### 数据结构
+
+项目分类功能涉及以下数据表：
+
+- **ProjectCategory**：项目分类表，包含分类名称、代码和所属机构等信息。
+- **Project**：项目表，通过categoryId字段关联到ProjectCategory表。
+
+### API接口
+
+项目分类管理功能提供以下API接口：
+
+1. **GET /api/project-categories**：获取项目分类列表。
+   - 参数：page, pageSize, search, organizationId
+   - 返回：分类列表，包含分类ID、名称、所属机构等信息
+
+2. **GET /api/project-categories/[id]**：获取特定分类的详细信息。
+   - 参数：id (路径参数)
+   - 返回：分类详情，包含分类ID、名称、所属机构等信息
+
+3. **POST /api/project-categories**：创建新的项目分类。
+   - 参数：name, organizationId
+   - 返回：创建的分类信息
+
+4. **PUT /api/project-categories/[id]**：更新项目分类。
+   - 参数：name
+   - 返回：更新后的分类信息
+
+5. **DELETE /api/project-categories/[id]**：删除项目分类。
+   - 参数：id (路径参数)
+   - 返回：成功或失败信息
+
+### 使用方法
+
+1. 在项目管理页面，点击"项目分类管理"按钮进入分类管理页面。
+2. 在分类管理页面，可以查看所有项目分类，并进行搜索、创建、编辑和删除操作。
+3. 在项目列表页面，可以查看项目所属的分类，并通过分类筛选项目。
+4. 在创建或编辑项目时，可以为项目指定分类。
+
+### 特殊说明
+
+1. **权限控制**：只有管理员角色可以管理项目分类。
+2. **删除限制**：如果分类已被项目使用，则无法删除该分类。
+3. **分类唯一性**：同一机构下的分类名称必须唯一。
+
 ### 资金需求预测填报
 
 资金需求预测填报功能允许用户对未来月份的资金需求进行预测和填报。主要功能包括：
@@ -393,7 +600,7 @@ const canSubmit = isProjectSubmittable(project.status);
 
 > **注意**：在Next.js的App Router中，请勿在页面路径下创建`route.js`/`route.ts`文件，除非该文件是API路由。如果需要创建客户端API函数，建议使用`client-api.js`或类似名称，避免与路由系统冲突。
 
-> **重要**：客户端API函数中的API路径必须与服务器端实际的API路由路径完全一致。例如，客户端中的`/api/funding/predict/withdrawal`必须对应服务器中的`src/app/api/funding/predict/withdrawal/route.ts`文件。
+> **重要**：客户端API函数中的API路径必须与服务器端实际的API路由路径完全一致。例如，客户端中的`/api/funding/predict/withdrawal`必须对应服务器中的`src/app/api/funding/predict/withdrawal/route.ts`文件。如果路径不一致，修改客户端API函数中的路径以匹配服务器端路由。
 
 ## 实际支付填报
 
@@ -694,6 +901,21 @@ A: 这通常表明Next.js识别了API路由的存在，但POST处理函数未正
   - 修正客户端API函数中的API路径
   - 改进错误处理和用户提示
   - 更新API文档和使用说明
+
+### v0.3.2 (2024-03-10)
+- 添加项目分类管理功能
+  - 项目分类列表管理（支持分页和搜索）
+  - 项目分类的增删改
+  - 项目关联分类
+  - 项目列表按分类筛选
+- 优化用户体验
+  - 添加分类管理入口
+  - 完善错误处理
+  - 优化表单验证
+- 技术改进
+  - 优化数据库结构
+  - 完善API接口
+  - 更新文档
 
 ## 贡献指南
 

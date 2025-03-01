@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/data-table';
-import { Plus } from 'lucide-react';
+import { Plus, Tag } from 'lucide-react';
 import { ProjectForm } from './components/project-form';
 import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
 
 interface Project {
   id: string;
@@ -14,12 +15,20 @@ interface Project {
   status: 'active' | 'archived';
   startYear: number;
   createdAt: Date;
+  category?: {
+    id: string;
+    name: string;
+  };
 }
 
 interface RowType {
   original: {
     id: string;
     status: string;
+    category?: {
+      id: string;
+      name: string;
+    };
   };
 }
 
@@ -75,6 +84,15 @@ export default function ProjectsPage() {
     {
       accessorKey: 'code',
       header: '项目编码',
+    },
+    {
+      accessorKey: 'category',
+      header: '项目分类',
+      cell: ({ row }: { row: RowType }) => (
+        <span>
+          {row.original.category ? row.original.category.name : '未分类'}
+        </span>
+      ),
     },
     {
       accessorKey: 'status',
@@ -299,10 +317,18 @@ export default function ProjectsPage() {
         <>
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-semibold">项目管理</h1>
-            <Button onClick={handleCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              新增项目
-            </Button>
+            <div className="flex gap-2">
+              <Link href="/management/project-categories">
+                <Button variant="outline">
+                  <Tag className="w-4 h-4 mr-2" />
+                  项目分类管理
+                </Button>
+              </Link>
+              <Button onClick={handleCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                新增项目
+              </Button>
+            </div>
           </div>
           
           {loading ? (
