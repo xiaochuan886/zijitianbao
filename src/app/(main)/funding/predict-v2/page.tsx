@@ -17,7 +17,8 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
-  Upload
+  Upload,
+  Building2
 } from "lucide-react"
 import {
   Select,
@@ -46,8 +47,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { useFundingPredictV2 } from "@/hooks/use-funding-predict-v2"
-import { RecordStatus } from "@/lib/enums"
+import { RecordStatus, Role } from "@/lib/enums"
 import { Combobox, ComboboxOption } from "@/components/ui/combobox"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 // 自定义组件，简化版的 FilterCard
 function SimpleFilterCard({ children }: { children: React.ReactNode }) {
@@ -131,6 +133,8 @@ export default function PredictV2Page() {
   const [withdrawalRecord, setWithdrawalRecord] = useState<string | null>(null)
   const [withdrawalReason, setWithdrawalReason] = useState("")
   const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] = useState(false)
+  const { user, isLoading: userLoading } = useCurrentUser()
+  const isAdmin = user?.role === Role.ADMIN
 
   // 使用新的预测填报钩子
   const {
@@ -315,6 +319,68 @@ export default function PredictV2Page() {
     router.push("/funding/predict/history")
   }, [router])
 
+  // 创建项目-组织关联
+  const handleCreateProjectOrgLinks = useCallback(async () => {
+    try {
+      toast({
+        title: "正在处理",
+        description: "正在创建项目与组织的关联关系...",
+      });
+      
+      const response = await fetch('/api/admin/create-project-org-links', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          forceUpdate: true,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API响应错误: ${response.status} ${errorText}`);
+      }
+      
+      const result = await response.json();
+      
+      toast({
+        title: "操作成功",
+        description: `创建了 ${result.created} 个新关联，${result.updated} 个已存在关联被更新`,
+        duration: 5000,
+      });
+      
+      // 操作成功后，自动刷新记录列表
+      console.log("项目-组织关联创建成功，正在刷新数据...");
+      
+      // 短暂延迟，确保后端数据已更新
+      setTimeout(() => {
+        // 刷新记录列表
+        fetchRecords(true);
+        
+        // 如果当前有组织筛选，提示用户
+        if (filters.organizationId && filters.organizationId !== 'all') {
+          const selectedOrg = organizations.find(org => org.id === filters.organizationId);
+          const orgName = selectedOrg ? selectedOrg.name : '所选组织';
+          
+          toast({
+            title: "请重新应用筛选",
+            description: `已为项目建立与"${orgName}"的关联关系，请点击"筛选"按钮查看结果`,
+            variant: "default",
+            duration: 10000,
+          });
+        }
+      }, 1000);
+    } catch (error) {
+      console.error("创建项目-组织关联失败", error);
+      toast({
+        title: "操作失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+    }
+  }, [toast, fetchRecords, filters, organizations]);
+
   // 渲染记录表格
   const renderRecordsTable = useCallback((recordsToRender: typeof records) => {
     const isAllSelected = recordsToRender.length > 0 && 
@@ -496,7 +562,14 @@ export default function PredictV2Page() {
                 ...organizations.map(org => ({ value: org.id, label: org.name }))
               ]}
               value={filters.organizationId || "all"}
-              onChange={(value) => handleFilterChange("organizationId", value)}
+              onChange={(value) => {
+                console.log(`选择机构: ${value}`);
+                // 当机构变化时，重置部门、项目和子项目的选择
+                handleFilterChange("organizationId", value);
+                handleFilterChange("departmentId", "all");
+                handleFilterChange("projectId", "all");
+                handleFilterChange("subProjectId", "all");
+              }}
               placeholder="选择机构"
             />
           </div>
@@ -509,7 +582,13 @@ export default function PredictV2Page() {
                 ...departments.map(dept => ({ value: dept.id, label: dept.name }))
               ]}
               value={filters.departmentId || "all"}
-              onChange={(value) => handleFilterChange("departmentId", value)}
+              onChange={(value) => {
+                console.log(`选择部门: ${value}`);
+                handleFilterChange("departmentId", value);
+                // 重置项目和子项目的选择
+                handleFilterChange("projectId", "all");
+                handleFilterChange("subProjectId", "all");
+              }}
               placeholder="选择部门"
             />
           </div>
@@ -657,6 +736,12 @@ export default function PredictV2Page() {
         </div>
         
         <div className="flex justify-end space-x-2 mt-4">
+          {isAdmin && (
+            <Button variant="outline" onClick={handleCreateProjectOrgLinks}>
+              <Building2 className="h-4 w-4 mr-2" />
+              修复项目-组织关联
+            </Button>
+          )}
           <Button variant="outline" onClick={handleReset}>
             <RotateCcw className="h-4 w-4 mr-2" />
             重置

@@ -14,42 +14,51 @@ const RecordStatus = {
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log('开始生成种子数据...')
-
-  // 清理现有数据
-  await cleanDatabase()
-
-  // 创建用户
-  const adminUser = await createAdminUser()
-  const reporterUsers = await createReporterUsers(5)
-  const financeUsers = await createFinanceUsers(3)
-  const auditorUsers = await createAuditorUsers(2)
-
-  // 创建机构
-  const organizations = await createOrganizations(3)
-
-  // 创建部门
-  const departments = await createDepartments(organizations)
-
-  // 创建项目分类
-  const categories = await createProjectCategories(organizations)
-
-  // 创建项目
-  const projects = await createProjects(organizations, departments, categories)
-
-  // 创建子项目
-  const subProjects = await createSubProjects(projects)
-
-  // 创建资金类型
-  const fundTypes = await createFundTypes()
-
-  // 关联子项目和资金类型
-  await linkSubProjectsToFundTypes(subProjects, fundTypes)
-
-  // 创建预测记录
-  await createPredictRecords(subProjects, reporterUsers)
-
-  console.log('种子数据生成完成！')
+  try {
+    // 清空数据库
+    await cleanDatabase()
+    
+    // 创建管理员用户
+    const adminUser = await createAdminUser()
+    
+    // 创建填报用户
+    const reporterUsers = await createReporterUsers(5)
+    
+    // 创建财务用户
+    const financeUsers = await createFinanceUsers(3)
+    
+    // 创建审计用户
+    const auditorUsers = await createAuditorUsers(2)
+    
+    // 创建组织
+    const organizations = await createOrganizations(3)
+    
+    // 创建部门
+    const departments = await createDepartments(organizations)
+    
+    // 创建项目分类
+    const categories = await createProjectCategories(organizations)
+    
+    // 创建项目
+    const projects = await createProjects(organizations, departments, categories)
+    
+    // 创建子项目
+    const subProjects = await createSubProjects(projects)
+    
+    // 创建资金类型
+    const fundTypes = await createFundTypes()
+    
+    // 创建DetailedFundNeed关联
+    const detailedFundNeeds = await linkSubProjectsToFundTypes(subProjects, fundTypes, departments)
+    
+    // 创建预测记录
+    await createPredictRecords(subProjects, reporterUsers, detailedFundNeeds)
+    
+    console.log('种子数据生成完成！')
+  } catch (error) {
+    console.error('种子数据生成失败:', error)
+    process.exit(1)
+  }
 }
 
 // 清理数据库
@@ -260,50 +269,46 @@ async function createProjects(organizations: any[], departments: any[], categori
   console.log('创建项目...')
   
   const projects = []
-  const projectNames = [
-    '城市道路改造', '污水处理厂', '智慧城市', '公共交通',
-    '保障性住房', '城市绿化', '文化中心', '科技园区',
-    '农村基础设施', '教育信息化', '医疗设备更新', '产业园区',
-    '旅游景区开发', '老旧小区改造', '垃圾处理厂', '新能源',
-    '水利工程', '农业科技', '体育场馆', '社区服务中心'
-  ]
   
-  // 为每个分类创建1-2个项目
-  for (const category of categories) {
-    const projectCount = Math.floor(Math.random() * 2) + 1 // 1-2个项目
+  // 为每个组织创建2-3个项目
+  for (const org of organizations) {
+    const projectCount = Math.floor(Math.random() * 2) + 2 // 2-3个项目
     
-    for (let i = 0; i < projectCount; i++) {
-      const projectIndex = categories.indexOf(category) * 2 + i
-      const projectName = projectNames[projectIndex % projectNames.length]
-      
-      // 找到同一机构的部门
-      const orgDepartments = departments.filter(
-        dept => dept.organizationId === category.organizationId
-      )
+    // 获取该组织的部门
+    const orgDepartments = departments.filter(d => d.organizationId === org.id)
+    
+    // 获取该组织的分类
+    const orgCategories = categories.filter(c => c.organizationId === org.id)
+    
+    for (let projectIndex = 0; projectIndex < projectCount; projectIndex++) {
+      // 随机选择一个分类
+      const category = orgCategories[Math.floor(Math.random() * orgCategories.length)]
       
       // 随机选择1-2个部门
-      const deptCount = Math.floor(Math.random() * 2) + 1
+      const deptCount = Math.floor(Math.random() * 2) + 1 // 1-2个部门
       const selectedDepts = []
+      const usedIndexes = new Set()
       
-      for (let j = 0; j < deptCount; j++) {
-        if (orgDepartments.length > 0) {
-          const randomIndex = Math.floor(Math.random() * orgDepartments.length)
-          selectedDepts.push({ id: orgDepartments[randomIndex].id })
-        }
+      for (let i = 0; i < deptCount && i < orgDepartments.length; i++) {
+        let randomIndex
+        do {
+          randomIndex = Math.floor(Math.random() * orgDepartments.length)
+        } while (usedIndexes.has(randomIndex))
+        
+        usedIndexes.add(randomIndex)
+        selectedDepts.push({ id: orgDepartments[randomIndex].id })
       }
       
       const project = await prisma.project.create({
         data: {
-          name: `${projectName}${projectIndex + 1}`,
+          name: `${org.name}项目${projectIndex + 1}`,
           status: 'ACTIVE',
           startYear: 2023,
           hasRecords: false,
           organizationId: category.organizationId,
           categoryId: category.id,
-          code: `PRJ${projectIndex + 1}`,
-          departments: {
-            connect: selectedDepts
-          }
+          code: `PRJ${projectIndex + 1}`
+          // 移除departments字段，因为新模型不再使用多对多关系
         }
       })
       
@@ -363,108 +368,119 @@ async function createFundTypes() {
 }
 
 // 关联子项目和资金类型
-async function linkSubProjectsToFundTypes(subProjects: any[], fundTypes: any[]) {
-  console.log('关联子项目和资金类型...')
+async function linkSubProjectsToFundTypes(subProjects: any[], fundTypes: any[], departments: any[]) {
+  console.log('创建DetailedFundNeed关联...')
+  
+  const detailedFundNeeds = []
   
   for (const subProject of subProjects) {
-    // 为每个子项目随机选择2-3个资金类型
-    const typeCount = Math.floor(Math.random() * 2) + 2 // 2-3个资金类型
-    const selectedTypes = []
-    const usedIndexes = new Set()
-    
-    for (let i = 0; i < typeCount; i++) {
-      let randomIndex
-      do {
-        randomIndex = Math.floor(Math.random() * fundTypes.length)
-      } while (usedIndexes.has(randomIndex))
-      
-      usedIndexes.add(randomIndex)
-      selectedTypes.push({ id: fundTypes[randomIndex].id })
-    }
-    
-    await prisma.subProject.update({
-      where: { id: subProject.id },
-      data: {
-        fundTypes: {
-          connect: selectedTypes
-        }
-      }
+    // 获取项目信息以获取organizationId
+    const projectInfo = await prisma.project.findUnique({
+      where: { id: subProject.projectId },
+      select: { organizationId: true }
     })
     
-    console.log(`关联子项目 ${subProject.name} 与 ${selectedTypes.length} 个资金类型`)
+    if (!projectInfo) {
+      console.log(`警告: 找不到子项目 ${subProject.name} 的项目信息，跳过创建关联`)
+      continue
+    }
+    
+    // 获取该组织的部门
+    const orgDepartments = departments.filter(d => d.organizationId === projectInfo.organizationId)
+    
+    if (orgDepartments.length === 0) {
+      console.log(`警告: 组织 ${projectInfo.organizationId} 没有部门，跳过创建关联`)
+      continue
+    }
+    
+    // 为每个子项目随机选择2-3个资金类型
+    const typeCount = Math.floor(Math.random() * 2) + 2 // 2-3个资金类型
+    const usedTypeIndexes = new Set()
+    
+    for (let i = 0; i < typeCount && i < fundTypes.length; i++) {
+      let randomTypeIndex
+      do {
+        randomTypeIndex = Math.floor(Math.random() * fundTypes.length)
+      } while (usedTypeIndexes.has(randomTypeIndex))
+      
+      usedTypeIndexes.add(randomTypeIndex)
+      const fundType = fundTypes[randomTypeIndex]
+      
+      // 随机选择1-2个部门
+      const deptCount = Math.floor(Math.random() * 2) + 1 // 1-2个部门
+      const usedDeptIndexes = new Set()
+      
+      for (let j = 0; j < deptCount && j < orgDepartments.length; j++) {
+        let randomDeptIndex
+        do {
+          randomDeptIndex = Math.floor(Math.random() * orgDepartments.length)
+        } while (usedDeptIndexes.has(randomDeptIndex))
+        
+        usedDeptIndexes.add(randomDeptIndex)
+        const department = orgDepartments[randomDeptIndex]
+        
+        // 创建DetailedFundNeed记录
+        const detailedFundNeed = await prisma.detailedFundNeed.create({
+          data: {
+            subProjectId: subProject.id,
+            departmentId: department.id,
+            fundTypeId: fundType.id,
+            organizationId: projectInfo.organizationId,
+            isActive: true
+          }
+        })
+        
+        detailedFundNeeds.push(detailedFundNeed)
+        console.log(`创建资金需求明细: 子项目 ${subProject.name} - 部门 ${department.name} - 资金类型 ${fundType.name}`)
+      }
+    }
   }
+  
+  return detailedFundNeeds
 }
 
 // 创建预测记录
-async function createPredictRecords(subProjects: any[], users: any[]) {
+async function createPredictRecords(subProjects: any[], users: any[], detailedFundNeeds: any[]) {
   console.log('创建预测记录...')
   
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
   
-  // 获取所有子项目
-  for (const subProject of subProjects) {
-    // 获取子项目关联的资金类型
-    const subProjectWithFundTypes = await prisma.subProject.findUnique({
-      where: { id: subProject.id },
-      include: { fundTypes: true }
-    })
-    
-    const fundTypes = subProjectWithFundTypes?.fundTypes || []
-    
-    if (fundTypes.length === 0) {
-      console.log(`警告: 子项目 ${subProject.name} 没有关联的资金类型，跳过创建记录`)
-      continue
-    }
-    
+  // 使用DetailedFundNeed记录创建预测记录
+  for (const detailedFundNeed of detailedFundNeeds) {
     // 创建过去3个月的记录
-    for (let i = 1; i <= 3; i++) {
-      let month = currentMonth - i
+    for (let monthOffset = 0; monthOffset < 3; monthOffset++) {
+      let month = currentMonth - monthOffset
       let year = currentYear
       
       if (month <= 0) {
-        month = 12 + month
-        year--
+        month += 12
+        year -= 1
       }
       
       // 随机选择一个用户
-      const randomUser = users[Math.floor(Math.random() * users.length)]
+      const user = users[Math.floor(Math.random() * users.length)]
       
-      // 为每个资金类型创建一条记录
-      for (const fundType of fundTypes) {
-        try {
-          // 检查记录是否已存在
-          const existingRecord = await (prisma as any).predictRecord.findFirst({
-            where: {
-              subProjectId: subProject.id,
-              fundTypeId: fundType.id,
-              year: year,
-              month: month
-            }
-          });
-          
-          if (!existingRecord) {
-            // 创建新记录
-            await (prisma as any).predictRecord.create({
-              data: {
-                subProjectId: subProject.id,
-                fundTypeId: fundType.id,
-                year: year,
-                month: month,
-                amount: Math.floor(Math.random() * 1000000) / 100,
-                status: RecordStatus.DRAFT,
-                remark: `${subProject.name} ${fundType.name} ${year}年${month}月预测`,
-                submittedBy: randomUser.id,
-                submittedAt: new Date(year, month - 1, Math.floor(Math.random() * 28) + 1)
-              }
-            });
-            console.log(`创建预测记录: ${subProject.name} ${fundType.name} ${year}年${month}月`);
-          } else {
-            console.log(`跳过重复记录: ${subProject.name} ${fundType.name} ${year}年${month}月`);
+      try {
+        await prisma.predictRecord.create({
+          data: {
+            detailedFundNeedId: detailedFundNeed.id,
+            subProjectId: detailedFundNeed.subProjectId,
+            fundTypeId: detailedFundNeed.fundTypeId,
+            departmentId: detailedFundNeed.departmentId,
+            year,
+            month,
+            amount: Math.floor(Math.random() * 1000000) / 100, // 随机金额
+            status: 'SUBMITTED',
+            remark: `${year}年${month}月预测`,
+            submittedBy: user.id,
+            submittedAt: new Date()
           }
-        } catch (error) {
-          console.error(`创建记录失败: ${subProject.name} ${fundType.name} ${year}年${month}月`, error);
-        }
+        })
+        
+        console.log(`创建预测记录: ${year}年${month}月 - 金额: ${Math.floor(Math.random() * 1000000) / 100}`)
+      } catch (error) {
+        console.error(`创建预测记录失败:`, error)
       }
     }
   }

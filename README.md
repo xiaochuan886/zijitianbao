@@ -130,6 +130,136 @@
 - 只有管理员（ADMIN）角色可以创建、编辑和删除项目分类。
 - 所有角色都可以查看项目分类列表和详情。
 
+## 项目关联管理功能
+
+资金计划填报系统中的项目需要与组织和部门建立关联关系，这是筛选功能正常工作的基础。项目关联管理功能允许管理员为项目创建正确的关联关系。
+
+### 功能概述
+
+- **项目-组织关联**：将项目与组织建立多对多关系，一个项目可以属于多个组织，一个组织也可以关联多个项目
+- **项目-部门关联**：将项目与部门建立多对多关系，一个项目可以属于多个部门，一个部门也可以关联多个项目
+- **智能匹配**：系统提供智能匹配功能，可以基于项目编码和组织编码自动建立关联关系
+
+### 使用方法
+
+1. 管理员访问"项目关联管理"页面（/admin/project-links）
+2. 选择要处理的关联类型（组织关联或部门关联）
+3. 选择是否强制更新已有关联
+4. 点击"创建关联"按钮执行操作
+5. 系统会显示操作结果，包括创建的关联数量和更新的关联数量
+
+### 智能匹配规则
+
+- **项目-组织匹配**：
+  - 如果项目编码前缀与组织编码匹配，则建立关联
+  - 如果没有匹配项，使用第一个组织作为默认值
+
+- **项目-部门匹配**：
+  - 如果项目名称包含部门名称，则建立关联
+  - 如果没有匹配项，使用第一个部门作为默认值
+
+### 权限控制
+
+- 只有管理员角色可以访问和使用项目关联管理功能
+
+### API接口
+
+#### 创建项目-组织关联
+- 请求方法：POST
+- 请求路径：/api/admin/create-project-org-links
+- 请求参数：
+  ```json
+  {
+    "defaultOrganizationId": null, // 可选，指定默认组织ID
+    "forceUpdate": true // 是否强制更新已有关联
+  }
+  ```
+- 响应数据：
+  ```json
+  {
+    "success": true,
+    "created": 10, // 新创建的关联数量
+    "updated": 5,  // 更新的关联数量
+    "skipped": 2,  // 跳过的项目数量
+    "totalProjects": 17, // 总项目数量
+    "totalOrganizations": 3 // 总组织数量
+  }
+  ```
+
+#### 创建项目-部门关联
+- 请求方法：POST
+- 请求路径：/api/admin/create-project-dept-links
+- 请求参数：
+  ```json
+  {
+    "defaultDepartmentId": null, // 可选，指定默认部门ID
+    "forceUpdate": true // 是否强制更新已有关联
+  }
+  ```
+- 响应数据：
+  ```json
+  {
+    "success": true,
+    "created": 8, // 新创建的关联数量
+    "updated": 4, // 更新的关联数量
+    "skipped": 3, // 跳过的项目数量
+    "totalProjects": 15, // 总项目数量
+    "totalDepartments": 5 // 总部门数量
+  }
+  ```
+
+### 浏览器脚本
+
+系统还提供了可在浏览器控制台运行的脚本，用于快速创建项目关联：
+
+```javascript
+// 创建项目-组织关联
+(async function createProjectOrganizationLinks() {
+  try {
+    console.log('开始创建项目-组织关联关系...');
+    
+    const response = await fetch('/api/admin/create-project-org-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forceUpdate: true }),
+    });
+    
+    const result = await response.json();
+    console.log('项目-组织关联创建成功！');
+    console.log(`创建了 ${result.created} 个新关联，${result.updated} 个已存在关联被更新`);
+  } catch (error) {
+    console.error('创建项目-组织关联时出错:', error);
+  }
+})();
+```
+
+```javascript
+// 创建项目-部门关联
+(async function createProjectDepartmentLinks() {
+  try {
+    console.log('开始创建项目-部门关联关系...');
+    
+    const response = await fetch('/api/admin/create-project-dept-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forceUpdate: true }),
+    });
+    
+    const result = await response.json();
+    console.log('项目-部门关联创建成功！');
+    console.log(`创建了 ${result.created} 个新关联，${result.updated} 个已存在关联被更新`);
+  } catch (error) {
+    console.error('创建项目-部门关联时出错:', error);
+  }
+})();
+```
+
+### 使用场景
+
+1. **初始数据迁移后**：当系统初始数据导入后，运行此功能确保所有项目都有正确的组织和部门关联
+2. **批量创建项目后**：在批量创建项目后，可以使用此功能快速建立关联关系
+3. **组织或部门变更后**：当组织或部门结构发生变化时，可以使用此功能重新分配关联关系
+
 ## 快速开始
 
 ### 环境要求

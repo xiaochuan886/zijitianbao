@@ -1,160 +1,242 @@
-import { NextRequest } from 'next/server';
-import { OrganizationService } from '@/lib/services/organization.service';
-import { checkPermission } from '@/lib/auth/permission';
-import { parseSession } from '@/lib/auth/session';
-import { NextResponse } from "next/server"
-import { PrismaClient, Prisma } from "@prisma/client"
+import { NextRequest, NextResponse } from "next/server";
+import { PrismaClient, Prisma } from "@prisma/client";
+import { Role } from "@/lib/enums";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth-options";
 
-const organizationService = new OrganizationService();
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
-// GET /api/organizations - 获取机构列表
-export async function GET(request: Request) {
+// 定义组织类型
+interface Organization {
+  id: string;
+  name: string;
+  code: string;
+  createdAt: Date;
+  updatedAt: Date;
+  departments?: any[];
+  users?: any[];
+  projects?: any[];
+}
+
+/**
+ * GET /api/organizations
+ * 获取组织列表
+ */
+export async function GET(req: NextRequest) {
   try {
-    // 1. 获取查询参数
-    const url = new URL(request.url)
-    const page = parseInt(url.searchParams.get("page") || "1")
-    const pageSize = parseInt(url.searchParams.get("pageSize") || "10")
-    const search = url.searchParams.get("search") || ""
-
-    // 2. 权限检查
-    const session = await parseSession(request.headers.get("authorization"))
-    if (!session) {
+    const searchParams = req.nextUrl.searchParams;
+    const includeRelations = searchParams.get('includeRelations') === 'true';
+    
+    // 使用 getServerSession 获取会话
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
+      console.error("认证失败：用户未登录");
       return NextResponse.json(
-        { message: "未授权访问" },
+        { error: "身份验证失败，请重新登录" },
         { status: 401 }
-      )
+      );
     }
-
-    // 3. 构建查询条件
-    const where: Prisma.OrganizationWhereInput = {
-      ...(search
-        ? {
-            OR: [
-              { name: { contains: search } },
-              { code: { contains: search } },
-            ],
+    
+    // 获取组织列表
+    let organizations: Organization[] = [];
+    
+    // 基本查询选项
+    const orderBy: Prisma.OrganizationOrderByWithRelationInput = { 
+      name: 'asc' 
+    };
+    
+    // 管理员可以看到所有组织
+    if (session.user.role === Role.ADMIN) {
+      if (includeRelations) {
+        try {
+          const rawOrganizations = await prisma.$queryRaw`
+            SELECT 
+              o.id, o.name, o.code, o.createdAt, o.updatedAt,
+              (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+                'id', d.id, 'name', d.name
+              )) FROM Department d WHERE d.organizationId = o.id AND d.isDeleted = 0) as departments,
+              (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+                'id', u.id, 'name', u.name, 'role', u.role, 'email', u.email
+              )) FROM User u WHERE u.organizationId = o.id AND u.active = 1) as users,
+              (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+                'id', p.id, 'name', p.name, 'status', p.status
+              )) FROM Project p WHERE p.organizationId = o.id) as projects
+            FROM Organization o
+            ORDER BY o.name ASC
+          `;
+          organizations = rawOrganizations as Organization[];
+        } catch (error) {
+          console.error("SQL查询失败:", error);
+          organizations = await prisma.organization.findMany({
+            include: {
+              departments: true,
+              users: {
+                where: { active: true }
+              },
+              projects: true
+            },
+            orderBy
+          });
+        }
+      } else {
+        organizations = await prisma.organization.findMany({
+          orderBy
+        });
+      }
+    } else {
+      // 非管理员只能看到自己所属的组织
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { organizationId: true }
+      });
+      
+      if (user?.organizationId) {
+        if (includeRelations) {
+          try {
+            const rawOrganizations = await prisma.$queryRaw`
+              SELECT 
+                o.id, o.name, o.code, o.createdAt, o.updatedAt,
+                (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+                  'id', d.id, 'name', d.name
+                )) FROM Department d WHERE d.organizationId = o.id AND d.isDeleted = 0) as departments,
+                (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+                  'id', u.id, 'name', u.name, 'role', u.role, 'email', u.email
+                )) FROM User u WHERE u.organizationId = o.id AND u.active = 1) as users,
+                (SELECT JSON_GROUP_ARRAY(JSON_OBJECT(
+                  'id', p.id, 'name', p.name, 'status', p.status
+                )) FROM Project p WHERE p.organizationId = o.id) as projects
+              FROM Organization o
+              WHERE o.id = ${user.organizationId}
+              ORDER BY o.name ASC
+            `;
+            organizations = rawOrganizations as Organization[];
+          } catch (error) {
+            console.error("SQL查询失败:", error);
+            organizations = await prisma.organization.findMany({
+              where: { id: user.organizationId },
+              include: {
+                departments: true,
+                users: {
+                  where: { active: true }
+                },
+                projects: true
+              },
+              orderBy
+            });
           }
-        : {}),
-      // 如果不是管理员，只能看到自己关联的机构数据
-      ...(session.user.role !== "ADMIN"
-        ? {
-            OR: [
-              { id: session.user.organizationId },
-              { users: { some: { id: session.user.id } } }
-            ]
-          }
-        : {}),
+        } else {
+          organizations = await prisma.organization.findMany({
+            where: { id: user.organizationId },
+            orderBy
+          });
+        }
+      } else {
+        organizations = [];
+      }
     }
-
-    // 4. 查询数据
-    const [total, items] = await Promise.all([
-      prisma.organization.count({ where }),
-      prisma.organization.findMany({
-        where,
-        include: {
-          departments: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          users: {
-            select: {
-              id: true,
-              name: true,
-              role: true,
-            },
-          },
-          projects: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-            },
-          },
-        },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        orderBy: {
-          updatedAt: 'desc',
-        },
-      }),
-    ])
-
-    // 5. 返回结果
-    return NextResponse.json({
-      items,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    })
-  } catch (error: any) {
-    console.error('Get organizations error:', error)
+    
+    // 解析JSON字符串为对象
+    if (includeRelations) {
+      organizations = organizations.map((org: any) => {
+        try {
+          if (typeof org.departments === 'string') {
+            org.departments = JSON.parse(org.departments);
+          }
+          if (typeof org.users === 'string') {
+            org.users = JSON.parse(org.users);
+          }
+          if (typeof org.projects === 'string') {
+            org.projects = JSON.parse(org.projects);
+          }
+          
+          // 确保是数组
+          org.departments = Array.isArray(org.departments) ? org.departments : [];
+          org.users = Array.isArray(org.users) ? org.users : [];
+          org.projects = Array.isArray(org.projects) ? org.projects : [];
+          
+          return org;
+        } catch (e) {
+          console.error('解析关联数据失败:', e);
+          return org;
+        }
+      });
+    }
+    
+    return NextResponse.json(organizations);
+  } catch (error) {
+    console.error("获取组织列表失败:", error);
+    
     return NextResponse.json(
-      { message: error.message || "获取机构列表失败" },
+      { error: "获取组织列表失败", details: (error as Error).message },
       { status: 500 }
-    )
+    );
   }
 }
 
-// POST /api/organizations - 创建机构
-export async function POST(request: Request) {
+/**
+ * POST /api/organizations
+ * 创建新组织
+ */
+export async function POST(req: NextRequest) {
   try {
-    // 1. 获取请求数据
-    const data = await request.json()
-
-    // 2. 权限检查
-    const session = await parseSession(request.headers.get("authorization"))
-    if (!session) {
+    // 使用 getServerSession 获取会话
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
       return NextResponse.json(
-        { message: "未授权访问" },
+        { error: "身份验证失败，请重新登录" },
         { status: 401 }
-      )
+      );
     }
-
-    if (session.user.role !== "ADMIN") {
+    
+    // 只有管理员可以创建组织
+    if (session.user.role !== Role.ADMIN) {
       return NextResponse.json(
-        { message: "无权限执行此操作" },
+        { error: "权限不足，只有管理员可以创建组织" },
         { status: 403 }
-      )
+      );
     }
-
-    // 3. 检查机构编码是否已存在
-    const exists = await prisma.organization.findUnique({
-      where: { code: data.code },
-    })
-
-    if (exists) {
+    
+    const body = await req.json();
+    
+    // 验证请求数据
+    if (!body.name || !body.code) {
       return NextResponse.json(
-        { message: "机构编码已存在" },
+        { error: "机构名称和代码不能为空" },
         { status: 400 }
-      )
+      );
     }
-
-    // 4. 创建机构
-    const organization = await prisma.organization.create({
+    
+    // 检查代码是否已存在
+    const existingOrg = await prisma.organization.findUnique({
+      where: {
+        code: body.code
+      }
+    });
+    
+    if (existingOrg) {
+      return NextResponse.json(
+        { error: "机构代码已存在" },
+        { status: 400 }
+      );
+    }
+    
+    // 创建新组织
+    const newOrganization = await prisma.organization.create({
       data: {
-        name: data.name,
-        code: data.code,
-      },
-      include: {
-        departments: true,
-      },
-    })
-
-    // 5. 返回结果
-    return NextResponse.json({
-      code: 200,
-      message: "创建成功",
-      data: organization,
-    })
+        name: body.name,
+        code: body.code
+      }
+    });
+    
+    return NextResponse.json(newOrganization, { status: 201 });
   } catch (error) {
-    console.error("POST /api/organizations error:", error)
+    console.error("创建组织失败:", error);
+    
     return NextResponse.json(
-      { message: "服务器内部错误" },
+      { error: "创建组织失败", details: (error as Error).message },
       { status: 500 }
-    )
+    );
   }
 }

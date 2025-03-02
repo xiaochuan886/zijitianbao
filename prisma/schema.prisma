@@ -9,21 +9,22 @@ datasource db {
 
 // 用户表
 model User {
-  id                 String             @id @default(cuid())
+  id                 String              @id @default(cuid())
   name               String
-  email              String             @unique
+  email              String              @unique
   password           String
-  organizationId     String?
-  role               String             @default("REPORTER")
-  active             Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  organization       Organization?      @relation("PrimaryOrganization", fields: [organizationId], references: [id])
-  organizations      UserOrganization[]
-  predictRecords     PredictRecord[]    @relation("UserPredictRecords")
-  actualUserRecords  ActualUserRecord[] @relation("UserActualRecords")
-  actualFinRecords   ActualFinRecord[]  @relation("UserActualFinRecords")
-  auditRecords       AuditRecord[]      @relation("UserAuditRecords")
+  organizationId     String? // 主要所属机构
+  role               String              @default("REPORTER")
+  active             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  organization       Organization?       @relation("PrimaryOrganization", fields: [organizationId], references: [id])
+  organizations      UserOrganization[] // 用户可关联多个机构
+  departments        UserDepartment[] // 用户可关联多个部门
+  predictRecords     PredictRecord[]     @relation("UserPredictRecords")
+  actualUserRecords  ActualUserRecord[]  @relation("UserActualRecords")
+  actualFinRecords   ActualFinRecord[]   @relation("UserActualFinRecords")
+  auditRecords       AuditRecord[]       @relation("UserAuditRecords")
   withdrawalRequests WithdrawalRequest[] @relation("UserWithdrawalRequests")
 
   @@index([organizationId])
@@ -33,26 +34,26 @@ model User {
 
 // 角色枚举
 enum Role {
-  ADMIN
-  REPORTER
-  FINANCE
-  AUDITOR
-  OBSERVER
+  ADMIN // 系统管理员
+  REPORTER // 填报人员
+  FINANCE // 财务人员
+  AUDITOR // 审计人员
+  OBSERVER // 观察者
 }
 
 // 机构表
 model Organization {
-  id                   String             @id @default(cuid())
-  name                 String
-  code                 String             @unique
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-  departments          Department[]
-  projects             Project[]          @relation("PrimaryOrganization")
-  users                User[]             @relation("PrimaryOrganization")
-  userOrganizations    UserOrganization[]
-  projectOrganizations Project[]          @relation("ProjectOrganizations")
-  projectCategories    ProjectCategory[]  @relation("OrganizationCategories")
+  id                String             @id @default(cuid())
+  name              String
+  code              String             @unique
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  departments       Department[]
+  projects          Project[]          @relation("PrimaryOrganization")
+  users             User[]             @relation("PrimaryOrganization")
+  userOrganizations UserOrganization[]
+  projectCategories ProjectCategory[]  @relation("OrganizationCategories")
+  detailedFundNeeds DetailedFundNeed[] // 机构关联的资金需求明细
 
   @@index([name])
   @@index([code])
@@ -60,19 +61,25 @@ model Organization {
 
 // 部门表
 model Department {
-  id             String       @id @default(cuid())
-  name           String
-  organizationId String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  projects       Project[]    @relation("DepartmentToProject")
+  id                String             @id @default(cuid())
+  name              String
+  organizationId    String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  isDeleted         Boolean            @default(false)
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+  userDepartments   UserDepartment[] // 部门下的用户
+  detailedFundNeeds DetailedFundNeed[] // 部门可填报的子项目资金需求明细
+  predictRecords    PredictRecord[] // 关联的记录
+  actualUserRecords ActualUserRecord[] // 关联的实际支出填报记录
+  actualFinRecords  ActualFinRecord[] // 关联的财务记录
+  auditRecords      AuditRecord[] // 关联的审计记录
 
   @@index([organizationId])
   @@index([name])
 }
 
-// 项目分类表 (新增)
+// 项目分类表
 model ProjectCategory {
   id             String       @id @default(cuid())
   name           String
@@ -97,21 +104,19 @@ enum ProjectStatus {
 
 // 项目表
 model Project {
-  id             String         @id @default(cuid())
+  id             String           @id @default(cuid())
   name           String
-  status         String         @default("ACTIVE")
+  status         String           @default("ACTIVE")
   startYear      Int
-  hasRecords     Boolean        @default(false)
-  organizationId String
-  categoryId     String?        // 新增项目分类ID字段
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  hasRecords     Boolean          @default(false)
+  organizationId String // 主要归属组织
+  categoryId     String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   code           String?
-  organization   Organization   @relation("PrimaryOrganization", fields: [organizationId], references: [id])
-  category       ProjectCategory? @relation("CategoryToProject", fields: [categoryId], references: [id]) // 新增项目分类关联
+  organization   Organization     @relation("PrimaryOrganization", fields: [organizationId], references: [id])
+  category       ProjectCategory? @relation("CategoryToProject", fields: [categoryId], references: [id])
   subProjects    SubProject[]
-  departments    Department[]   @relation("DepartmentToProject")
-  organizations  Organization[] @relation("ProjectOrganizations")
 
   @@unique([name, organizationId], name: "projectNameOrg")
   @@index([name])
@@ -119,74 +124,109 @@ model Project {
   @@index([status])
   @@index([startYear])
   @@index([organizationId])
-  @@index([categoryId]) // 新增索引
+  @@index([categoryId])
 }
 
 // 子项目表
 model SubProject {
-  id                String            @id @default(cuid())
+  id                String             @id @default(cuid())
   name              String
   projectId         String
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  project           Project           @relation(fields: [projectId], references: [id])
-  fundTypes         FundType[]        @relation("FundTypeToSubProject")
-  predictRecords    PredictRecord[]
-  actualUserRecords ActualUserRecord[]
-  actualFinRecords  ActualFinRecord[]
-  auditRecords      AuditRecord[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  project           Project            @relation(fields: [projectId], references: [id])
+  detailedFundNeeds DetailedFundNeed[] // 子项目关联的资金需求明细
+  predictRecords    PredictRecord[] // 关联的预测记录
+  actualUserRecords ActualUserRecord[] // 关联的实际支出填报记录
+  actualFinRecords  ActualFinRecord[] // 关联的财务记录
+  auditRecords      AuditRecord[] // 关联的审计记录
 
   @@index([projectId])
   @@index([name])
 }
 
+// 资金需求类型
 model FundType {
-  id                String               @id @default(cuid())
+  id                String             @id @default(cuid())
   name              String
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  subProjects       SubProject[]         @relation("FundTypeToSubProject")
-  predictRecords    PredictRecord[]      // 添加与预测记录的反向关联
-  actualUserRecords ActualUserRecord[]   // 添加与实际用户记录的反向关联
-  actualFinRecords  ActualFinRecord[]    // 添加与实际财务记录的反向关联
-  auditRecords      AuditRecord[]        // 添加与审计记录的反向关联
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  detailedFundNeeds DetailedFundNeed[] // 关联子项目-部门-资金需求明细
+  predictRecords    PredictRecord[]
+  actualUserRecords ActualUserRecord[]
+  actualFinRecords  ActualFinRecord[]
+  auditRecords      AuditRecord[]
 
   @@index([name])
 }
 
+// 新增：资金需求明细表 - 存储子项目-部门-资金需求类型的关系
+model DetailedFundNeed {
+  id                String             @id @default(cuid())
+  subProjectId      String
+  departmentId      String
+  fundTypeId        String
+  organizationId    String
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  subProject        SubProject         @relation(fields: [subProjectId], references: [id])
+  department        Department         @relation(fields: [departmentId], references: [id])
+  fundType          FundType           @relation(fields: [fundTypeId], references: [id])
+  organization      Organization       @relation(fields: [organizationId], references: [id])
+  predictRecords    PredictRecord[] // 关联的资金预测记录
+  actualUserRecords ActualUserRecord[] // 关联的用户实际记录
+  actualFinRecords  ActualFinRecord[] // 关联的财务实际记录
+  auditRecords      AuditRecord[] // 关联的审计记录
+
+  @@unique([subProjectId, departmentId, fundTypeId], name: "detailedFundNeedUnique")
+  @@index([subProjectId])
+  @@index([departmentId])
+  @@index([fundTypeId])
+  @@index([organizationId])
+  @@index([isActive])
+}
+
 // 记录状态枚举
 enum RecordStatus {
-  DRAFT       // 草稿
-  UNFILLED    // 未填写
-  SUBMITTED   // 已提交
+  DRAFT // 草稿
+  UNFILLED // 未填写
+  SUBMITTED // 已提交
   PENDING_WITHDRAWAL // 撤回审核中
-  APPROVED    // 已审核通过
-  REJECTED    // 已拒绝
+  APPROVED // 已审核通过
+  REJECTED // 已拒绝
 }
 
 // 资金需求预测记录表
 model PredictRecord {
-  id                String             @id @default(cuid())
-  subProjectId      String
-  fundTypeId        String              // 添加资金需求类型ID字段
-  year              Int
-  month             Int
-  amount            Float?             // 预测金额
-  status            RecordStatus       @default(DRAFT)
-  remark            String?            // 备注
-  submittedBy       String?
-  submittedAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  subProject        SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType          FundType           @relation(fields: [fundTypeId], references: [id])   // 添加与FundType的关系
-  user              User?              @relation("UserPredictRecords", fields: [submittedBy], references: [id])
-  auditLogs         RecordAudit[]      @relation("PredictRecordAudits")
-  withdrawalRequest WithdrawalRequest? @relation("PredictWithdrawalRequests")
+  id                 String             @id @default(cuid())
+  detailedFundNeedId String // 新增：关联到资金需求明细
+  subProjectId       String
+  fundTypeId         String
+  departmentId       String // 部门ID
+  year               Int
+  month              Int
+  amount             Float?
+  status             RecordStatus       @default(DRAFT)
+  remark             String?
+  submittedBy        String?
+  submittedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
+  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
+  fundType           FundType           @relation(fields: [fundTypeId], references: [id])
+  department         Department         @relation(fields: [departmentId], references: [id])
+  user               User?              @relation("UserPredictRecords", fields: [submittedBy], references: [id])
+  auditLogs          RecordAudit[]      @relation("PredictRecordAudits")
+  withdrawalRequest  WithdrawalRequest? @relation("PredictWithdrawalRequests")
 
-  @@unique([subProjectId, fundTypeId, year, month])  // 更新唯一约束
+  @@unique([detailedFundNeedId, year, month]) // 新增约束：同一资金需求明细在同一年月只能有一条记录
+  @@unique([subProjectId, fundTypeId, departmentId, year, month]) // 保留原有约束
+  @@index([detailedFundNeedId]) // 新增索引
   @@index([subProjectId])
-  @@index([fundTypeId])  // 添加索引
+  @@index([fundTypeId])
+  @@index([departmentId])
   @@index([year])
   @@index([month])
   @@index([status])
@@ -194,31 +234,69 @@ model PredictRecord {
   @@index([submittedAt])
 }
 
+// 用户-机构多对多关联表
+model UserOrganization {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String       @default("REPORTER") // 在该机构的角色
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([role])
+}
+
+// 新增：用户-部门多对多关联表
+model UserDepartment {
+  id           String     @id @default(cuid())
+  userId       String
+  departmentId String
+  role         String     @default("REPORTER") // 在该部门的角色
+  createdAt    DateTime   @default(now())
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+  @@index([userId])
+  @@index([departmentId])
+  @@index([role])
+}
+
 // 实际支付填报人记录表
 model ActualUserRecord {
-  id                String             @id @default(cuid())
-  subProjectId      String
-  fundTypeId        String              // 添加资金需求类型ID字段
-  year              Int
-  month             Int
-  amount            Float?             // 填报人填报的实际金额
-  status            RecordStatus       @default(DRAFT)
-  remark            String?            // 备注
-  submittedBy       String?
-  submittedAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  subProject        SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType          FundType           @relation(fields: [fundTypeId], references: [id])   // 添加与FundType的关系
-  user              User?              @relation("UserActualRecords", fields: [submittedBy], references: [id])
-  auditLogs         RecordAudit[]      @relation("ActualUserRecordAudits")
-  withdrawalRequest WithdrawalRequest? @relation("ActualUserWithdrawalRequests")
-  // 关联到财务填报记录
-  financeRecord     ActualFinRecord?   @relation("UserToFinanceRecord")
+  id                 String             @id @default(cuid())
+  detailedFundNeedId String // 新增：关联到资金需求明细
+  subProjectId       String
+  fundTypeId         String
+  departmentId       String // 新增：关联部门ID
+  year               Int
+  month              Int
+  amount             Float?
+  status             RecordStatus       @default(DRAFT)
+  remark             String?
+  submittedBy        String?
+  submittedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
+  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
+  fundType           FundType           @relation(fields: [fundTypeId], references: [id])
+  department         Department         @relation(fields: [departmentId], references: [id]) // 新增
+  user               User?              @relation("UserActualRecords", fields: [submittedBy], references: [id])
+  auditLogs          RecordAudit[]      @relation("ActualUserRecordAudits")
+  withdrawalRequest  WithdrawalRequest? @relation("ActualUserWithdrawalRequests")
+  financeRecord      ActualFinRecord?   @relation("UserToFinanceRecord")
 
-  @@unique([subProjectId, fundTypeId, year, month])  // 更新唯一约束
+  @@unique([detailedFundNeedId, year, month]) // 新增约束
+  @@unique([subProjectId, fundTypeId, departmentId, year, month]) // 修改唯一约束
+  @@index([detailedFundNeedId]) // 新增索引
+  @@index([departmentId]) // 新增索引
   @@index([subProjectId])
-  @@index([fundTypeId])  // 添加索引
+  @@index([fundTypeId])
   @@index([year])
   @@index([month])
   @@index([status])
@@ -228,31 +306,37 @@ model ActualUserRecord {
 
 // 实际支付财务填报记录表
 model ActualFinRecord {
-  id                String             @id @default(cuid())
-  subProjectId      String
-  fundTypeId        String              // 添加资金需求类型ID字段
-  year              Int
-  month             Int
-  amount            Float?             // 财务填报的实际金额
-  status            RecordStatus       @default(DRAFT)
-  remark            String?            // 备注
-  submittedBy       String?
-  submittedAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  userRecordId      String?            @unique // 关联到填报人记录
-  subProject        SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType          FundType           @relation(fields: [fundTypeId], references: [id])   // 添加与FundType的关系
-  user              User?              @relation("UserActualFinRecords", fields: [submittedBy], references: [id])
-  userRecord        ActualUserRecord?  @relation("UserToFinanceRecord", fields: [userRecordId], references: [id])
-  auditLogs         RecordAudit[]      @relation("ActualFinRecordAudits")
-  withdrawalRequest WithdrawalRequest? @relation("ActualFinWithdrawalRequests")
+  id                 String             @id @default(cuid())
+  detailedFundNeedId String // 新增：关联到资金需求明细
+  subProjectId       String
+  fundTypeId         String // 添加资金需求类型ID字段
+  year               Int
+  month              Int
+  amount             Float? // 财务填报的实际金额
+  status             RecordStatus       @default(DRAFT)
+  remark             String? // 备注
+  submittedBy        String?
+  submittedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  userRecordId       String?            @unique // 关联到填报人记录
+  detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
+  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
+  fundType           FundType           @relation(fields: [fundTypeId], references: [id]) // 添加与FundType的关系
+  user               User?              @relation("UserActualFinRecords", fields: [submittedBy], references: [id])
+  userRecord         ActualUserRecord?  @relation("UserToFinanceRecord", fields: [userRecordId], references: [id])
+  auditLogs          RecordAudit[]      @relation("ActualFinRecordAudits")
+  withdrawalRequest  WithdrawalRequest? @relation("ActualFinWithdrawalRequests")
   // 关联到审核记录
-  auditRecord       AuditRecord?       @relation("FinanceToAuditRecord")
+  auditRecord        AuditRecord?       @relation("FinanceToAuditRecord")
+  Department         Department?        @relation(fields: [departmentId], references: [id])
+  departmentId       String?
 
-  @@unique([subProjectId, fundTypeId, year, month])  // 更新唯一约束
+  @@unique([detailedFundNeedId, year, month]) // 新增约束
+  @@unique([subProjectId, fundTypeId, year, month]) // 更新唯一约束
+  @@index([detailedFundNeedId]) // 新增索引
   @@index([subProjectId])
-  @@index([fundTypeId])  // 添加索引
+  @@index([fundTypeId]) // 添加索引
   @@index([year])
   @@index([month])
   @@index([status])
@@ -263,29 +347,35 @@ model ActualFinRecord {
 
 // 审核财务最终审核记录表
 model AuditRecord {
-  id                String             @id @default(cuid())
-  subProjectId      String
-  fundTypeId        String              // 添加资金需求类型ID字段
-  year              Int
-  month             Int
-  amount            Float?             // 审核后的最终金额
-  status            RecordStatus       @default(DRAFT)
-  remark            String?            // 审核备注
-  submittedBy       String?
-  submittedAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  financeRecordId   String?            @unique // 关联到财务填报记录
-  subProject        SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType          FundType           @relation(fields: [fundTypeId], references: [id])   // 添加与FundType的关系
-  user              User?              @relation("UserAuditRecords", fields: [submittedBy], references: [id])
-  financeRecord     ActualFinRecord?   @relation("FinanceToAuditRecord", fields: [financeRecordId], references: [id])
-  auditLogs         RecordAudit[]      @relation("AuditRecordAudits")
-  withdrawalRequest WithdrawalRequest? @relation("AuditWithdrawalRequests")
+  id                 String             @id @default(cuid())
+  detailedFundNeedId String // 新增：关联到资金需求明细
+  subProjectId       String
+  fundTypeId         String // 添加资金需求类型ID字段
+  year               Int
+  month              Int
+  amount             Float? // 审核后的最终金额
+  status             RecordStatus       @default(DRAFT)
+  remark             String? // 审核备注
+  submittedBy        String?
+  submittedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  financeRecordId    String?            @unique // 关联到财务填报记录
+  detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
+  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
+  fundType           FundType           @relation(fields: [fundTypeId], references: [id]) // 添加与FundType的关系
+  user               User?              @relation("UserAuditRecords", fields: [submittedBy], references: [id])
+  financeRecord      ActualFinRecord?   @relation("FinanceToAuditRecord", fields: [financeRecordId], references: [id])
+  auditLogs          RecordAudit[]      @relation("AuditRecordAudits")
+  withdrawalRequest  WithdrawalRequest? @relation("AuditWithdrawalRequests")
+  Department         Department?        @relation(fields: [departmentId], references: [id])
+  departmentId       String?
 
-  @@unique([subProjectId, fundTypeId, year, month])  // 更新唯一约束
+  @@unique([detailedFundNeedId, year, month]) // 新增约束
+  @@unique([subProjectId, fundTypeId, year, month]) // 更新唯一约束
+  @@index([detailedFundNeedId]) // 新增索引
   @@index([subProjectId])
-  @@index([fundTypeId])  // 添加索引
+  @@index([fundTypeId]) // 添加索引
   @@index([year])
   @@index([month])
   @@index([status])
@@ -296,23 +386,23 @@ model AuditRecord {
 
 // 填报记录审计表
 model RecordAudit {
-  id                 String           @id @default(cuid())
+  id                 String            @id @default(cuid())
   predictRecordId    String?
   actualUserRecordId String?
   actualFinRecordId  String?
   auditRecordId      String?
   userId             String
   action             String
-  timestamp          DateTime         @default(now())
+  timestamp          DateTime          @default(now())
   oldValue           String?
   newValue           String?
   role               String
   remarks            String?
-  createdAt          DateTime         @default(now())
-  predictRecord      PredictRecord?   @relation("PredictRecordAudits", fields: [predictRecordId], references: [id])
+  createdAt          DateTime          @default(now())
+  predictRecord      PredictRecord?    @relation("PredictRecordAudits", fields: [predictRecordId], references: [id])
   actualUserRecord   ActualUserRecord? @relation("ActualUserRecordAudits", fields: [actualUserRecordId], references: [id])
-  actualFinRecord    ActualFinRecord? @relation("ActualFinRecordAudits", fields: [actualFinRecordId], references: [id])
-  auditRecord        AuditRecord?     @relation("AuditRecordAudits", fields: [auditRecordId], references: [id])
+  actualFinRecord    ActualFinRecord?  @relation("ActualFinRecordAudits", fields: [actualFinRecordId], references: [id])
+  auditRecord        AuditRecord?      @relation("AuditRecordAudits", fields: [auditRecordId], references: [id])
 
   @@index([predictRecordId])
   @@index([actualUserRecordId])
@@ -344,39 +434,25 @@ model AuditLog {
   @@index([timestamp])
 }
 
-// 用户-机构多对多关联表
-model UserOrganization {
-  id             String       @id @default(cuid())
-  userId         String
-  organizationId String
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, organizationId])
-  @@index([userId])
-  @@index([organizationId])
-}
-
 // 撤回申请表
 model WithdrawalRequest {
-  id                 String           @id @default(cuid())
-  predictRecordId    String?          @unique
-  actualUserRecordId String?          @unique
-  actualFinRecordId  String?          @unique
-  auditRecordId      String?          @unique
+  id                 String            @id @default(cuid())
+  predictRecordId    String?           @unique
+  actualUserRecordId String?           @unique
+  actualFinRecordId  String?           @unique
+  auditRecordId      String?           @unique
   requesterId        String
   reason             String
   status             String
   adminId            String?
   adminComment       String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  predictRecord      PredictRecord?   @relation("PredictWithdrawalRequests", fields: [predictRecordId], references: [id])
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  predictRecord      PredictRecord?    @relation("PredictWithdrawalRequests", fields: [predictRecordId], references: [id])
   actualUserRecord   ActualUserRecord? @relation("ActualUserWithdrawalRequests", fields: [actualUserRecordId], references: [id])
-  actualFinRecord    ActualFinRecord? @relation("ActualFinWithdrawalRequests", fields: [actualFinRecordId], references: [id])
-  auditRecord        AuditRecord?     @relation("AuditWithdrawalRequests", fields: [auditRecordId], references: [id])
-  requester          User             @relation("UserWithdrawalRequests", fields: [requesterId], references: [id])
+  actualFinRecord    ActualFinRecord?  @relation("ActualFinWithdrawalRequests", fields: [actualFinRecordId], references: [id])
+  auditRecord        AuditRecord?      @relation("AuditWithdrawalRequests", fields: [auditRecordId], references: [id])
+  requester          User              @relation("UserWithdrawalRequests", fields: [requesterId], references: [id])
 
   @@index([predictRecordId])
   @@index([actualUserRecordId])

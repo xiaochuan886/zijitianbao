@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { useToast } from "@/components/ui/use-toast"
 import { RecordStatus } from "@/lib/enums"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 // 通用的筛选条件类型
 export interface ProjectFilters {
@@ -127,6 +128,9 @@ export function useFundingPredictV2(
   const currentMonthRef = useRef(currentMonth);
   const paginationRef = useRef(pagination);
   const metaLoadedRef = useRef(false);
+  
+  // 获取当前用户信息，用于判断是否为管理员
+  const { user } = useCurrentUser();
   
   // 更新ref值
   useEffect(() => {
@@ -323,8 +327,88 @@ export function useFundingPredictV2(
         throw new Error(`获取预测记录列表失败: ${response.status} ${errorText}`);
       }
       
-      const data: PaginatedResponse<PredictRecord> = await response.json();
+      const data: PaginatedResponse<PredictRecord> & { warning?: string } = await response.json();
       console.log(`获取到 ${data.items.length} 条记录，共 ${data.total} 条`);
+      
+      // 检查API是否返回了警告信息
+      if (data.warning) {
+        console.log(`API警告: ${data.warning}`);
+        // 显示警告信息
+        toast({
+          title: "筛选提示",
+          description: data.warning,
+          variant: "default",
+        });
+      }
+      
+      // 判断结果是否为空，并检查筛选条件
+      if (data.total === 0) {
+        // 检查是否应用了筛选
+        const filters = filtersRef.current;
+        const hasOrganizationFilter = filters.organizationId && filters.organizationId !== 'all';
+        const hasDepartmentFilter = filters.departmentId && filters.departmentId !== 'all';
+        const hasProjectCategoryFilter = filters.projectCategoryId && filters.projectCategoryId !== 'all';
+        const hasProjectFilter = filters.projectId && filters.projectId !== 'all'; 
+        const hasSubProjectFilter = filters.subProjectId && filters.subProjectId !== 'all';
+        const hasFundTypeFilter = filters.fundTypeId && filters.fundTypeId !== 'all';
+        const hasStatusFilter = filters.status && filters.status !== 'all';
+        
+        const hasAnyFilter = hasOrganizationFilter || hasDepartmentFilter || hasProjectCategoryFilter || 
+                            hasProjectFilter || hasSubProjectFilter || hasFundTypeFilter || hasStatusFilter;
+        
+        if (hasAnyFilter) {
+          console.log('筛选结果为空，应用的筛选条件:', JSON.stringify(filters, null, 2));
+          
+          // 根据筛选条件提供不同的提示信息
+          let warningMessage = '';
+          
+          if (hasOrganizationFilter) {
+            // 查找所选组织的名称
+            const selectedOrg = organizations.find(org => org.id === filters.organizationId);
+            const orgName = selectedOrg ? selectedOrg.name : '所选组织';
+            
+            warningMessage = `未找到与 ${orgName} 相关的填报记录。`;
+            console.log(`组织筛选警告: ${warningMessage}`);
+            
+            // 提供更明确的引导
+            const isAdmin = user?.role === "ADMIN";
+            const adminMessage = isAdmin ? 
+              `请点击页面上方的"修复项目-组织关联"按钮，为项目建立与组织的关联关系。` : 
+              `请联系管理员使用"修复项目-组织关联"功能，为项目建立与组织的关联关系。`;
+            
+            // 提示用户
+            toast({
+              title: "未找到记录",
+              description: `${warningMessage}这可能是因为该组织没有关联项目。${adminMessage}`,
+              variant: "destructive",
+              duration: 10000, // 延长显示时间，确保用户能看到
+            });
+          }
+          else if (hasStatusFilter && filters.status) {
+            const statusMap: Record<string, string> = {
+              'draft': '草稿',
+              'submitted': '已提交',
+              'pending_withdrawal': '待撤回',
+              'approved': '已审核',
+              'rejected': '已拒绝',
+              'unfilled': '未填写'
+            };
+            
+            const statusName = statusMap[filters.status.toLowerCase()] || filters.status;
+            
+            warningMessage = `未找到状态为"${statusName}"的填报记录。`;
+            console.log(`状态筛选警告: ${warningMessage}`);
+            
+            // 提示用户
+            toast({
+              title: "未找到记录",
+              description: warningMessage,
+              variant: "destructive",
+            });
+          }
+          // 可以添加其他筛选条件的提示...
+        }
+      }
       
       setRecords(data.items || []);
       setPagination({
@@ -346,7 +430,7 @@ export function useFundingPredictV2(
     } finally {
       setLoading(false);
     }
-  }, [buildQueryParams, fetchMetadata, toast]);
+  }, [buildQueryParams, fetchMetadata, toast, organizations]);
 
   // 处理筛选条件变化 - 添加防抖处理
   const handleFilterChange = useCallback((key: keyof ProjectFilters, value: string) => {

@@ -1,3 +1,5 @@
+"use client"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,13 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
-
-interface UserInfo {
-  name: string
-  email: string
-  role: string
-}
+import { signOut } from "next-auth/react"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 const roleNames = {
   ADMIN: "系统管理员",
@@ -29,36 +26,27 @@ const roleNames = {
 // 获取拼音首字母的函数
 function getInitials(name: string): string {
   // 这里应该使用拼音转换库，但为了演示，我们先使用简单的逻辑
-  return name.slice(0, 2).toUpperCase()
+  return name?.slice(0, 2).toUpperCase() || "用户"
 }
 
 export function UserNav() {
   const router = useRouter()
-  const [user, setUser] = useState<UserInfo | null>(null)
+  const { user, isLoading } = useCurrentUser()
 
-  useEffect(() => {
-    const userStr = localStorage.getItem("user")
-    if (userStr) {
-      const userData = JSON.parse(userStr)
-      setUser(userData)
-    }
-  }, [])
-
-  const handleLogout = () => {
-    localStorage.removeItem("token")
-    localStorage.removeItem("user")
-    router.push("/login")
+  const handleLogout = async () => {
+    await signOut({ redirect: false })
+    router.push("/auth/login")
   }
 
-  if (!user) return null
+  if (isLoading || !user) return null
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
-            <AvatarImage src="/avatars/01.png" alt={user.name} />
-            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+            <AvatarImage src="/avatars/01.png" alt={user.name || ""} />
+            <AvatarFallback>{getInitials(user.name || "")}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>

@@ -11,115 +11,120 @@ import { Organization } from "@prisma/client"
 import { Role } from "@/lib/enums"
 import { DataTableColumnHeader } from "./data-table-column-header"
 import { DataTableRowActions } from "./data-table-row-actions"
+import { Badge } from "@/components/ui/badge"
+import { UsersIcon } from "lucide-react"
 
-export type OrganizationWithRelations = Organization & {
+// 组织类型定义(包含关联数据)
+export interface OrganizationWithRelations {
+  id: string
+  name: string
+  code: string
   departments: { id: string; name: string }[]
-  users: { id: string; name: string; role: Role }[]
+  users: { id: string; name: string; email?: string; role: string }[]
   projects: { id: string; name: string; status: string }[]
+  createdAt: Date
+  updatedAt: Date
 }
 
-interface ColumnsProps {
+interface ColumnOptions {
   onEdit: (organization: OrganizationWithRelations) => void
   onDelete: (organization: OrganizationWithRelations) => void
   onManageDepartments: (organization: OrganizationWithRelations) => void
 }
 
+// 创建表格列配置
 export function createColumns({
   onEdit,
   onDelete,
   onManageDepartments,
-}: ColumnsProps): ColumnDef<OrganizationWithRelations, any>[] {
+}: ColumnOptions): ColumnDef<OrganizationWithRelations>[] {
   return [
     {
       accessorKey: "name",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="机构名称" />
       ),
-    },
-    {
-      accessorKey: "code",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="机构代码" />
-      ),
-    },
-    {
-      id: "departmentsCount",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="部门数量" />
-      ),
       cell: ({ row }) => {
-        const count = row.original.departments.length
         return (
-          <div className="flex items-center justify-center gap-2">
-            <span>{count}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => onManageDepartments(row.original)}
-            >
-              <Building2 className="h-4 w-4" />
-            </Button>
+          <div className="flex flex-col">
+            <div className="font-medium">{row.getValue("name")}</div>
+            <div className="text-xs text-muted-foreground">{row.original.code}</div>
           </div>
         )
       },
     },
     {
-      id: "projectsCount",
+      accessorKey: "departments",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="部门数量" />
+      ),
+      cell: ({ row }) => {
+        const departments = row.original.departments || []
+        return (
+          <div className="flex items-center">
+            <Badge variant="outline" className="rounded-sm">
+              {departments.length}
+            </Badge>
+          </div>
+        )
+      },
+      enableSorting: false,
+    },
+    {
+      accessorKey: "users",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="用户数量" />
+      ),
+      cell: ({ row }) => {
+        const users = row.original.users || []
+        return (
+          <div className="flex items-center">
+            <Badge variant="outline" className="rounded-sm">
+              {users.length}
+            </Badge>
+          </div>
+        )
+      },
+      enableSorting: false,
+    },
+    {
+      accessorKey: "projects",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="项目数量" />
       ),
       cell: ({ row }) => {
-        const count = row.original.projects.filter(p => p.status === 'active').length
-        return <div className="text-center">{count}</div>
+        const projects = row.original.projects || []
+        return (
+          <div className="flex items-center">
+            <Badge variant="outline" className="rounded-sm">
+              {projects.length}
+            </Badge>
+          </div>
+        )
       },
+      enableSorting: false,
     },
     {
-      id: "reporters",
+      accessorKey: "createdAt",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="填报人" />
+        <DataTableColumnHeader column={column} title="创建时间" />
       ),
       cell: ({ row }) => {
-        const reporters = row.original.users
-          .filter(u => u.role === 'REPORTER')
-          .map(u => u.name)
-          .join(', ')
-        return <div className="max-w-[200px] truncate">{reporters || '-'}</div>
-      },
-    },
-    {
-      id: "finance",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="填报财务" />
-      ),
-      cell: ({ row }) => {
-        const finance = row.original.users
-          .filter(u => u.role === 'FINANCE')
-          .map(u => u.name)
-          .join(', ')
-        return <div className="max-w-[200px] truncate">{finance || '-'}</div>
-      },
-    },
-    {
-      id: "auditor",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="审核财务" />
-      ),
-      cell: ({ row }) => {
-        const auditor = row.original.users
-          .filter(u => u.role === 'AUDITOR')
-          .map(u => u.name)
-          .join(', ')
-        return <div className="max-w-[200px] truncate">{auditor || '-'}</div>
+        const date = row.original.createdAt instanceof Date
+          ? row.original.createdAt
+          : new Date(row.original.createdAt)
+        
+        return <div>{date.toLocaleDateString()}</div>
       },
     },
     {
       id: "actions",
       cell: ({ row }) => (
-        <DataTableRowActions
+        <DataTableRowActions 
           row={row}
           onEdit={onEdit}
           onDelete={onDelete}
+          onManageDepartments={onManageDepartments}
         />
       ),
     },

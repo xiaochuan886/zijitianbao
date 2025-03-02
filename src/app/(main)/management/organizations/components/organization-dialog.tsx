@@ -4,12 +4,15 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Save } from "lucide-react"
+import { Save, Building, Building2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
+import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 
 interface Organization {
   id: string
@@ -34,6 +37,8 @@ export function OrganizationDialog({
   const [name, setName] = useState("")
   const [code, setCode] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [nameError, setNameError] = useState("")
+  const [codeError, setCodeError] = useState("")
 
   // 当 organization 改变时更新表单数据
   useEffect(() => {
@@ -44,12 +49,38 @@ export function OrganizationDialog({
       setName("")
       setCode("")
     }
-  }, [organization])
+    // 重置错误状态
+    setNameError("")
+    setCodeError("")
+  }, [organization, open])
+
+  const validateForm = (): boolean => {
+    let isValid = true
+
+    if (!name.trim()) {
+      setNameError("机构名称不能为空")
+      isValid = false
+    } else {
+      setNameError("")
+    }
+
+    if (!code.trim()) {
+      setCodeError("机构代码不能为空")
+      isValid = false
+    } else if (!/^[A-Za-z0-9_-]+$/.test(code.trim())) {
+      setCodeError("机构代码只能包含字母、数字、下划线和连字符")
+      isValid = false
+    } else {
+      setCodeError("")
+    }
+
+    return isValid
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !code.trim()) {
-      toast.error("请填写完整信息")
+    
+    if (!validateForm()) {
       return
     }
 
@@ -58,7 +89,7 @@ export function OrganizationDialog({
       await onSubmit({ name: name.trim(), code: code.trim() })
       onOpenChange(false)
     } catch (error) {
-      console.error("Submit error:", error)
+      console.error("提交失败:", error)
       toast.error("操作失败，请重试")
     } finally {
       setIsSubmitting(false)
@@ -68,54 +99,75 @@ export function OrganizationDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(open) => {
-        if (!open) {
-          setName("")
-          setCode("")
+      onOpenChange={(isOpen) => {
+        if (!isSubmitting) {
+          if (!isOpen) {
+            setName("")
+            setCode("")
+            setNameError("")
+            setCodeError("")
+          }
+          onOpenChange(isOpen)
         }
-        onOpenChange(open)
       }}
     >
-      <DialogContent>
+      <DialogContent className="sm:max-w-[485px]">
         <DialogHeader>
-          <DialogTitle>
-            {organization ? "编辑机构" : "新建机构"}
-          </DialogTitle>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-primary" />
+            <DialogTitle>
+              {organization ? "编辑机构" : "新建机构"}
+            </DialogTitle>
+          </div>
           <DialogDescription>
             {organization
-              ? "修改机构信息"
-              : "创建一个新的机构，并填写相关信息"}
+              ? "修改机构信息，更新将影响与该机构关联的所有部门和项目"
+              : "创建一个新的机构，后续可以添加部门和关联项目"}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5 py-2">
           <div className="space-y-2">
-            <label htmlFor="name" className="text-sm font-medium">
+            <Label htmlFor="name" className="text-sm font-medium">
               机构名称
-            </label>
+            </Label>
             <Input
               id="name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                if (e.target.value.trim()) setNameError("")
+              }}
               placeholder="请输入机构名称"
-              required
+              className={nameError ? "border-red-500" : ""}
             />
+            {nameError && <p className="text-sm text-red-500">{nameError}</p>}
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="code" className="text-sm font-medium">
+            <Label htmlFor="code" className="text-sm font-medium">
               机构代码
-            </label>
+            </Label>
             <Input
               id="code"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="请输入机构代码"
-              required
+              onChange={(e) => {
+                setCode(e.target.value)
+                if (e.target.value.trim()) setCodeError("")
+              }}
+              placeholder="请输入机构代码，如 org-finance"
+              className={codeError ? "border-red-500" : ""}
             />
+            {codeError ? (
+              <p className="text-sm text-red-500">{codeError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                代码用于系统内部引用，建议使用简单英文字符
+              </p>
+            )}
           </div>
 
-          <div className="flex justify-end space-x-2">
+          <DialogFooter className="pt-2">
             <Button
               type="button"
               variant="outline"
@@ -125,10 +177,19 @@ export function OrganizationDialog({
               取消
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              <Save className="mr-2 h-4 w-4" />
-              {isSubmitting ? "保存中..." : "保存"}
+              {isSubmitting ? (
+                <>
+                  <Spinner className="mr-2 h-4 w-4" />
+                  保存中...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  保存
+                </>
+              )}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

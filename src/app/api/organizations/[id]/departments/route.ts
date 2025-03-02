@@ -6,6 +6,7 @@ import { parseSession } from '@/lib/auth/session';
 import { NextResponse } from "next/server"
 import { PrismaClient } from "@prisma/client"
 import { getServerSession } from "next-auth/next"
+import { authOptions } from "@/lib/auth-options"
 import { z } from "zod"
 
 const prisma = new PrismaClient()
@@ -30,15 +31,26 @@ export async function POST(
     // 1. 获取请求数据
     const data = await request.json();
 
-    // 2. 权限检查
-    const session = parseSession(request.headers.get('authorization'));
-    const hasPermission = await checkPermission(
-      session,
-      { resource: 'department', action: 'create', scope: 'all' }
-    );
+    // 2. 权限检查 - 使用getServerSession替代parseSession
+    const session = await getServerSession(authOptions);
     
-    if (!hasPermission) {
-      throw createPermissionError('INSUFFICIENT_PERMISSIONS');
+    if (!session || !session.user) {
+      return NextResponse.json({ message: "未授权访问" }, { status: 401 });
+    }
+    
+    // 管理员有全部权限，非管理员需要检查关联
+    if (session.user.role !== "ADMIN") {
+      // 检查用户是否与该组织有关联
+      const userOrg = await prisma.userOrganization.findFirst({
+        where: {
+          userId: session.user.id,
+          organizationId: params.id,
+        }
+      });
+      
+      if (!userOrg) {
+        return NextResponse.json({ message: "无权限执行此操作" }, { status: 403 });
+      }
     }
 
     // 3. 调用服务
@@ -70,17 +82,26 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await parseSession(request.headers.get("authorization"))
-    if (!session) {
+    // 使用getServerSession代替parseSession进行身份验证
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
       return NextResponse.json({ message: "未授权访问" }, { status: 401 })
     }
 
-    // 验证用户是否有权限管理此机构
-    if (
-      session.user.role !== "ADMIN" &&
-      session.user.organizationId !== params.id
-    ) {
-      return NextResponse.json({ message: "无权限执行此操作" }, { status: 403 })
+    // 管理员有全部权限，非管理员需要检查关联
+    if (session.user.role !== "ADMIN") {
+      // 检查用户是否与该组织有关联
+      const userOrg = await prisma.userOrganization.findFirst({
+        where: {
+          userId: session.user.id,
+          organizationId: params.id,
+        }
+      });
+      
+      if (!userOrg) {
+        return NextResponse.json({ message: "无权限执行此操作" }, { status: 403 })
+      }
     }
 
     const body = await request.json()
@@ -97,17 +118,21 @@ export async function PUT(
 
     // 开启事务处理批量操作
     await prisma.$transaction(async (tx) => {
-      // 处理需要删除的部门
+      // 处理需要删除的部门 - 改为软删除
       const departmentsToDelete = departments
         .filter((dept) => dept.id && dept.isDeleted)
         .map((dept) => dept.id as string)
 
       if (departmentsToDelete.length > 0) {
-        await tx.department.deleteMany({
+        // 使用软删除替代真实删除
+        await tx.department.updateMany({
           where: {
             id: { in: departmentsToDelete },
             organizationId: params.id,
           },
+          data: {
+            isDeleted: true,
+          }
         })
       }
 
@@ -138,9 +163,12 @@ export async function PUT(
       }
     })
 
-    // 获取更新后的部门列表
+    // 获取更新后的部门列表 - 只返回未删除的部门
     const updatedDepartments = await prisma.department.findMany({
-      where: { organizationId: params.id },
+      where: {
+        organizationId: params.id,
+        isDeleted: false
+      },
       orderBy: { createdAt: "asc" },
     })
 
