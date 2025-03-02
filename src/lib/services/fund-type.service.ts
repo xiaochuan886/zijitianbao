@@ -66,11 +66,11 @@ export class FundTypeService {
    * 删除资金需求类型
    */
   async delete(id: string) {
-    // 先检查是否有关联的子项目
+    // 先检查是否有关联的资金需求明细
     const fundType = await prisma.fundType.findUnique({
       where: { id },
       include: {
-        subProjects: true
+        detailedFundNeeds: true
       }
     })
 
@@ -78,9 +78,9 @@ export class FundTypeService {
       throw new ServiceError(404, '资金需求类型不存在')
     }
 
-    // 检查是否有关联的子项目
-    if (fundType.subProjects.length > 0) {
-      throw new ServiceError(400, '该资金需求类型已关联项目，无法删除')
+    // 检查是否有关联的资金需求明细
+    if (fundType.detailedFundNeeds.length > 0) {
+      throw new ServiceError(400, '该资金需求类型已关联资金需求明细，无法删除')
     }
 
     await prisma.fundType.delete({
@@ -95,9 +95,15 @@ export class FundTypeService {
     const fundType = await prisma.fundType.findUnique({
       where: { id },
       include: {
-        subProjects: {
+        detailedFundNeeds: {
           include: {
-            project: {
+            subProject: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            department: {
               select: {
                 id: true,
                 name: true
@@ -149,7 +155,7 @@ export class FundTypeService {
           include: {
             _count: {
               select: {
-                subProjects: true
+                detailedFundNeeds: true
               }
             }
           },

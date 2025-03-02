@@ -184,8 +184,8 @@ class OrganizationsApi extends ApiBase {
   /**
    * 删除组织
    */
-  async delete(id: string): Promise<void> {
-    return this.delete<void>(`/organizations/${id}`);
+  async delete(id: string): Promise<any> {
+    return this.delete(`/organizations/${id}`);
   }
 
   /**
@@ -216,6 +216,39 @@ class ProjectsApi extends ApiBase {
 }
 
 /**
+ * 资金需求类型API客户端
+ */
+class FundTypesApi extends ApiBase {
+  /**
+   * 获取资金需求类型列表
+   */
+  async list(page = 1, pageSize = 10, search = "", sortBy = "createdAt", sortOrder = "desc") {
+    return this.get('/fund-types', { page, pageSize, search, sortBy, sortOrder });
+  }
+
+  /**
+   * 创建资金需求类型
+   */
+  async create(data: { name: string }): Promise<any> {
+    return this.post('/fund-types', data);
+  }
+
+  /**
+   * 更新资金需求类型
+   */
+  async update(id: string, data: { name: string }): Promise<any> {
+    return this.put(`/fund-types/${id}`, data);
+  }
+
+  /**
+   * 删除资金需求类型
+   */
+  async delete(id: string): Promise<any> {
+    return this.delete(`/fund-types/${id}`);
+  }
+}
+
+/**
  * 用户API客户端
  */
 class UsersApi extends ApiBase {
@@ -236,4 +269,5 @@ export const apiClient = {
   organizations: new OrganizationsApi(),
   projects: new ProjectsApi(),
   users: new UsersApi(),
+  fundTypes: new FundTypesApi(),
 }
