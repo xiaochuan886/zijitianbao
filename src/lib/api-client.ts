@@ -255,11 +255,50 @@ class UsersApi extends ApiBase {
   /**
    * 获取用户列表
    */
-  async list() {
-    return this.get('/users');
+  async list(params: { page?: number; pageSize?: number; search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc' } = {}) {
+    const { page = 1, pageSize = 10, search = '', sortBy = 'createdAt', sortOrder = 'desc' } = params;
+    return this.get('/users', { page, pageSize, search, sortBy, sortOrder });
   }
 
-  // 其他用户相关API方法...
+  /**
+   * 创建用户
+   */
+  async create(data: {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    organizationIds: string[];
+  }): Promise<any> {
+    return this.post('/users', data);
+  }
+
+  /**
+   * 更新用户
+   */
+  async update(id: string, data: {
+    name?: string;
+    email?: string;
+    role?: string;
+    active?: boolean;
+    organizationIds?: string[];
+  }): Promise<any> {
+    return this.put(`/users/${id}`, data);
+  }
+
+  /**
+   * 删除用户
+   */
+  async delete(id: string): Promise<any> {
+    return this.delete(`/users/${id}`);
+  }
+
+  /**
+   * 重置用户密码
+   */
+  async resetPassword(id: string, password: string): Promise<any> {
+    return this.put(`/users/${id}/reset-password`, { password });
+  }
 }
 
 /**

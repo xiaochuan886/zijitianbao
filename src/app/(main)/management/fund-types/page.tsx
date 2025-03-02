@@ -12,10 +12,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Spinner } from "@/components/ui/spinner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 
-// API响应接口
-interface FundTypeListResponse {
-  code: number
-  message: string
+// API响应接口 - 直接返回格式
+interface FundTypeListResponseDirect {
+  items: FundType[]
+  total: number
+  totalPages: number
+  page: number
+  pageSize: number
+}
+
+// API响应接口 - 嵌套格式
+interface FundTypeListResponseNested {
   data: {
     items: FundType[]
     total: number
@@ -24,6 +31,9 @@ interface FundTypeListResponse {
     pageSize: number
   }
 }
+
+// 通用响应类型
+type ApiResponse = Record<string, any>
 
 export default function FundTypesPage() {
   const [fundTypes, setFundTypes] = useState<FundType[]>([])
@@ -37,6 +47,13 @@ export default function FundTypesPage() {
     totalFundTypes: 0,
     totalAssociatedNeeds: 0
   })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 0
+  })
+  const [searchTerm, setSearchTerm] = useState("")
 
   // 获取资金需求类型列表
   const fetchFundTypes = async () => {
@@ -45,26 +62,56 @@ export default function FundTypesPage() {
       setStatsLoading(true)
       
       // 通过API客户端获取数据
-      const response = await apiClient.fundTypes.list() as FundTypeListResponse
+      const response = await apiClient.fundTypes.list(
+        pagination.page,
+        pagination.pageSize,
+        searchTerm
+      ) as ApiResponse
       
-      if (response && response.data && Array.isArray(response.data.items)) {
-        const items = response.data.items
-        setFundTypes(items)
-        
-        // 计算基础统计数据
-        const totalAssociatedNeeds = items.reduce((sum: number, type: FundType) => 
-          sum + (type._count?.detailedFundNeeds || 0), 0
-        )
-        
-        setStats({
-          totalFundTypes: items.length,
-          totalAssociatedNeeds
-        })
+      console.log('API返回的资金类型数据:', response)
+      
+      let items: FundType[] = []
+      let paginationData = { ...pagination }
+      
+      // 处理不同的API响应格式
+      if (response && typeof response === 'object' && 'items' in response) {
+        // 直接返回items数组的格式
+        const typedResponse = response as FundTypeListResponseDirect
+        items = typedResponse.items
+        paginationData = {
+          page: typedResponse.page || 1,
+          pageSize: typedResponse.pageSize || 10,
+          total: typedResponse.total || items.length,
+          totalPages: typedResponse.totalPages || Math.ceil((typedResponse.total || items.length) / (typedResponse.pageSize || 10))
+        }
+      } else if (response && typeof response === 'object' && 'data' in response && 
+                response.data && typeof response.data === 'object' && 'items' in response.data) {
+        // 嵌套在data.items中的格式
+        const typedResponse = response as FundTypeListResponseNested
+        items = typedResponse.data.items
+        paginationData = {
+          page: typedResponse.data.page || 1,
+          pageSize: typedResponse.data.pageSize || 10,
+          total: typedResponse.data.total || items.length,
+          totalPages: typedResponse.data.totalPages || Math.ceil((typedResponse.data.total || items.length) / (typedResponse.data.pageSize || 10))
+        }
       } else {
         console.error('API返回的资金需求类型数据格式不正确:', response)
         toast.error("获取数据格式错误")
-        setFundTypes([])
       }
+      
+      setFundTypes(items)
+      setPagination(paginationData)
+      
+      // 计算基础统计数据
+      const totalAssociatedNeeds = items.reduce((sum, type) => 
+        sum + (type._count?.detailedFundNeeds || 0), 0
+      )
+      
+      setStats({
+        totalFundTypes: items.length,
+        totalAssociatedNeeds
+      })
     } catch (error) {
       console.error('获取资金需求类型列表失败:', error)
       toast.error(error instanceof Error ? error.message : "获取资金需求类型列表失败")
@@ -126,7 +173,7 @@ export default function FundTypesPage() {
 
   useEffect(() => {
     fetchFundTypes()
-  }, [])
+  }, [pagination.page, pagination.pageSize, searchTerm])
 
   const tableColumns = createColumns({
     onEdit: handleEdit,
@@ -206,6 +253,14 @@ export default function FundTypesPage() {
             columns={tableColumns}
             data={fundTypes}
             loading={loading}
+            pagination={pagination}
+            onPaginationChange={(paginationUpdate) => {
+              setPagination(prev => ({
+                ...prev,
+                page: paginationUpdate.page,
+                pageSize: paginationUpdate.pageSize,
+              }))
+            }}
           />
         </CardContent>
       </Card>

@@ -1,7 +1,7 @@
 "use client"
 
 import { type ColumnDef } from "@tanstack/react-table"
-import { MoreHorizontal, LucideCheck, LucideX, Pencil } from "lucide-react"
+import { MoreHorizontal, LucideCheck, LucideX, Pencil, Trash2, Power } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -42,9 +42,11 @@ const roleColors: Record<Role, string> = {
 
 interface DataTableProps {
   onEdit: (user: User) => void
+  onDelete: (user: User) => void
+  onToggleActive: (id: string, active: boolean) => void
 }
 
-export const columns = ({ onEdit }: DataTableProps): ColumnDef<User>[] => [
+export const columns = ({ onEdit, onDelete, onToggleActive }: DataTableProps): ColumnDef<User>[] => [
   {
     id: "select",
     header: ({ table }) => (
@@ -148,6 +150,20 @@ export const columns = ({ onEdit }: DataTableProps): ColumnDef<User>[] => [
             >
               <Pencil className="mr-2 h-4 w-4" />
               编辑
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => onToggleActive(user.id, !user.active)}
+            >
+              <Power className="mr-2 h-4 w-4" />
+              {user.active ? "禁用" : "启用"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onClick={() => onDelete(user)}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              删除
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
