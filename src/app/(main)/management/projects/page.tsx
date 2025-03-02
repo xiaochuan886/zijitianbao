@@ -17,11 +17,6 @@ export type Project = {
   code: string
   status: "ACTIVE" | "ARCHIVED"
   startYear: number
-  organization: {
-    id: string
-    name: string
-    code?: string
-  }
   category?: {
     id: string
     name: string
@@ -41,6 +36,11 @@ export type Project = {
         name: string
       }
       organizationId: string
+      organization?: {
+        id: string
+        name: string
+        code?: string
+      }
     }>
   }>
   createdAt: Date
@@ -230,7 +230,7 @@ export default function ProjectsPage() {
       
       {/* 统计卡片区域 */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               项目总数
@@ -246,7 +246,7 @@ export default function ProjectsPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               活跃项目
@@ -273,7 +273,7 @@ export default function ProjectsPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               归档项目
@@ -289,7 +289,7 @@ export default function ProjectsPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               子项目总数
@@ -308,7 +308,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* 数据表格 */}
-      <Card>
+      <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
         <CardHeader>
           <CardTitle>项目列表</CardTitle>
           <CardDescription>
@@ -334,6 +334,7 @@ export default function ProjectsPage() {
           }}
           project={selectedProject}
           onSubmit={handleSubmit}
+          onSuccess={fetchProjects}
         />
       )}
     </div>

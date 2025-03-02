@@ -116,11 +116,16 @@ export async function GET(request: NextRequest) {
     let projects = await prisma.project.findMany({
       where: projectWhere,
       include: {
-        organizations: true,
-        departments: true,
+        category: true,
         subProjects: {
           include: {
-            fundTypes: true
+            detailedFundNeeds: {
+              include: {
+                department: true,
+                fundType: true,
+                organization: true
+              }
+            }
           }
         }
       }
@@ -160,10 +165,20 @@ export async function GET(request: NextRequest) {
     }
     
     if (projects.length > 0) {
+      // 获取第一个项目的所有关联机构（通过detailedFundNeeds）
+      const organizationNames = new Set<string>();
+      projects[0].subProjects.forEach(subProject => {
+        subProject.detailedFundNeeds.forEach(need => {
+          if (need.organization) {
+            organizationNames.add(need.organization.name);
+          }
+        });
+      });
+      
       console.log('首个项目信息:', {
         id: projects[0].id,
         name: projects[0].name,
-        organizations: projects[0].organizations.map(o => o.name),
+        organizations: Array.from(organizationNames),
         subProjects: projects[0].subProjects.length
       });
     } else {
@@ -267,11 +282,16 @@ export async function GET(request: NextRequest) {
               include: {
                 project: {
                   include: {
-                    organizations: true,
-                    departments: true,
+                    category: true
                   }
                 },
-                fundTypes: true,
+                detailedFundNeeds: {
+                  include: {
+                    department: true,
+                    fundType: true,
+                    organization: true
+                  }
+                }
               }
             },
             fundType: true,
@@ -331,9 +351,18 @@ export async function GET(request: NextRequest) {
           return;
         }
         
-        if (subProject.fundTypes.length > 0) {
+        // 从detailedFundNeeds中提取唯一的资金类型
+        const fundTypes = Array.from(
+          new Map(
+            subProject.detailedFundNeeds.map(need => 
+              [need.fundType.id, need.fundType]
+            )
+          ).values()
+        );
+        
+        if (fundTypes.length > 0) {
           // 为每个资金类型创建记录
-          subProject.fundTypes.forEach(fundType => {
+          fundTypes.forEach(fundType => {
             // 如果指定了资金类型ID，只处理匹配的资金类型
             if (fundTypeId && fundTypeId !== 'all' && fundType.id !== fundTypeId) {
               return;
@@ -346,6 +375,16 @@ export async function GET(request: NextRequest) {
               // 使用已有记录
               allRecords.push(existingRecord);
             } else if (yearParam && monthParam) {
+              // 获取与该子项目和资金类型相关的部门和组织
+              const relatedDepartments = subProject.detailedFundNeeds
+                .filter(need => need.fundType.id === fundType.id)
+                .map(need => need.department);
+                
+              const relatedOrganizations = subProject.detailedFundNeeds
+                .filter(need => need.fundType.id === fundType.id)
+                .map(need => need.organization)
+                .filter(org => org !== null);
+              
               // 创建未填写的记录
               allRecords.push({
                 id: `temp_${key}_${yearParam}_${monthParam}`,
@@ -367,10 +406,12 @@ export async function GET(request: NextRequest) {
                   project: {
                     id: project.id,
                     name: project.name,
-                    organizations: project.organizations,
-                    departments: project.departments,
+                    // 使用从detailedFundNeeds中提取的组织和部门
+                    relatedOrganizations,
+                    relatedDepartments
                   },
-                  fundTypes: subProject.fundTypes,
+                  // 不再使用fundTypes字段
+                  detailedFundNeeds: subProject.detailedFundNeeds
                 },
                 fundType: fundType
               });
@@ -384,6 +425,14 @@ export async function GET(request: NextRequest) {
             if (fundTypeId && fundTypeId !== 'all' && fundTypeId !== 'default') {
               return;
             }
+            
+            // 获取与该子项目相关的部门和组织
+            const relatedDepartments = subProject.detailedFundNeeds
+              .map(need => need.department);
+              
+            const relatedOrganizations = subProject.detailedFundNeeds
+              .map(need => need.organization)
+              .filter(org => org !== null);
             
             allRecords.push({
               id: `temp_${defaultKey}_${yearParam}_${monthParam}`,
@@ -405,10 +454,12 @@ export async function GET(request: NextRequest) {
                 project: {
                   id: project.id,
                   name: project.name,
-                  organizations: project.organizations,
-                  departments: project.departments,
+                  // 使用从detailedFundNeeds中提取的组织和部门
+                  relatedOrganizations,
+                  relatedDepartments
                 },
-                fundTypes: subProject.fundTypes,
+                // 使用detailedFundNeeds替代fundTypes
+                detailedFundNeeds: subProject.detailedFundNeeds
               },
               fundType: { id: "default", name: "未指定" }
             });
@@ -480,11 +531,16 @@ export async function GET(request: NextRequest) {
               include: {
                 project: {
                   include: {
-                    organizations: true,
-                    departments: true,
+                    category: true
                   }
                 },
-                fundTypes: true,
+                detailedFundNeeds: {
+                  include: {
+                    department: true,
+                    fundType: true,
+                    organization: true
+                  }
+                }
               }
             },
             fundType: true,

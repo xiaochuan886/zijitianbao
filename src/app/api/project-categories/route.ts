@@ -3,49 +3,38 @@ import { ProjectCategoryService } from '@/lib/services/project-category.service'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { Role } from '@/lib/enums'
+import { prisma } from '@/lib/prisma'
 
 const projectCategoryService = new ProjectCategoryService()
 
 // GET /api/project-categories - 获取项目分类列表
 export async function GET(req: NextRequest) {
   try {
-    // 检查授权
-    const session = await getServerSession(authOptions)
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { message: '未授权访问' },
-        { status: 401 }
-      )
-    }
-
-    const searchParams = req.nextUrl.searchParams
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '10')
+    // 获取查询参数
+    const { searchParams } = new URL(req.url)
     const search = searchParams.get('search') || ''
-    const organizationId = searchParams.get('organizationId') || undefined
-    const sortBy = searchParams.get('sortBy') || 'createdAt'
-    const sortOrder = (searchParams.get('sortOrder') || 'desc') as 'asc' | 'desc'
-
-    const result = await projectCategoryService.findAll(
-      { page, pageSize },
-      { 
-        search, 
-        filters: {
-          organizationId
-        },
-        sorting: {
-          field: sortBy,
-          order: sortOrder
-        }
+    
+    // 构建查询条件
+    const where = search ? {
+      name: {
+        contains: search
       }
-    )
-
-    return NextResponse.json(result)
-  } catch (error: any) {
-    console.error('API Error:', error)
+    } : {}
+    
+    // 查询项目分类列表
+    const categories = await prisma.projectCategory.findMany({
+      where,
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+    
+    return NextResponse.json(categories)
+  } catch (error) {
+    console.error('获取项目分类列表失败:', error)
     return NextResponse.json(
-      { message: error.message || '获取项目分类列表失败' },
-      { status: error.statusCode || 500 }
+      { message: '获取项目分类列表失败' },
+      { status: 500 }
     )
   }
 }

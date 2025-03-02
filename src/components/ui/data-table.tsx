@@ -198,8 +198,8 @@ export function DataTable<T = any>({
                   <TableRow 
                     key={row.id}
                     className={cn({
-                      "bg-muted/50 font-medium": isGroupHeader,
-                      "pl-10 border-l-4 border-l-primary/20": !isGroupHeader && groupId(row.original)
+                      "bg-muted/50 dark:bg-muted/70 font-medium": isGroupHeader,
+                      "pl-10 border-l-4 border-l-primary/20 dark:border-l-primary/40": !isGroupHeader && groupId(row.original)
                     })}
                   >
                     {row.getVisibleCells().map((cell) => (

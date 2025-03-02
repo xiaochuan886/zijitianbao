@@ -28,6 +28,7 @@ CREATE TABLE "Department" (
     "organizationId" TEXT NOT NULL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
+    "isDeleted" BOOLEAN NOT NULL DEFAULT false,
     CONSTRAINT "Department_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -49,12 +50,10 @@ CREATE TABLE "Project" (
     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
     "startYear" INTEGER NOT NULL,
     "hasRecords" BOOLEAN NOT NULL DEFAULT false,
-    "organizationId" TEXT NOT NULL,
     "categoryId" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     "code" TEXT,
-    CONSTRAINT "Project_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "Project_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "ProjectCategory" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
@@ -77,10 +76,28 @@ CREATE TABLE "FundType" (
 );
 
 -- CreateTable
-CREATE TABLE "PredictRecord" (
+CREATE TABLE "DetailedFundNeed" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "subProjectId" TEXT NOT NULL,
+    "departmentId" TEXT NOT NULL,
     "fundTypeId" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "DetailedFundNeed_subProjectId_fkey" FOREIGN KEY ("subProjectId") REFERENCES "SubProject" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "DetailedFundNeed_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "DetailedFundNeed_fundTypeId_fkey" FOREIGN KEY ("fundTypeId") REFERENCES "FundType" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "DetailedFundNeed_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "PredictRecord" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "detailedFundNeedId" TEXT NOT NULL,
+    "subProjectId" TEXT NOT NULL,
+    "fundTypeId" TEXT NOT NULL,
+    "departmentId" TEXT NOT NULL,
     "year" INTEGER NOT NULL,
     "month" INTEGER NOT NULL,
     "amount" REAL,
@@ -90,16 +107,42 @@ CREATE TABLE "PredictRecord" (
     "submittedAt" DATETIME,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "PredictRecord_detailedFundNeedId_fkey" FOREIGN KEY ("detailedFundNeedId") REFERENCES "DetailedFundNeed" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "PredictRecord_subProjectId_fkey" FOREIGN KEY ("subProjectId") REFERENCES "SubProject" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "PredictRecord_fundTypeId_fkey" FOREIGN KEY ("fundTypeId") REFERENCES "FundType" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "PredictRecord_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "PredictRecord_submittedBy_fkey" FOREIGN KEY ("submittedBy") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "UserOrganization" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "role" TEXT NOT NULL DEFAULT 'REPORTER',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "UserOrganization_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "UserOrganization_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "UserDepartment" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "departmentId" TEXT NOT NULL,
+    "role" TEXT NOT NULL DEFAULT 'REPORTER',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "UserDepartment_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "UserDepartment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "ActualUserRecord" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "detailedFundNeedId" TEXT NOT NULL,
     "subProjectId" TEXT NOT NULL,
     "fundTypeId" TEXT NOT NULL,
+    "departmentId" TEXT NOT NULL,
     "year" INTEGER NOT NULL,
     "month" INTEGER NOT NULL,
     "amount" REAL,
@@ -109,14 +152,17 @@ CREATE TABLE "ActualUserRecord" (
     "submittedAt" DATETIME,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "ActualUserRecord_detailedFundNeedId_fkey" FOREIGN KEY ("detailedFundNeedId") REFERENCES "DetailedFundNeed" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "ActualUserRecord_subProjectId_fkey" FOREIGN KEY ("subProjectId") REFERENCES "SubProject" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "ActualUserRecord_fundTypeId_fkey" FOREIGN KEY ("fundTypeId") REFERENCES "FundType" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "ActualUserRecord_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "ActualUserRecord_submittedBy_fkey" FOREIGN KEY ("submittedBy") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "ActualFinRecord" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "detailedFundNeedId" TEXT NOT NULL,
     "subProjectId" TEXT NOT NULL,
     "fundTypeId" TEXT NOT NULL,
     "year" INTEGER NOT NULL,
@@ -129,15 +175,19 @@ CREATE TABLE "ActualFinRecord" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     "userRecordId" TEXT,
+    "departmentId" TEXT,
+    CONSTRAINT "ActualFinRecord_detailedFundNeedId_fkey" FOREIGN KEY ("detailedFundNeedId") REFERENCES "DetailedFundNeed" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "ActualFinRecord_subProjectId_fkey" FOREIGN KEY ("subProjectId") REFERENCES "SubProject" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "ActualFinRecord_fundTypeId_fkey" FOREIGN KEY ("fundTypeId") REFERENCES "FundType" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "ActualFinRecord_submittedBy_fkey" FOREIGN KEY ("submittedBy") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT "ActualFinRecord_userRecordId_fkey" FOREIGN KEY ("userRecordId") REFERENCES "ActualUserRecord" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "ActualFinRecord_userRecordId_fkey" FOREIGN KEY ("userRecordId") REFERENCES "ActualUserRecord" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "ActualFinRecord_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "AuditRecord" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "detailedFundNeedId" TEXT NOT NULL,
     "subProjectId" TEXT NOT NULL,
     "fundTypeId" TEXT NOT NULL,
     "year" INTEGER NOT NULL,
@@ -150,10 +200,13 @@ CREATE TABLE "AuditRecord" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     "financeRecordId" TEXT,
+    "departmentId" TEXT,
+    CONSTRAINT "AuditRecord_detailedFundNeedId_fkey" FOREIGN KEY ("detailedFundNeedId") REFERENCES "DetailedFundNeed" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "AuditRecord_subProjectId_fkey" FOREIGN KEY ("subProjectId") REFERENCES "SubProject" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "AuditRecord_fundTypeId_fkey" FOREIGN KEY ("fundTypeId") REFERENCES "FundType" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "AuditRecord_submittedBy_fkey" FOREIGN KEY ("submittedBy") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT "AuditRecord_financeRecordId_fkey" FOREIGN KEY ("financeRecordId") REFERENCES "ActualFinRecord" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "AuditRecord_financeRecordId_fkey" FOREIGN KEY ("financeRecordId") REFERENCES "ActualFinRecord" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "AuditRecord_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -193,16 +246,6 @@ CREATE TABLE "AuditLog" (
 );
 
 -- CreateTable
-CREATE TABLE "UserOrganization" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "userId" TEXT NOT NULL,
-    "organizationId" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "UserOrganization_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "UserOrganization_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
 CREATE TABLE "WithdrawalRequest" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "predictRecordId" TEXT,
@@ -221,30 +264,6 @@ CREATE TABLE "WithdrawalRequest" (
     CONSTRAINT "WithdrawalRequest_actualFinRecordId_fkey" FOREIGN KEY ("actualFinRecordId") REFERENCES "ActualFinRecord" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "WithdrawalRequest_auditRecordId_fkey" FOREIGN KEY ("auditRecordId") REFERENCES "AuditRecord" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "WithdrawalRequest_requesterId_fkey" FOREIGN KEY ("requesterId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "_ProjectOrganizations" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-    CONSTRAINT "_ProjectOrganizations_A_fkey" FOREIGN KEY ("A") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "_ProjectOrganizations_B_fkey" FOREIGN KEY ("B") REFERENCES "Project" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "_DepartmentToProject" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-    CONSTRAINT "_DepartmentToProject_A_fkey" FOREIGN KEY ("A") REFERENCES "Department" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "_DepartmentToProject_B_fkey" FOREIGN KEY ("B") REFERENCES "Project" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "_FundTypeToSubProject" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-    CONSTRAINT "_FundTypeToSubProject_A_fkey" FOREIGN KEY ("A") REFERENCES "FundType" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "_FundTypeToSubProject_B_fkey" FOREIGN KEY ("B") REFERENCES "SubProject" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateIndex
@@ -290,22 +309,7 @@ CREATE UNIQUE INDEX "ProjectCategory_name_organizationId_key" ON "ProjectCategor
 CREATE INDEX "Project_name_idx" ON "Project"("name");
 
 -- CreateIndex
-CREATE INDEX "Project_code_idx" ON "Project"("code");
-
--- CreateIndex
 CREATE INDEX "Project_status_idx" ON "Project"("status");
-
--- CreateIndex
-CREATE INDEX "Project_startYear_idx" ON "Project"("startYear");
-
--- CreateIndex
-CREATE INDEX "Project_organizationId_idx" ON "Project"("organizationId");
-
--- CreateIndex
-CREATE INDEX "Project_categoryId_idx" ON "Project"("categoryId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Project_name_organizationId_key" ON "Project"("name", "organizationId");
 
 -- CreateIndex
 CREATE INDEX "SubProject_projectId_idx" ON "SubProject"("projectId");
@@ -317,10 +321,34 @@ CREATE INDEX "SubProject_name_idx" ON "SubProject"("name");
 CREATE INDEX "FundType_name_idx" ON "FundType"("name");
 
 -- CreateIndex
+CREATE INDEX "DetailedFundNeed_subProjectId_idx" ON "DetailedFundNeed"("subProjectId");
+
+-- CreateIndex
+CREATE INDEX "DetailedFundNeed_departmentId_idx" ON "DetailedFundNeed"("departmentId");
+
+-- CreateIndex
+CREATE INDEX "DetailedFundNeed_fundTypeId_idx" ON "DetailedFundNeed"("fundTypeId");
+
+-- CreateIndex
+CREATE INDEX "DetailedFundNeed_organizationId_idx" ON "DetailedFundNeed"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "DetailedFundNeed_isActive_idx" ON "DetailedFundNeed"("isActive");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "DetailedFundNeed_subProjectId_departmentId_fundTypeId_key" ON "DetailedFundNeed"("subProjectId", "departmentId", "fundTypeId");
+
+-- CreateIndex
+CREATE INDEX "PredictRecord_detailedFundNeedId_idx" ON "PredictRecord"("detailedFundNeedId");
+
+-- CreateIndex
 CREATE INDEX "PredictRecord_subProjectId_idx" ON "PredictRecord"("subProjectId");
 
 -- CreateIndex
 CREATE INDEX "PredictRecord_fundTypeId_idx" ON "PredictRecord"("fundTypeId");
+
+-- CreateIndex
+CREATE INDEX "PredictRecord_departmentId_idx" ON "PredictRecord"("departmentId");
 
 -- CreateIndex
 CREATE INDEX "PredictRecord_year_idx" ON "PredictRecord"("year");
@@ -338,7 +366,40 @@ CREATE INDEX "PredictRecord_submittedBy_idx" ON "PredictRecord"("submittedBy");
 CREATE INDEX "PredictRecord_submittedAt_idx" ON "PredictRecord"("submittedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PredictRecord_subProjectId_fundTypeId_year_month_key" ON "PredictRecord"("subProjectId", "fundTypeId", "year", "month");
+CREATE UNIQUE INDEX "PredictRecord_detailedFundNeedId_year_month_key" ON "PredictRecord"("detailedFundNeedId", "year", "month");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PredictRecord_subProjectId_fundTypeId_departmentId_year_month_key" ON "PredictRecord"("subProjectId", "fundTypeId", "departmentId", "year", "month");
+
+-- CreateIndex
+CREATE INDEX "UserOrganization_userId_idx" ON "UserOrganization"("userId");
+
+-- CreateIndex
+CREATE INDEX "UserOrganization_organizationId_idx" ON "UserOrganization"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "UserOrganization_role_idx" ON "UserOrganization"("role");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserOrganization_userId_organizationId_key" ON "UserOrganization"("userId", "organizationId");
+
+-- CreateIndex
+CREATE INDEX "UserDepartment_userId_idx" ON "UserDepartment"("userId");
+
+-- CreateIndex
+CREATE INDEX "UserDepartment_departmentId_idx" ON "UserDepartment"("departmentId");
+
+-- CreateIndex
+CREATE INDEX "UserDepartment_role_idx" ON "UserDepartment"("role");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserDepartment_userId_departmentId_key" ON "UserDepartment"("userId", "departmentId");
+
+-- CreateIndex
+CREATE INDEX "ActualUserRecord_detailedFundNeedId_idx" ON "ActualUserRecord"("detailedFundNeedId");
+
+-- CreateIndex
+CREATE INDEX "ActualUserRecord_departmentId_idx" ON "ActualUserRecord"("departmentId");
 
 -- CreateIndex
 CREATE INDEX "ActualUserRecord_subProjectId_idx" ON "ActualUserRecord"("subProjectId");
@@ -362,10 +423,16 @@ CREATE INDEX "ActualUserRecord_submittedBy_idx" ON "ActualUserRecord"("submitted
 CREATE INDEX "ActualUserRecord_submittedAt_idx" ON "ActualUserRecord"("submittedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ActualUserRecord_subProjectId_fundTypeId_year_month_key" ON "ActualUserRecord"("subProjectId", "fundTypeId", "year", "month");
+CREATE UNIQUE INDEX "ActualUserRecord_detailedFundNeedId_year_month_key" ON "ActualUserRecord"("detailedFundNeedId", "year", "month");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ActualUserRecord_subProjectId_fundTypeId_departmentId_year_month_key" ON "ActualUserRecord"("subProjectId", "fundTypeId", "departmentId", "year", "month");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ActualFinRecord_userRecordId_key" ON "ActualFinRecord"("userRecordId");
+
+-- CreateIndex
+CREATE INDEX "ActualFinRecord_detailedFundNeedId_idx" ON "ActualFinRecord"("detailedFundNeedId");
 
 -- CreateIndex
 CREATE INDEX "ActualFinRecord_subProjectId_idx" ON "ActualFinRecord"("subProjectId");
@@ -392,10 +459,16 @@ CREATE INDEX "ActualFinRecord_submittedAt_idx" ON "ActualFinRecord"("submittedAt
 CREATE INDEX "ActualFinRecord_userRecordId_idx" ON "ActualFinRecord"("userRecordId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "ActualFinRecord_detailedFundNeedId_year_month_key" ON "ActualFinRecord"("detailedFundNeedId", "year", "month");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "ActualFinRecord_subProjectId_fundTypeId_year_month_key" ON "ActualFinRecord"("subProjectId", "fundTypeId", "year", "month");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AuditRecord_financeRecordId_key" ON "AuditRecord"("financeRecordId");
+
+-- CreateIndex
+CREATE INDEX "AuditRecord_detailedFundNeedId_idx" ON "AuditRecord"("detailedFundNeedId");
 
 -- CreateIndex
 CREATE INDEX "AuditRecord_subProjectId_idx" ON "AuditRecord"("subProjectId");
@@ -420,6 +493,9 @@ CREATE INDEX "AuditRecord_submittedAt_idx" ON "AuditRecord"("submittedAt");
 
 -- CreateIndex
 CREATE INDEX "AuditRecord_financeRecordId_idx" ON "AuditRecord"("financeRecordId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AuditRecord_detailedFundNeedId_year_month_key" ON "AuditRecord"("detailedFundNeedId", "year", "month");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AuditRecord_subProjectId_fundTypeId_year_month_key" ON "AuditRecord"("subProjectId", "fundTypeId", "year", "month");
@@ -461,15 +537,6 @@ CREATE INDEX "AuditLog_resource_idx" ON "AuditLog"("resource");
 CREATE INDEX "AuditLog_timestamp_idx" ON "AuditLog"("timestamp");
 
 -- CreateIndex
-CREATE INDEX "UserOrganization_userId_idx" ON "UserOrganization"("userId");
-
--- CreateIndex
-CREATE INDEX "UserOrganization_organizationId_idx" ON "UserOrganization"("organizationId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "UserOrganization_userId_organizationId_key" ON "UserOrganization"("userId", "organizationId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "WithdrawalRequest_predictRecordId_key" ON "WithdrawalRequest"("predictRecordId");
 
 -- CreateIndex
@@ -501,21 +568,3 @@ CREATE INDEX "WithdrawalRequest_status_idx" ON "WithdrawalRequest"("status");
 
 -- CreateIndex
 CREATE INDEX "WithdrawalRequest_createdAt_idx" ON "WithdrawalRequest"("createdAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "_ProjectOrganizations_AB_unique" ON "_ProjectOrganizations"("A", "B");
-
--- CreateIndex
-CREATE INDEX "_ProjectOrganizations_B_index" ON "_ProjectOrganizations"("B");
-
--- CreateIndex
-CREATE UNIQUE INDEX "_DepartmentToProject_AB_unique" ON "_DepartmentToProject"("A", "B");
-
--- CreateIndex
-CREATE INDEX "_DepartmentToProject_B_index" ON "_DepartmentToProject"("B");
-
--- CreateIndex
-CREATE UNIQUE INDEX "_FundTypeToSubProject_AB_unique" ON "_FundTypeToSubProject"("A", "B");
-
--- CreateIndex
-CREATE INDEX "_FundTypeToSubProject_B_index" ON "_FundTypeToSubProject"("B");

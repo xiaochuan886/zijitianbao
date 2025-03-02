@@ -356,9 +356,18 @@ export function ProjectDialog({
           // 为每个资金类型和部门的组合创建一个detailedFundNeed
           for (const fundTypeId of subProject.fundTypeIds) {
             for (const departmentId of subProject.departmentIds) {
+              // 获取部门关联的组织ID
+              const department = departments.find(d => d.id === departmentId);
+              const organizationId = department?.organizationId;
+              
+              if (!organizationId) {
+                throw new Error(`未找到部门 ${departmentId} 的组织信息`);
+              }
+              
               detailedFundNeeds.push({
                 fundTypeId,
-                departmentId
+                departmentId,
+                organizationId
               });
             }
           }

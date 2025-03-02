@@ -2,22 +2,30 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { PlusCircle, Tag, FolderTree } from "lucide-react"
+import { PlusCircle, Tag, FolderTree, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api-client"
 import { DataTable } from "@/components/ui/data-table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { CategoryDialog } from "./components"
+import { Badge } from "@/components/ui/badge"
+import { useRouter } from "next/navigation"
 
 interface ProjectCategory {
   id: string
   name: string
   code?: string
   createdAt: Date
+  projects?: Array<{
+    id: string
+    name: string
+    code?: string
+  }>
 }
 
 export default function ProjectCategoriesPage() {
+  const router = useRouter()
   const [categories, setCategories] = useState<ProjectCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -88,6 +96,36 @@ export default function ProjectCategoriesPage() {
     {
       accessorKey: "code",
       header: "分类编码",
+    },
+    {
+      accessorKey: "projects",
+      header: "关联项目",
+      cell: ({ row }: { row: { original: ProjectCategory } }) => {
+        const category = row.original
+        const projectCount = category.projects?.length || 0
+        
+        if (projectCount === 0) {
+          return <span className="text-muted-foreground text-sm">无关联项目</span>
+        }
+        
+        // 最多显示3个项目名称，超过则显示数量
+        const displayProjects = category.projects?.slice(0, 3) || []
+        
+        return (
+          <div className="flex flex-col gap-1">
+            {displayProjects.map(project => (
+              <Badge key={project.id} variant="outline" className="bg-blue-50 dark:bg-blue-900 dark:text-blue-100 max-w-[180px] truncate">
+                {project.name}
+              </Badge>
+            ))}
+            {projectCount > 3 && (
+              <span className="text-xs text-muted-foreground">
+                共 {projectCount} 个项目
+              </span>
+            )}
+          </div>
+        )
+      }
     },
     {
       id: "actions",
@@ -197,7 +235,17 @@ export default function ProjectCategoriesPage() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">项目分类管理</h1>
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={() => router.push('/management')}
+            className="h-9 w-9"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-3xl font-bold tracking-tight">项目分类管理</h1>
+        </div>
         <Button onClick={() => setDialogOpen(true)}>
           <PlusCircle className="mr-2 h-4 w-4" />
           新增分类
@@ -206,7 +254,7 @@ export default function ProjectCategoriesPage() {
       
       {/* 统计卡片区域 */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
+        <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               分类总数
@@ -222,7 +270,7 @@ export default function ProjectCategoriesPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               项目总数
@@ -241,7 +289,7 @@ export default function ProjectCategoriesPage() {
       </div>
 
       {/* 数据表格 */}
-      <Card>
+      <Card className="backdrop-blur-sm bg-card dark:bg-card/90">
         <CardHeader>
           <CardTitle>项目分类列表</CardTitle>
           <CardDescription>

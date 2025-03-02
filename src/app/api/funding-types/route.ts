@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withErrorHandler } from '@/lib/api-middlewares'
 import { services } from '@/lib/services'
+import { prisma } from '@/lib/prisma'
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
-  // 检查认证token
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return NextResponse.json(
-      { message: '未授权访问' },
-      { status: 401 }
-    )
-  }
-
   try {
     // 获取查询参数
     const { searchParams } = new URL(req.url)
@@ -21,22 +13,35 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     const sortBy = searchParams.get('sortBy') || 'createdAt'
     const sortOrder = (searchParams.get('sortOrder') || 'desc') as 'asc' | 'desc'
 
-    // 获取资金需求类型列表
-    const result = await services.fundType.findAll(
-      { page, pageSize },
-      { 
-        search, 
-        sorting: {
-          field: sortBy,
-          order: sortOrder
-        }
+    // 直接从数据库获取资金类型列表
+    const where = search ? {
+      name: {
+        contains: search
       }
-    )
+    } : {};
+
+    const total = await prisma.fundType.count({ where });
+    const items = await prisma.fundType.findMany({
+      where,
+      orderBy: {
+        [sortBy]: sortOrder
+      },
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    });
 
     return NextResponse.json({
       code: 200,
       message: '获取成功',
-      data: result
+      data: {
+        items,
+        meta: {
+          total,
+          page,
+          pageSize,
+          totalPages: Math.ceil(total / pageSize)
+        }
+      }
     })
   } catch (error: any) {
     console.error('获取资金需求类型列表失败:', error)

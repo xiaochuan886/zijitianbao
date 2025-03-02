@@ -106,7 +106,8 @@ export class OrganizationService {
         where: { id },
         include: {
           users: true,
-          projects: true,
+          departments: true,
+          detailedFundNeeds: true
         },
       })
 
@@ -118,10 +119,23 @@ export class OrganizationService {
         throw new ServiceError(400, '机构下还有用户，无法删除')
       }
 
-      if (org.projects.length > 0) {
-        throw new ServiceError(400, '机构下还有项目，无法删除')
+      // 先删除关联的detailedFundNeeds记录
+      if (org.detailedFundNeeds.length > 0) {
+        await prisma.detailedFundNeed.deleteMany({
+          where: { organizationId: id }
+        });
+        console.log(`已删除 ${org.detailedFundNeeds.length} 条资金需求记录`);
       }
 
+      // 删除部门
+      if (org.departments.length > 0) {
+        await prisma.department.deleteMany({
+          where: { organizationId: id }
+        });
+        console.log(`已删除 ${org.departments.length} 个部门`);
+      }
+
+      // 最后删除组织
       await prisma.organization.delete({
         where: { id },
       })
@@ -135,6 +149,7 @@ export class OrganizationService {
 
   async findById(id: string) {
     try {
+      // 获取组织基本信息，包括部门和用户
       const org = await prisma.organization.findUnique({
         where: { id },
         include: {
@@ -147,43 +162,69 @@ export class OrganizationService {
               role: true,
             },
           },
-          projects: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-            },
-          },
+          detailedFundNeeds: {
+            include: {
+              subProject: {
+                include: {
+                  project: {
+                    select: {
+                      id: true,
+                      name: true,
+                      status: true,
+                    }
+                  }
+                }
+              }
+            }
+          }
         },
-      })
+      });
 
       if (!org) {
-        throw new ServiceError(404, '机构不存在')
+        throw new ServiceError(404, '机构不存在');
       }
 
-      return org
+      // 处理项目数据，去重
+      const projectsMap = new Map();
+      org.detailedFundNeeds.forEach(fundNeed => {
+        if (fundNeed.subProject?.project) {
+          const project = fundNeed.subProject.project;
+          projectsMap.set(project.id, {
+            id: project.id,
+            name: project.name,
+            status: project.status
+          });
+        }
+      });
+      
+      // 构造返回结果
+      return {
+        ...org,
+        projects: Array.from(projectsMap.values())
+      };
     } catch (error) {
       if (error instanceof ServiceError) {
-        throw error
+        throw error;
       }
-      throw new ServiceError(500, '获取机构详情失败', error)
+      throw new ServiceError(500, '获取机构详情失败', error);
     }
   }
 
   async findAll(pagination: { page: number; pageSize: number }, filters?: { search?: string }) {
-    const skip = (pagination.page - 1) * pagination.pageSize
-    const where: Prisma.OrganizationWhereInput = {}
+    const skip = (pagination.page - 1) * pagination.pageSize;
+    const where: Prisma.OrganizationWhereInput = {};
 
     if (filters?.search) {
       where.OR = [
         { name: { contains: filters.search } },
         { code: { contains: filters.search } },
-      ]
+      ];
     }
 
-    const total = await prisma.organization.count({ where })
+    const total = await prisma.organization.count({ where });
 
-    const items = await prisma.organization.findMany({
+    // 获取组织列表，包括部门和用户
+    const organizations = await prisma.organization.findMany({
       where,
       skip,
       take: pagination.pageSize,
@@ -200,17 +241,47 @@ export class OrganizationService {
             name: true,
           },
         },
-        projects: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        detailedFundNeeds: {
+          include: {
+            subProject: {
+              include: {
+                project: {
+                  select: {
+                    id: true,
+                    name: true,
+                    status: true,
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: {
         createdAt: "desc",
       },
-    })
+    });
+
+    // 处理项目数据
+    const items = organizations.map(org => {
+      // 提取项目并去重
+      const projectsMap = new Map();
+      org.detailedFundNeeds.forEach(fundNeed => {
+        if (fundNeed.subProject?.project) {
+          const project = fundNeed.subProject.project;
+          projectsMap.set(project.id, {
+            id: project.id,
+            name: project.name,
+            status: project.status || "ACTIVE"
+          });
+        }
+      });
+
+      return {
+        ...org,
+        projects: Array.from(projectsMap.values())
+      };
+    });
 
     return {
       items,
@@ -218,7 +289,7 @@ export class OrganizationService {
       page: pagination.page,
       pageSize: pagination.pageSize,
       totalPages: Math.ceil(total / pagination.pageSize),
-    }
+    };
   }
 
   // 部门相关方法
@@ -253,26 +324,26 @@ export class OrganizationService {
       const dept = await prisma.department.findUnique({
         where: { id },
         include: {
-          projects: true,
+          detailedFundNeeds: true,
         },
-      })
+      });
 
       if (!dept) {
-        throw new ServiceError(404, '部门不存在')
+        throw new ServiceError(404, '部门不存在');
       }
 
-      if (dept.projects.length > 0) {
-        throw new ServiceError(400, '部门下还有项目，无法删除')
+      if (dept.detailedFundNeeds.length > 0) {
+        throw new ServiceError(400, '部门下还有资金需求记录，无法删除');
       }
 
       await prisma.department.delete({
         where: { id },
-      })
+      });
     } catch (error) {
       if (error instanceof ServiceError) {
-        throw error
+        throw error;
       }
-      throw new ServiceError(500, '删除部门失败', error)
+      throw new ServiceError(500, '删除部门失败', error);
     }
   }
 

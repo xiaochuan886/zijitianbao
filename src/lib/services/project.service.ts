@@ -13,13 +13,13 @@ export interface CreateProjectDto {
   code: string
   status?: ProjectStatus
   startYear: number
-  organizationId?: string // 主要所属机构
   categoryId?: string // 项目分类ID
   subProjects: {
     name: string
     detailedFundNeeds: {
       departmentId: string
       fundTypeId: string
+      organizationId: string // 添加organizationId字段
     }[]
   }[]
 }
@@ -29,7 +29,6 @@ export interface UpdateProjectDto {
   code?: string
   status?: ProjectStatus
   startYear?: number
-  organizationId?: string
   categoryId?: string
   subProjects?: {
     id?: string
@@ -37,6 +36,7 @@ export interface UpdateProjectDto {
     detailedFundNeeds: {
       departmentId: string
       fundTypeId: string
+      organizationId: string // 添加organizationId字段
     }[]
   }[]
 }
@@ -50,9 +50,6 @@ export class ProjectService {
       if (!data.name) throw new ServiceError(400, '项目名称不能为空');
       if (!data.code) throw new ServiceError(400, '项目编码不能为空');
       if (!data.startYear) throw new ServiceError(400, '开始年份不能为空');
-      if (!data.organizationId) {
-        throw new ServiceError(400, '必须选择一个主要所属机构');
-      }
       if (!data.subProjects || data.subProjects.length === 0) {
         throw new ServiceError(400, '至少添加一个子项目');
       }
@@ -63,6 +60,12 @@ export class ProjectService {
         if (!sub.detailedFundNeeds || sub.detailedFundNeeds.length === 0) {
           throw new ServiceError(400, '子项目至少选择一个资金需求类型');
         }
+        // 验证每个detailedFundNeed都有organizationId
+        for (const dfn of sub.detailedFundNeeds) {
+          if (!dfn.organizationId) {
+            throw new ServiceError(400, '必须为每个资金需求指定一个机构');
+          }
+        }
       }
       
       // 创建项目和子项目
@@ -70,10 +73,9 @@ export class ProjectService {
         data: {
           name: data.name,
           code: data.code,
-          status: data.status,
+          status: data.status as string || 'ACTIVE',
           startYear: data.startYear,
-          organizationId: data.organizationId,
-          categoryId: data.categoryId,
+          categoryId: data.categoryId || null,
           subProjects: {
             create: data.subProjects.map((sub) => ({
               name: sub.name,
@@ -81,7 +83,6 @@ export class ProjectService {
           },
         },
         include: {
-          organization: true,
           category: true,
           subProjects: true,
         },
@@ -97,7 +98,7 @@ export class ProjectService {
                 subProjectId: subProject.id,
                 departmentId: dfn.departmentId,
                 fundTypeId: dfn.fundTypeId,
-                organizationId: data.organizationId,
+                organizationId: dfn.organizationId,
               }
             });
           }
@@ -152,11 +153,9 @@ export class ProjectService {
         code: data.code,
         status: data.status,
         startYear: data.startYear,
-        organizationId: data.organizationId,
         categoryId: data.categoryId,
       },
       include: {
-        organization: true,
         category: true,
         subProjects: true,
       },
@@ -185,7 +184,7 @@ export class ProjectService {
                 subProjectId: sub.id,
                 departmentId: dfn.departmentId,
                 fundTypeId: dfn.fundTypeId,
-                organizationId: updatedProject.organizationId,
+                organizationId: dfn.organizationId,
               }
             });
           }
@@ -205,7 +204,7 @@ export class ProjectService {
                 subProjectId: newSub.id,
                 departmentId: dfn.departmentId,
                 fundTypeId: dfn.fundTypeId,
-                organizationId: updatedProject.organizationId,
+                organizationId: dfn.organizationId,
               }
             });
           }
@@ -277,7 +276,6 @@ export class ProjectService {
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
-        organization: true,
         category: true,
         subProjects: {
           include: {
@@ -314,7 +312,6 @@ export class ProjectService {
           }
         : {}),
       ...(filters?.status ? { status: filters.status } : {}),
-      ...(filters?.organizationId ? { organizationId: filters.organizationId } : {}),
       ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
     };
 
@@ -336,7 +333,6 @@ export class ProjectService {
       skip: page ? (page - 1) * pageSize : 0,
       take: pageSize,
       include: {
-        organization: true,
         category: true,
         subProjects: {
           include: {

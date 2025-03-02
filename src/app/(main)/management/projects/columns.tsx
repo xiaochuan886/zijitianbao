@@ -53,7 +53,7 @@ function CollapsibleSubProjects({ project }: { project: Project }) {
         >
           {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </Button>
-        <Badge variant="outline" className="bg-blue-50">
+        <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900 dark:text-blue-100">
           {project.subProjects?.length || 0} 个子项目
         </Badge>
       </div>
@@ -61,7 +61,7 @@ function CollapsibleSubProjects({ project }: { project: Project }) {
       {isOpen && project.subProjects?.length > 0 && (
         <div className="pl-6 mt-2 space-y-2">
           {project.subProjects.map((subProject) => (
-            <div key={subProject.id} className="border p-2 rounded-md bg-slate-50 text-sm">
+            <div key={subProject.id} className="border p-2 rounded-md bg-slate-50 dark:bg-slate-800 text-sm">
               <div className="flex flex-col gap-1">
                 <div className="font-medium">{subProject.name}</div>
                 
@@ -69,17 +69,17 @@ function CollapsibleSubProjects({ project }: { project: Project }) {
                   <div className="mt-1">
                     {groupByFundType(subProject).map((group, i) => (
                       <div key={i} className="mb-1.5">
-                        <Badge variant="outline" className="bg-purple-50 text-xs mb-1">
+                        <Badge variant="outline" className="bg-purple-50 dark:bg-purple-900 dark:text-purple-100 text-xs mb-1">
                           {group.fundTypeName}
                         </Badge>
-                        <div className="pl-2 text-xs text-gray-600">
+                        <div className="pl-2 text-xs text-gray-600 dark:text-gray-300">
                           部门: {group.departments.join(', ')}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-xs text-gray-500">未关联资金需求类型</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">未关联资金需求类型</div>
                 )}
               </div>
             </div>
@@ -104,12 +104,58 @@ export const columns = ({
     header: "项目编码",
   },
   {
+    accessorKey: "organizations",
+    header: "关联机构",
+    cell: ({ row }) => {
+      const project = row.original;
+      
+      // 从所有子项目的detailedFundNeeds中提取唯一的组织
+      const uniqueOrganizations = new Set<string>();
+      const organizationMap: Record<string, string> = {};
+      
+      project.subProjects.forEach(subProject => {
+        subProject.detailedFundNeeds.forEach(need => {
+          if (need.organization) {
+            uniqueOrganizations.add(need.organization.id);
+            organizationMap[need.organization.id] = need.organization.name;
+          }
+        });
+      });
+      
+      const organizationCount = uniqueOrganizations.size;
+      
+      if (organizationCount === 0) {
+        return <span className="text-muted-foreground text-sm">未关联机构</span>;
+      }
+      
+      // 限制显示的机构数量，避免太长
+      const orgNames = Array.from(uniqueOrganizations)
+        .slice(0, 2)
+        .map(id => organizationMap[id]);
+      
+      return (
+        <div className="flex flex-col gap-1">
+          {orgNames.map((name, index) => (
+            <Badge key={index} variant="outline" className="bg-blue-50 dark:bg-blue-900 dark:text-blue-100 max-w-[180px] truncate">
+              {name}
+            </Badge>
+          ))}
+          {organizationCount > 2 && (
+            <span className="text-xs text-muted-foreground">
+              共 {organizationCount} 个机构
+            </span>
+          )}
+        </div>
+      );
+    },
+  },
+  {
     accessorKey: "category",
     header: "项目分类",
     cell: ({ row }) => (
       <span>
         {row.original.category ? (
-          <Badge variant="outline" className="bg-purple-50">
+          <Badge variant="outline" className="bg-purple-50 dark:bg-purple-900 dark:text-purple-100">
             {row.original.category.name}
           </Badge>
         ) : (
@@ -124,7 +170,9 @@ export const columns = ({
     cell: ({ row }) => (
       <Badge
         variant={row.original.status === "ACTIVE" ? "default" : "secondary"}
-        className={row.original.status === "ACTIVE" ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}
+        className={row.original.status === "ACTIVE" 
+          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" 
+          : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"}
       >
         {row.original.status === "ACTIVE" ? "活跃" : "已归档"}
       </Badge>

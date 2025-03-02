@@ -244,20 +244,20 @@ async function createProjectCategories(organizations: any[]) {
     '城市更新', '乡村振兴', '交通建设'
   ]
   
-  // 为每个机构创建3个分类
-  for (const org of organizations) {
-    for (let i = 0; i < 3; i++) {
-      const categoryIndex = organizations.indexOf(org) * 3 + i
+  // 创建不关联机构的分类
+  for (let i = 0; i < categoryNames.length; i++) {
+    try {
       const category = await prisma.projectCategory.create({
         data: {
-          name: categoryNames[categoryIndex],
-          code: `CAT${categoryIndex + 1}`,
-          organizationId: org.id
+          name: categoryNames[i],
+          code: `CAT${i + 1}`
         }
       })
       
       categories.push(category)
       console.log(`创建项目分类: ${category.name}`)
+    } catch (error) {
+      console.error(`创建分类 ${categoryNames[i]} 失败:`, error)
     }
   }
   
@@ -277,12 +277,10 @@ async function createProjects(organizations: any[], departments: any[], categori
     // 获取该组织的部门
     const orgDepartments = departments.filter(d => d.organizationId === org.id)
     
-    // 获取该组织的分类
-    const orgCategories = categories.filter(c => c.organizationId === org.id)
-    
+    // 随机选择项目分类
     for (let projectIndex = 0; projectIndex < projectCount; projectIndex++) {
       // 随机选择一个分类
-      const category = orgCategories[Math.floor(Math.random() * orgCategories.length)]
+      const category = categories[Math.floor(Math.random() * categories.length)]
       
       // 随机选择1-2个部门
       const deptCount = Math.floor(Math.random() * 2) + 1 // 1-2个部门
@@ -305,10 +303,8 @@ async function createProjects(organizations: any[], departments: any[], categori
           status: 'ACTIVE',
           startYear: 2023,
           hasRecords: false,
-          organizationId: category.organizationId,
           categoryId: category.id,
           code: `PRJ${projectIndex + 1}`
-          // 移除departments字段，因为新模型不再使用多对多关系
         }
       })
       
@@ -374,10 +370,10 @@ async function linkSubProjectsToFundTypes(subProjects: any[], fundTypes: any[], 
   const detailedFundNeeds = []
   
   for (const subProject of subProjects) {
-    // 获取项目信息以获取organizationId
+    // 获取项目信息
     const projectInfo = await prisma.project.findUnique({
       where: { id: subProject.projectId },
-      select: { organizationId: true }
+      select: { id: true, categoryId: true }
     })
     
     if (!projectInfo) {
@@ -385,12 +381,20 @@ async function linkSubProjectsToFundTypes(subProjects: any[], fundTypes: any[], 
       continue
     }
     
-    // 获取该组织的部门
-    const orgDepartments = departments.filter(d => d.organizationId === projectInfo.organizationId)
+    // 随机选择一个组织
+    const allOrganizations = await prisma.organization.findMany();
+    if (allOrganizations.length === 0) {
+      console.log(`警告: 没有组织数据，跳过创建关联`);
+      continue;
+    }
     
+    // 随机选择一个组织
+    const randomOrg = allOrganizations[Math.floor(Math.random() * allOrganizations.length)];
+    
+    const orgDepartments = departments.filter(d => d.organizationId === randomOrg.id);
     if (orgDepartments.length === 0) {
-      console.log(`警告: 组织 ${projectInfo.organizationId} 没有部门，跳过创建关联`)
-      continue
+      console.log(`警告: 组织 ${randomOrg.id} 没有部门，跳过创建关联`);
+      continue;
     }
     
     // 为每个子项目随机选择2-3个资金类型
@@ -425,7 +429,7 @@ async function linkSubProjectsToFundTypes(subProjects: any[], fundTypes: any[], 
             subProjectId: subProject.id,
             departmentId: department.id,
             fundTypeId: fundType.id,
-            organizationId: projectInfo.organizationId,
+            organizationId: randomOrg.id,
             isActive: true
           }
         })
