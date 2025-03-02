@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ProjectCategoryService } from '@/lib/services/project-category.service'
-import { parseSession } from '@/lib/auth/session'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-options'
 import { Role } from '@/lib/enums'
 
 const projectCategoryService = new ProjectCategoryService()
@@ -9,8 +10,8 @@ const projectCategoryService = new ProjectCategoryService()
 export async function GET(req: NextRequest) {
   try {
     // 检查授权
-    const session = await parseSession(req.headers.get('authorization'))
-    if (!session) {
+    const session = await getServerSession(authOptions)
+    if (!session || !session.user) {
       return NextResponse.json(
         { message: '未授权访问' },
         { status: 401 }
@@ -53,8 +54,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     // 检查授权
-    const session = await parseSession(req.headers.get('authorization'))
-    if (!session) {
+    const session = await getServerSession(authOptions)
+    if (!session || !session.user) {
       return NextResponse.json(
         { message: '未授权访问' },
         { status: 401 }

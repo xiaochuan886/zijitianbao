@@ -236,22 +236,19 @@ export class ProjectService {
     { page, pageSize }: PaginationParams,
     { search, filters, sorting }: QueryParams
   ): Promise<PaginatedResponse<any>> {
+    // 构建查询条件
     const where: Prisma.ProjectWhereInput = {
       ...(search
         ? {
             OR: [
               { name: { contains: search } },
-              { organizations: { some: { name: { contains: search } } } },
-              { departments: { some: { name: { contains: search } } } },
+              { code: { contains: search } },
             ],
           }
         : {}),
       ...(filters?.status ? { status: filters.status } : {}),
       ...(filters?.organizationId
-        ? { organizations: { some: { id: filters.organizationId as string } } }
-        : {}),
-      ...(filters?.departmentId
-        ? { departments: { some: { id: filters.departmentId as string } } }
+        ? { organizationId: filters.organizationId as string }
         : {}),
       ...(filters?.categoryId
         ? { categoryId: filters.categoryId as string }
@@ -263,12 +260,16 @@ export class ProjectService {
       prisma.project.findMany({
         where,
         include: {
-          organizations: true,
-          departments: true,
+          organization: true,
           category: true,
           subProjects: {
             include: {
-              fundTypes: true,
+              detailedFundNeeds: {
+                include: {
+                  fundType: true,
+                  department: true
+                }
+              }
             },
           },
         },

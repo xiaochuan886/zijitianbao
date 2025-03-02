@@ -108,25 +108,26 @@ export default async function ServerComponent() {
 
 ## 已迁移的文件
 
+- [x] `src/lib/session.ts` - 添加兼容封装，从`auth()`改为`getServerSession(authOptions)`
 - [x] `src/app/api/organizations/[id]/departments/route.ts`
-- [x] `middleware.ts`
-- [x] `src/lib/session.ts`
+- [x] `src/app/api/organizations/[id]/route.ts`
+- [x] `src/app/api/organizations/[id]/departments/[departmentId]/route.ts`
+- [x] `src/app/api/fund-types/route.ts`
+- [x] `src/app/api/fund-types/[id]/route.ts`
+- [x] `src/app/api/projects/route.ts`
+- [x] `src/app/api/projects/[id]/route.ts`
+- [x] `src/app/api/projects/[id]/archive/route.ts`
+- [x] `src/app/api/project-categories/route.ts`
+- [x] `src/app/api/project-categories/[id]/route.ts`
+- [x] `src/app/api/users/route.ts`
+- [x] `src/app/api/users/[id]/route.ts`
+- [x] `src/app/api/users/[id]/reset-password/route.ts`
+- [x] `src/app/api/funding/predict/route.ts` (已使用getServerSession，无需迁移)
+- [x] `src/app/api/auth/password/route.ts`
 
 ## 待迁移的文件
 
-- [ ] `src/app/api/organizations/[id]/route.ts`
-- [ ] `src/app/api/organizations/[id]/departments/[departmentId]/route.ts`
-- [ ] `src/app/api/fund-types/route.ts`
-- [ ] `src/app/api/fund-types/[id]/route.ts`
-- [ ] `src/app/api/project-categories/route.ts`
-- [ ] `src/app/api/project-categories/[id]/route.ts`
-- [ ] `src/app/api/projects/route.ts`
-- [ ] `src/app/api/projects/[id]/route.ts`
-- [ ] `src/app/api/projects/[id]/archive/route.ts`
-- [ ] `src/app/api/users/route.ts`
-- [ ] `src/app/api/users/[id]/route.ts`
-- [ ] `src/app/api/users/[id]/reset-password/route.ts`
-- [ ] `src/app/api/auth/password/route.ts`
+- 所有文件已完成迁移！🎉
 
 ## 最终目标
 

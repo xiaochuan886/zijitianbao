@@ -1,43 +1,36 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { services } from '@/lib/services'
 import { ServiceError } from '@/lib/services/types'
-import { parseSession } from '@/lib/auth/session'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth-options'
 import { Role } from '@/lib/enums'
 import { UserService } from '@/lib/services/user.service'
 
 // GET /api/users - 获取用户列表
 export async function GET(request: NextRequest) {
   try {
-    // 1. 获取会话信息，校验权限
-    const session = parseSession(request.headers.get('authorization'))
+    // 1. 获取会话信息，校验权限 - 使用getServerSession替代parseSession
+    const session = await getServerSession(authOptions);
     
     if (!session || !session.user) {
-      return new Response(
-        JSON.stringify({
-          code: 401,
+      return NextResponse.json(
+        {
           message: '未授权访问',
           timestamp: Date.now(),
-        }),
-        { 
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
+        },
+        { status: 401 }
+      );
     }
 
     // 只有管理员可以获取用户列表
     if (session.user.role !== Role.ADMIN) {
-      return new Response(
-        JSON.stringify({
-          code: 403,
-          message: '权限不足',
+      return NextResponse.json(
+        {
+          message: '权限不足，只有管理员可以获取用户列表',
           timestamp: Date.now(),
-        }),
-        { 
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        }
-      )
+        },
+        { status: 403 }
+      );
     }
 
     // 2. 获取查询参数
@@ -62,53 +55,45 @@ export async function GET(request: NextRequest) {
     })
 
     // 4. 返回结果
-    return new Response(
-      JSON.stringify({
-        code: 200,
-        message: '获取用户列表成功',
-        data: result,
-        timestamp: Date.now(),
-      }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    )
+    return NextResponse.json({
+      message: '获取用户列表成功',
+      data: result,
+      timestamp: Date.now(),
+    });
   } catch (error: any) {
     console.error('GET /api/users error:', error)
     const statusCode = error instanceof ServiceError ? error.statusCode : 500
     const message = error instanceof ServiceError ? error.message : '服务器错误'
     
-    return new Response(
-      JSON.stringify({
-        code: statusCode,
+    return NextResponse.json(
+      {
         message: message,
         timestamp: Date.now(),
-      }),
-      { 
-        status: statusCode,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    )
+      },
+      { status: statusCode }
+    );
   }
 }
 
 // POST /api/users - 创建用户
 export async function POST(request: NextRequest) {
   try {
-    // 验证会话
-    const session = parseSession(request.headers.get('authorization'))
+    // 验证会话 - 使用getServerSession替代parseSession
+    const session = await getServerSession(authOptions);
+    
     if (!session || !session.user) {
-      return new Response(JSON.stringify({ message: 'Unauthorized' }), {
-        status: 401
-      })
+      return NextResponse.json(
+        { message: '未授权访问' },
+        { status: 401 }
+      );
     }
 
     // 验证权限
     if (session.user.role !== Role.ADMIN) {
-      return new Response(JSON.stringify({ message: 'Permission denied' }), {
-        status: 403
-      })
+      return NextResponse.json(
+        { message: '权限不足，只有管理员可以创建用户' },
+        { status: 403 }
+      );
     }
 
     // 获取请求数据
@@ -116,9 +101,10 @@ export async function POST(request: NextRequest) {
     
     // 验证数据
     if (!data.name || !data.email || !data.password || !data.role) {
-      return new Response(JSON.stringify({ message: 'Missing required fields' }), {
-        status: 400
-      })
+      return NextResponse.json(
+        { message: '缺少必填字段' },
+        { status: 400 }
+      );
     }
 
     // 处理多机构关联
@@ -141,24 +127,18 @@ export async function POST(request: NextRequest) {
       organizationIds, // 添加多机构支持
     })
 
-    return new Response(JSON.stringify(result), {
-      status: 200
-    })
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error('POST /api/users error:', error)
     const statusCode = error instanceof ServiceError ? error.statusCode : 500
     const message = error instanceof ServiceError ? error.message : '服务器错误'
     
-    return new Response(
-      JSON.stringify({
-        code: statusCode,
+    return NextResponse.json(
+      {
         message: message,
         timestamp: Date.now(),
-      }),
-      { 
-        status: statusCode,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    )
+      },
+      { status: statusCode }
+    );
   }
 } 

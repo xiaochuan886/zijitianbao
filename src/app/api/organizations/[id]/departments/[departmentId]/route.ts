@@ -1,8 +1,10 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { services } from '@/lib/services';
-import { checkPermission } from '@/lib/auth/permission';
-import { createPermissionError } from '@/lib/auth/errors';
-import { parseSession } from '@/lib/auth/session';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth-options';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 // PUT /api/organizations/[id]/departments/[departmentId] - 更新部门
 export async function PUT(
@@ -13,15 +15,26 @@ export async function PUT(
     // 1. 获取请求数据
     const data = await request.json();
 
-    // 2. 权限检查
-    const session = parseSession(request.headers.get('authorization'));
-    const hasPermission = await checkPermission(
-      session,
-      { resource: 'department', action: 'update', scope: 'all' }
-    );
+    // 2. 权限检查 - 使用getServerSession替代parseSession
+    const session = await getServerSession(authOptions);
     
-    if (!hasPermission) {
-      throw createPermissionError('INSUFFICIENT_PERMISSIONS');
+    if (!session || !session.user) {
+      return NextResponse.json({ message: "未授权访问" }, { status: 401 });
+    }
+    
+    // 管理员有全部权限，非管理员需要检查关联
+    if (session.user.role !== "ADMIN") {
+      // 检查用户是否与该组织有关联
+      const userOrg = await prisma.userOrganization.findFirst({
+        where: {
+          userId: session.user.id,
+          organizationId: params.id,
+        }
+      });
+      
+      if (!userOrg) {
+        return NextResponse.json({ message: "权限不足" }, { status: 403 });
+      }
     }
 
     // 3. 调用服务
@@ -31,20 +44,13 @@ export async function PUT(
     );
 
     // 4. 返回结果
-    return Response.json({
-      code: 200,
-      message: '更新成功',
-      data: result,
-      timestamp: Date.now(),
-    });
+    return NextResponse.json(result);
   } catch (error: any) {
-    return Response.json({
-      code: error.statusCode || 500,
-      message: error.message || '服务器错误',
-      timestamp: Date.now(),
-    }, {
-      status: error.statusCode || 500,
-    });
+    console.error('更新部门失败', error);
+    return NextResponse.json(
+      { message: error.message || '更新部门失败', error: error.message },
+      { status: error.statusCode || 500 }
+    );
   }
 }
 
@@ -54,33 +60,38 @@ export async function DELETE(
   { params }: { params: { id: string; departmentId: string } }
 ) {
   try {
-    // 1. 权限检查
-    const session = parseSession(request.headers.get('authorization'));
-    const hasPermission = await checkPermission(
-      session,
-      { resource: 'department', action: 'delete', scope: 'all' }
-    );
+    // 1. 权限检查 - 使用getServerSession替代parseSession
+    const session = await getServerSession(authOptions);
     
-    if (!hasPermission) {
-      throw createPermissionError('INSUFFICIENT_PERMISSIONS');
+    if (!session || !session.user) {
+      return NextResponse.json({ message: "未授权访问" }, { status: 401 });
+    }
+    
+    // 管理员有全部权限，非管理员需要检查关联
+    if (session.user.role !== "ADMIN") {
+      // 检查用户是否与该组织有关联
+      const userOrg = await prisma.userOrganization.findFirst({
+        where: {
+          userId: session.user.id,
+          organizationId: params.id,
+        }
+      });
+      
+      if (!userOrg) {
+        return NextResponse.json({ message: "权限不足" }, { status: 403 });
+      }
     }
 
     // 2. 调用服务
     await services.organization.deleteDepartment(params.departmentId);
 
     // 3. 返回结果
-    return Response.json({
-      code: 200,
-      message: '删除成功',
-      timestamp: Date.now(),
-    });
+    return NextResponse.json({ message: '删除成功' });
   } catch (error: any) {
-    return Response.json({
-      code: error.statusCode || 500,
-      message: error.message || '服务器错误',
-      timestamp: Date.now(),
-    }, {
-      status: error.statusCode || 500,
-    });
+    console.error('删除部门失败', error);
+    return NextResponse.json(
+      { message: error.message || '删除部门失败', error: error.message },
+      { status: error.statusCode || 500 }
+    );
   }
 } 

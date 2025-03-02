@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ProjectService } from '@/lib/services/project.service'
 import { ProjectStatus } from '@prisma/client'
-import { parseSession } from '@/lib/auth/session'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth-options'
 
 const projectService = new ProjectService()
 
 // GET /api/projects - 获取项目列表
 export async function GET(req: NextRequest) {
   try {
-    // 检查授权
-    const session = await parseSession(req.headers.get('authorization'))
-    if (!session) {
-      return NextResponse.json(
-        { message: '未授权访问' },
-        { status: 401 }
-      )
+    // 使用getServerSession替代parseSession进行权限检查
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
+      return NextResponse.json({ message: '未授权访问' }, { status: 401 });
     }
 
     const searchParams = req.nextUrl.searchParams
@@ -54,13 +53,11 @@ export async function GET(req: NextRequest) {
 // POST /api/projects - 创建项目
 export async function POST(req: NextRequest) {
   try {
-    // 检查授权
-    const session = await parseSession(req.headers.get('authorization'))
-    if (!session) {
-      return NextResponse.json(
-        { message: '未授权访问' },
-        { status: 401 }
-      )
+    // 使用getServerSession替代parseSession进行权限检查
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user) {
+      return NextResponse.json({ message: '未授权访问' }, { status: 401 });
     }
 
     const data = await req.json()

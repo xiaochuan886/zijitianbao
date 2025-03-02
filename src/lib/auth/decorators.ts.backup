@@ -1,5 +1,5 @@
 import { Permission, Session } from './types'
-import { checkPermission } from './permission'
+import { checkPermission } from './permission.ts.backup'
 import { ServiceError } from '../services/types'
 
 export function requirePermission(permission: Permission) {

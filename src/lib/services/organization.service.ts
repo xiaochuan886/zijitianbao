@@ -275,4 +275,28 @@ export class OrganizationService {
       throw new ServiceError(500, '删除部门失败', error)
     }
   }
+
+  /**
+   * 检查用户是否有权限访问指定的组织
+   * @param userId 用户ID
+   * @param organizationId 组织ID
+   * @returns 布尔值，表示用户是否有权限访问
+   */
+  async checkUserAccess(userId: string, organizationId: string): Promise<boolean> {
+    try {
+      // 检查用户是否与该组织有关联
+      const userOrg = await prisma.userOrganization.findFirst({
+        where: {
+          userId: userId,
+          organizationId: organizationId,
+        }
+      });
+      
+      // 如果找到关联记录，则用户有权限访问
+      return !!userOrg;
+    } catch (error) {
+      console.error('检查用户组织权限失败:', error);
+      return false;
+    }
+  }
 } 

@@ -1,17 +1,17 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { services } from '@/lib/services'
-import { checkPermission } from '@/lib/auth/permission'
-import { parseSession } from '@/lib/auth/session'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth-options'
 
 /**
  * @api {get} /api/fund-types 获取资金需求类型列表
  */
 export async function GET(req: NextRequest) {
-  // 检查权限
-  const authHeader = req.headers.get('authorization')
-  const session = parseSession(authHeader)
+  // 使用getServerSession替代parseSession进行权限检查
+  const session = await getServerSession(authOptions);
+  
   if (!session || !session.user) {
-    return Response.json({ message: '未授权' }, { status: 401 })
+    return NextResponse.json({ message: '未授权访问' }, { status: 401 });
   }
 
   const url = new URL(req.url)
@@ -35,61 +35,33 @@ export async function GET(req: NextRequest) {
     }
   )
   
-  return Response.json(result)
+  return NextResponse.json(result);
 }
 
 /**
  * @api {post} /api/fund-types 创建资金需求类型
  */
 export async function POST(req: NextRequest) {
-  // 检查权限
-  const authHeader = req.headers.get('authorization')
-  const session = parseSession(authHeader)
+  // 使用getServerSession替代parseSession进行权限检查
+  const session = await getServerSession(authOptions);
+  
   if (!session || !session.user) {
-    return Response.json({ message: '未授权' }, { status: 401 })
+    return NextResponse.json({ message: '未授权访问' }, { status: 401 });
+  }
+  
+  // 只有管理员可以创建资金需求类型
+  if (session.user.role !== 'ADMIN') {
+    return NextResponse.json({ message: '权限不足，只有管理员可以创建资金需求类型' }, { status: 403 });
   }
 
-  // 检查权限
-  const hasPermission = await checkPermission(session, {
-    resource: 'fundType',
-    action: 'create',
-    scope: 'all'
-  })
-
-  if (!hasPermission) {
-    return Response.json({ message: '权限不足' }, { status: 403 })
-  }
-  
-  // 解析请求体
-  const data = await req.json()
-  
-  // 验证数据
-  if (!data.name || typeof data.name !== 'string' || data.name.trim() === '') {
-    return Response.json(
-      { message: '资金需求类型名称不能为空' },
-      { status: 400 }
-    )
-  }
-  
   try {
-    // 创建资金需求类型
-    const fundType = await services.fundType.create({
-      name: data.name.trim()
-    })
-    
-    return Response.json(fundType, { status: 201 })
+    const data = await req.json()
+    const result = await services.fundType.create(data)
+    return NextResponse.json(result);
   } catch (error: any) {
-    if (error.statusCode === 400) {
-      return Response.json(
-        { message: error.message },
-        { status: 400 }
-      )
-    }
-    
-    console.error('创建资金需求类型失败:', error)
-    return Response.json(
-      { message: '创建资金需求类型失败' },
-      { status: 500 }
-    )
+    return NextResponse.json(
+      { error: error.message || '创建资金需求类型失败' },
+      { status: error.statusCode || 500 }
+    );
   }
 }
