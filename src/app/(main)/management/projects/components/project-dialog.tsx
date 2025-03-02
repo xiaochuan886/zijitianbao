@@ -39,7 +39,7 @@ interface SubProject {
   id?: string
   name: string
   fundTypeIds: string[]
-  departmentIds: string[]
+  departmentIds: { [fundTypeId: string]: string[] }
   isNew?: boolean
   isDeleted?: boolean
 }
@@ -59,6 +59,14 @@ interface Department {
   id: string
   name: string
   organizationId: string
+  organization?: {
+    name: string
+  }
+}
+
+interface Organization {
+  id: string
+  name: string
 }
 
 export function ProjectDialog({
@@ -83,6 +91,7 @@ export function ProjectDialog({
   const [categories, setCategories] = useState<Category[]>([])
   const [fundingTypes, setFundingTypes] = useState<FundType[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   
   // 年份选项
@@ -97,13 +106,18 @@ export function ProjectDialog({
       if (project) {
         // 解析从API返回的项目数据，构建表单数据
         const subProjects = project.subProjects.map(sub => {
-          // 从detailedFundNeeds中提取唯一的fundTypeIds和departmentIds
+          // 从detailedFundNeeds中提取唯一的fundTypeIds
           const fundTypeIds = Array.from(new Set(
             sub.detailedFundNeeds.map(need => need.fundType.id)
           ));
-          const departmentIds = Array.from(new Set(
-            sub.detailedFundNeeds.map(need => need.department.id)
-          ));
+          
+          // 为每个资金类型创建对应的部门映射
+          const departmentIds: { [fundTypeId: string]: string[] } = {};
+          fundTypeIds.forEach(fundTypeId => {
+            departmentIds[fundTypeId] = sub.detailedFundNeeds
+              .filter(need => need.fundType.id === fundTypeId)
+              .map(need => need.department.id);
+          });
           
           return {
             id: sub.id,
@@ -157,19 +171,51 @@ export function ProjectDialog({
       const fundTypesResponse = await fetch('/api/funding-types')
       if (!fundTypesResponse.ok) throw new Error('获取资金需求类型失败')
       const fundTypesData = await fundTypesResponse.json()
-      const fundTypesList = Array.isArray(fundTypesData) ? 
-        fundTypesData : 
-        (fundTypesData.items || [])
+      console.log('获取到的资金类型数据:', fundTypesData)
+      
+      // 处理资金类型数据
+      let fundTypesList = []
+      if (fundTypesData && fundTypesData.data && fundTypesData.data.items) {
+        // API返回格式: { code: 200, message: '获取成功', data: { items: [...], meta: {...} } }
+        fundTypesList = fundTypesData.data.items
+      } else if (fundTypesData && Array.isArray(fundTypesData.items)) {
+        // 可能的格式: { items: [...] }
+        fundTypesList = fundTypesData.items
+      } else if (Array.isArray(fundTypesData)) {
+        // 可能的格式: [...]
+        fundTypesList = fundTypesData
+      }
+      
+      console.log('处理后的资金类型列表:', fundTypesList)
       setFundingTypes(fundTypesList)
       
       // 获取部门数据
       const departmentsResponse = await fetch('/api/departments')
       if (!departmentsResponse.ok) throw new Error('获取部门数据失败')
       const departmentsData = await departmentsResponse.json()
+      console.log('获取到的部门数据:', departmentsData)
+      
+      // 处理部门数据
       const departmentsList = Array.isArray(departmentsData) ? 
         departmentsData : 
         (departmentsData.items || [])
       setDepartments(departmentsList)
+      
+      // 从部门数据中提取组织信息
+      const uniqueOrganizations: Organization[] = []
+      const organizationMap = new Map<string, boolean>()
+      
+      departmentsList.forEach((dept: Department) => {
+        if (dept.organizationId && !organizationMap.has(dept.organizationId) && dept.organization) {
+          organizationMap.set(dept.organizationId, true)
+          uniqueOrganizations.push({
+            id: dept.organizationId,
+            name: dept.organization.name
+          })
+        }
+      })
+      
+      setOrganizations(uniqueOrganizations)
     } catch (error) {
       console.error('获取选项数据失败:', error)
       toast.error('获取数据失败，请重试')
@@ -203,7 +249,7 @@ export function ProjectDialog({
         {
           name: "",
           fundTypeIds: [],
-          departmentIds: [],
+          departmentIds: {},
           isNew: true,
           isDeleted: false
         }
@@ -266,22 +312,44 @@ export function ProjectDialog({
   
   // 更新子项目资金需求类型
   const handleUpdateSubProjectFundingTypes = (index: number, fundTypeIds: string[]) => {
+    const subProjects = [...formData.subProjects];
+    const subProject = subProjects[index];
+    
+    // 创建新的部门ID映射，只保留仍然存在的资金类型
+    const newDepartmentIds: { [fundTypeId: string]: string[] } = {};
+    fundTypeIds.forEach(fundTypeId => {
+      newDepartmentIds[fundTypeId] = subProject.departmentIds[fundTypeId] || [];
+    });
+    
+    subProjects[index] = {
+      ...subProject,
+      fundTypeIds,
+      departmentIds: newDepartmentIds
+    };
+    
     setFormData({
       ...formData,
-      subProjects: formData.subProjects.map((subProject, i) =>
-        i === index ? { ...subProject, fundTypeIds } : subProject
-      )
-    })
+      subProjects
+    });
   }
   
   // 更新子项目关联部门
-  const handleUpdateSubProjectDepartments = (index: number, departmentIds: string[]) => {
+  const handleUpdateSubProjectDepartments = (index: number, fundTypeId: string, departmentIds: string[]) => {
+    const subProjects = [...formData.subProjects];
+    const subProject = subProjects[index];
+    
+    subProjects[index] = {
+      ...subProject,
+      departmentIds: {
+        ...subProject.departmentIds,
+        [fundTypeId]: departmentIds
+      }
+    };
+    
     setFormData({
       ...formData,
-      subProjects: formData.subProjects.map((subProject, i) =>
-        i === index ? { ...subProject, departmentIds } : subProject
-      )
-    })
+      subProjects
+    });
   }
   
   // 表单验证
@@ -316,9 +384,18 @@ export function ProjectDialog({
           isValid = false
         }
         
-        if (subProject.departmentIds.length === 0) {
+        // 检查每个资金类型是否至少有一个关联部门
+        let hasDepartment = false;
+        for (const fundTypeId of subProject.fundTypeIds) {
+          if (subProject.departmentIds[fundTypeId]?.length > 0) {
+            hasDepartment = true;
+            break;
+          }
+        }
+        
+        if (!hasDepartment) {
           if (!newSubProjectErrors[index]) {
-            newSubProjectErrors[index] = "请选择至少一个关联部门"
+            newSubProjectErrors[index] = "请为至少一个资金需求类型选择关联部门"
           }
           isValid = false
         }
@@ -355,7 +432,9 @@ export function ProjectDialog({
           
           // 为每个资金类型和部门的组合创建一个detailedFundNeed
           for (const fundTypeId of subProject.fundTypeIds) {
-            for (const departmentId of subProject.departmentIds) {
+            const departmentIds = subProject.departmentIds[fundTypeId] || [];
+            
+            for (const departmentId of departmentIds) {
               // 获取部门关联的组织ID
               const department = departments.find(d => d.id === departmentId);
               const organizationId = department?.organizationId;
@@ -493,14 +572,15 @@ export function ProjectDialog({
                 <div className="space-y-2">
                   <Label htmlFor="category">项目分类</Label>
                   <Select
-                    value={formData.categoryId}
-                    onValueChange={(value) => handleInputChange("categoryId", value)}
+                    value={formData.categoryId || undefined}
+                    onValueChange={(value) => handleInputChange('categoryId', value)}
+                    disabled={isSubmitting}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="选择项目分类" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">未分类</SelectItem>
+                      <SelectItem value="none">未分类</SelectItem>
                       {loadingOptions ? (
                         <div className="flex items-center justify-center py-2">
                           <Spinner className="h-4 w-4" />
@@ -652,7 +732,11 @@ export function ProjectDialog({
                                   fundingTypes
                                     .filter(ft => subProject.fundTypeIds.includes(ft.id))
                                     .map(fundType => (
-                                      <Badge key={fundType.id} variant="outline" className="bg-blue-50">
+                                      <Badge 
+                                        key={fundType.id} 
+                                        variant="outline" 
+                                        className="bg-blue-50 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800"
+                                      >
                                         {fundType.name}
                                       </Badge>
                                     ))
@@ -664,82 +748,128 @@ export function ProjectDialog({
                               </div>
                             </div>
 
-                            {/* 部门选择部分 */}
-                            <div className="space-y-1 mt-4">
-                              <Label>关联部门</Label>
-                              <div className="relative">
-                                <Select
-                                  value="multiple"
-                                  onValueChange={(value) => {
-                                    // 如果值不是"multiple"，表示用户选择了单一选项
-                                    if (value !== "multiple") {
-                                      const departmentIds = [...subProject.departmentIds]
-                                      
-                                      // 切换选中状态
-                                      if (departmentIds.includes(value)) {
-                                        handleUpdateSubProjectDepartments(
-                                          index,
-                                          departmentIds.filter(id => id !== value)
-                                        )
-                                      } else {
-                                        handleUpdateSubProjectDepartments(
-                                          index,
-                                          [...departmentIds, value]
-                                        )
-                                      }
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="选择关联部门">
-                                      已选择 {subProject.departmentIds.length} 个部门
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {loadingOptions ? (
-                                      <div className="flex items-center justify-center py-2">
-                                        <Spinner className="h-4 w-4" />
-                                        <span className="ml-2">加载中...</span>
-                                      </div>
-                                    ) : (
-                                      departments.map((department) => (
-                                        <SelectItem 
-                                          key={department.id} 
-                                          value={department.id}
-                                          className="flex items-center gap-2"
+                            {/* 资金类型对应的部门选择 */}
+                            {subProject.fundTypeIds.length > 0 && (
+                              <div className="space-y-4 mt-4">
+                                <Label>关联部门</Label>
+                                
+                                {subProject.fundTypeIds.map(fundTypeId => {
+                                  const fundType = fundingTypes.find(ft => ft.id === fundTypeId);
+                                  if (!fundType) return null;
+                                  
+                                  return (
+                                    <div key={fundTypeId} className="space-y-2 border p-3 rounded-md">
+                                      <div className="flex items-center gap-2">
+                                        <Badge 
+                                          variant="outline" 
+                                          className="bg-blue-50 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800"
                                         >
-                                          <div className="flex items-center gap-2">
-                                            <input
-                                              type="checkbox"
-                                              checked={subProject.departmentIds.includes(department.id)}
-                                              className="h-4 w-4"
-                                              onChange={() => {}} // 需要这个空函数以避免React警告
-                                            />
-                                            <span>{department.name}</span>
-                                          </div>
-                                        </SelectItem>
-                                      ))
-                                    )}
-                                  </SelectContent>
-                                </Select>
+                                          {fundType.name}
+                                        </Badge>
+                                        <span className="text-sm text-muted-foreground">的关联部门</span>
+                                      </div>
+                                      
+                                      <div className="relative">
+                                        <Select
+                                          value="multiple"
+                                          onValueChange={(value) => {
+                                            // 如果值不是"multiple"，表示用户选择了单一选项
+                                            if (value !== "multiple") {
+                                              const departmentIds = subProject.departmentIds[fundTypeId] || [];
+                                              
+                                              // 切换选中状态
+                                              if (departmentIds.includes(value)) {
+                                                handleUpdateSubProjectDepartments(
+                                                  index,
+                                                  fundTypeId,
+                                                  departmentIds.filter(id => id !== value)
+                                                )
+                                              } else {
+                                                handleUpdateSubProjectDepartments(
+                                                  index,
+                                                  fundTypeId,
+                                                  [...departmentIds, value]
+                                                )
+                                              }
+                                            }
+                                          }}
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="选择关联部门">
+                                              已选择 {subProject.departmentIds[fundTypeId]?.length || 0} 个部门
+                                            </SelectValue>
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {loadingOptions ? (
+                                              <div className="flex items-center justify-center py-2">
+                                                <Spinner className="h-4 w-4" />
+                                                <span className="ml-2">加载中...</span>
+                                              </div>
+                                            ) : (
+                                              departments.map((department) => {
+                                                // 查找部门所属的组织
+                                                const organization = organizations.find(
+                                                  org => org.id === department.organizationId
+                                                );
+                                                
+                                                return (
+                                                  <SelectItem 
+                                                    key={department.id} 
+                                                    value={department.id}
+                                                    className="flex items-center gap-2"
+                                                  >
+                                                    <div className="flex items-center gap-2">
+                                                      <input
+                                                        type="checkbox"
+                                                        checked={(subProject.departmentIds[fundTypeId] || []).includes(department.id)}
+                                                        className="h-4 w-4"
+                                                        onChange={() => {}} // 需要这个空函数以避免React警告
+                                                      />
+                                                      <span>
+                                                        {organization ? `${organization.name}: ` : ''}
+                                                        {department.name}
+                                                      </span>
+                                                    </div>
+                                                  </SelectItem>
+                                                );
+                                              })
+                                            )}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {(subProject.departmentIds[fundTypeId]?.length || 0) > 0 ? (
+                                          departments
+                                            .filter(dept => (subProject.departmentIds[fundTypeId] || []).includes(dept.id))
+                                            .map(department => {
+                                              // 查找部门所属的组织
+                                              const organization = organizations.find(
+                                                org => org.id === department.organizationId
+                                              );
+                                              
+                                              return (
+                                                <Badge 
+                                                  key={department.id} 
+                                                  variant="outline" 
+                                                  className="bg-green-50 dark:bg-green-950 dark:text-green-200 dark:border-green-800"
+                                                >
+                                                  {organization ? `${organization.name}: ` : ''}
+                                                  {department.name}
+                                                </Badge>
+                                              );
+                                            })
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">
+                                            未选择关联部门
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                              
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {subProject.departmentIds.length > 0 ? (
-                                  departments
-                                    .filter(dept => subProject.departmentIds.includes(dept.id))
-                                    .map(department => (
-                                      <Badge key={department.id} variant="outline" className="bg-green-50">
-                                        {department.name}
-                                      </Badge>
-                                    ))
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">
-                                    未选择关联部门
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                            )}
                           </div>
                         </Card>
                       )}

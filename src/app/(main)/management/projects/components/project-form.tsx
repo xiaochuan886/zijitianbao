@@ -203,13 +203,13 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
         name: '',
         code: '',
         startYear: new Date().getFullYear(),
-        categoryId: '',
+        categoryId: undefined,
         subProjects: [{ 
           name: '', 
           detailedFundNeeds: [{ 
-            organizationId: '', 
-            departmentId: '', 
-            fundTypeId: '' 
+            organizationId: undefined, 
+            departmentId: undefined, 
+            fundTypeId: undefined 
           }] 
         }]
       };
@@ -235,16 +235,16 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
         return {
           name: subProject.name,
           detailedFundNeeds: detailedFundNeeds.length > 0 ? detailedFundNeeds : [{ 
-            organizationId: '', 
-            departmentId: '', 
-            fundTypeId: '' 
+            organizationId: undefined, 
+            departmentId: undefined, 
+            fundTypeId: undefined 
           }]
         };
       });
       
       return {
         ...initialData,
-        categoryId: initialData.categoryId || '',
+        categoryId: initialData.categoryId || undefined,
         subProjects: convertedSubProjects
       };
     }
@@ -254,7 +254,7 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
     
     // 处理categoryId
     if (processedData.categoryId === '') {
-      processedData.categoryId = '';
+      processedData.categoryId = undefined;
     }
     
     // 处理子项目和资金需求明细
@@ -263,9 +263,9 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
         if (subProject.detailedFundNeeds) {
           subProject.detailedFundNeeds = subProject.detailedFundNeeds.map((need: any) => ({
             ...need,
-            organizationId: need.organizationId === '' ? '' : need.organizationId,
-            departmentId: need.departmentId === '' ? '' : need.departmentId,
-            fundTypeId: need.fundTypeId === '' ? '' : need.fundTypeId
+            organizationId: need.organizationId === '' ? undefined : need.organizationId,
+            departmentId: need.departmentId === '' ? undefined : need.departmentId,
+            fundTypeId: need.fundTypeId === '' ? undefined : need.fundTypeId
           }));
         }
         return subProject;
@@ -358,9 +358,9 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
       { 
         name: '', 
         detailedFundNeeds: [{ 
-          organizationId: '', 
-          departmentId: '', 
-          fundTypeId: '' 
+          organizationId: undefined, 
+          departmentId: undefined, 
+          fundTypeId: undefined 
         }] 
       }
     ]);
@@ -383,7 +383,7 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
     
     form.setValue(`subProjects.${subProjectIndex}.detailedFundNeeds`, [
       ...currentSubProject.detailedFundNeeds,
-      { organizationId: '', departmentId: '', fundTypeId: '' }
+      { organizationId: undefined, departmentId: undefined, fundTypeId: undefined }
     ]);
   };
 
@@ -558,7 +558,7 @@ export function ProjectForm({ initialData, onSubmit, onCancel }: ProjectFormProp
                                     // 清空部门选择，因为机构变了
                                     form.setValue(
                                       `subProjects.${subProjectIndex}.detailedFundNeeds.${needIndex}.departmentId`, 
-                                      ''
+                                      undefined
                                     );
                                   }}
                                   disabled={loading}
