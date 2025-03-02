@@ -1,385 +1,272 @@
-'use client';
+"use client"
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { DataTable } from '@/components/data-table';
-import { Plus, ArrowLeft } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import Link from 'next/link';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogFooter 
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { PlusCircle, Tag, FolderTree } from "lucide-react"
+import { toast } from "sonner"
+import { apiClient } from "@/lib/api-client"
+import { DataTable } from "@/components/ui/data-table"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
+import { CategoryDialog } from "./components"
 
 interface ProjectCategory {
-  id: string;
-  name: string;
-  code?: string;
-  organizationId: string;
-  organization: {
-    id: string;
-    name: string;
-  };
-  createdAt: Date;
-}
-
-interface Organization {
-  id: string;
-  name: string;
-}
-
-interface RowType {
-  original: {
-    id: string;
-    name: string;
-    code?: string;
-    organization: {
-      id: string;
-      name: string;
-    };
-  };
+  id: string
+  name: string
+  code?: string
+  createdAt: Date
 }
 
 export default function ProjectCategoriesPage() {
-  const [categories, setCategories] = useState<ProjectCategory[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<ProjectCategory | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    code: '',
-    organizationId: ''
-  });
-  const { toast } = useToast();
+  const [categories, setCategories] = useState<ProjectCategory[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<ProjectCategory | null>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [stats, setStats] = useState({
+    totalCategories: 0,
+    totalProjects: 0
+  })
 
-  useEffect(() => {
-    fetchCategories();
-    fetchOrganizations();
-  }, []);
-
+  // 获取项目分类列表和统计数据
   const fetchCategories = async () => {
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/project-categories', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
+      setLoading(true)
+      setStatsLoading(true)
       
-      if (data && data.items) {
-        setCategories(data.items);
-      } else if (Array.isArray(data)) {
-        setCategories(data);
-      } else {
-        console.error('项目分类数据格式不正确:', data);
-        setCategories([]);
+      // 获取项目分类数据
+      const response = await fetch('/api/project-categories')
+      if (!response.ok) throw new Error('获取项目分类失败')
+      const data = await response.json()
+      
+      // 处理响应数据
+      const categoriesList = Array.isArray(data) ? 
+        data : 
+        (data.items || [])
+      
+      setCategories(categoriesList)
+      
+      // 获取与项目分类相关的统计数据
+      const projectsResponse = await fetch('/api/projects')
+      let totalProjects = 0
+      
+      if (projectsResponse.ok) {
+        const projectsData = await projectsResponse.json()
+        const projectsList = Array.isArray(projectsData) ? 
+          projectsData : 
+          (projectsData.items || [])
+          
+        totalProjects = projectsList.length
       }
+      
+      // 更新统计信息
+      setStats({
+        totalCategories: categoriesList.length,
+        totalProjects
+      })
     } catch (error) {
-      console.error('获取项目分类列表失败:', error);
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: '获取项目分类列表失败，请稍后重试'
-      });
+      console.error('获取项目分类列表失败:', error)
+      toast.error(error instanceof Error ? error.message : "获取项目分类列表失败")
+      setCategories([])
     } finally {
-      setLoading(false);
+      setLoading(false)
+      setStatsLoading(false)
     }
-  };
+  }
 
-  const fetchOrganizations = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/organizations', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
-      
-      if (data && data.items) {
-        setOrganizations(data.items);
-      } else if (Array.isArray(data)) {
-        setOrganizations(data);
-      } else {
-        console.error('机构数据格式不正确:', data);
-        setOrganizations([]);
-      }
-    } catch (error) {
-      console.error('获取机构列表失败:', error);
-    }
-  };
+  // 页面加载时获取数据
+  useEffect(() => {
+    fetchCategories()
+  }, [])
 
+  // 创建列定义
   const columns = [
     {
-      accessorKey: 'name',
-      header: '分类名称',
+      accessorKey: "name",
+      header: "分类名称",
     },
     {
-      accessorKey: 'code',
-      header: '分类编码',
+      accessorKey: "code",
+      header: "分类编码",
     },
     {
-      accessorKey: 'organization.name',
-      header: '所属机构',
+      id: "actions",
+      header: "操作",
+      cell: ({ row }: { row: { original: ProjectCategory } }) => {
+        const category = row.original
+        
+        return (
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleEdit(category)}
+            >
+              编辑
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleDelete(category.id)}
+              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+            >
+              删除
+            </Button>
+          </div>
+        )
+      },
     },
-    {
-      accessorKey: 'actions',
-      header: '操作',
-      cell: ({ row }: { row: RowType }) => (
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => handleEdit(row.original.id)}>
-            编辑
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleDelete(row.original.id)}>
-            删除
-          </Button>
-        </div>
-      ),
-    },
-  ];
+  ]
 
-  const handleEdit = (id: string) => {
-    const category = categories.find(c => c.id === id);
-    if (category) {
-      setEditingCategory(category);
-      setFormData({
-        name: category.name,
-        code: category.code || '',
-        organizationId: category.organizationId
-      });
-      setShowForm(true);
-    }
-  };
+  // 编辑分类
+  const handleEdit = (category: ProjectCategory) => {
+    setSelectedCategory(category)
+    setDialogOpen(true)
+  }
 
+  // 删除分类
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个项目分类吗？')) return;
-    
+    if (!confirm('确定要删除这个项目分类吗？删除后相关项目将变为未分类状态。')) {
+      return
+    }
+
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
       const response = await fetch(`/api/project-categories/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      })
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '删除失败');
+        const errorData = await response.json()
+        throw new Error(errorData.message || '删除失败')
       }
       
-      toast({
-        title: '成功',
-        description: '项目分类已删除'
-      });
-      
-      await fetchCategories();
+      toast.success("项目分类已删除")
+      fetchCategories()
     } catch (error: any) {
-      console.error('删除项目分类失败:', error);
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: error.message || '删除项目分类失败，请稍后重试'
-      });
-    } finally {
-      setLoading(false);
+      console.error('删除项目分类失败:', error)
+      toast.error(error.message || "删除失败")
     }
-  };
+  }
 
-  const handleCreate = () => {
-    setEditingCategory(null);
-    setFormData({
-      name: '',
-      code: '',
-      organizationId: organizations.length > 0 ? organizations[0].id : ''
-    });
-    setShowForm(true);
-  };
-
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.name) {
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: '分类名称不能为空'
-      });
-      return;
-    }
-    
-    if (!formData.organizationId) {
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: '请选择所属机构'
-      });
-      return;
-    }
-    
+  // 提交分类表单
+  const handleSubmit = async (data: { name: string; code: string }) => {
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      const url = editingCategory 
-        ? `/api/project-categories/${editingCategory.id}` 
-        : '/api/project-categories';
-      const method = editingCategory ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '保存失败');
+      if (selectedCategory) {
+        // 更新现有分类
+        const response = await fetch(`/api/project-categories/${selectedCategory.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.message || '更新失败')
+        }
+        
+        toast.success("项目分类已更新")
+      } else {
+        // 创建新分类
+        const response = await fetch('/api/project-categories', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.message || '创建失败')
+        }
+        
+        toast.success("新项目分类已创建")
       }
       
-      toast({
-        title: '成功',
-        description: `项目分类已${editingCategory ? '更新' : '创建'}`
-      });
-      
-      setShowForm(false);
-      await fetchCategories();
+      setDialogOpen(false)
+      setSelectedCategory(null)
+      fetchCategories()
     } catch (error: any) {
-      console.error('保存项目分类失败:', error);
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: error.message || '保存项目分类失败，请稍后重试'
-      });
-    } finally {
-      setLoading(false);
+      console.error('提交项目分类信息失败:', error)
+      toast.error(error.message || (selectedCategory ? "更新失败" : "创建失败"))
     }
-  };
-
-  const handleFormCancel = () => {
-    setShowForm(false);
-    setEditingCategory(null);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleOrganizationChange = (value: string) => {
-    setFormData(prev => ({ ...prev, organizationId: value }));
-  };
+  }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-2">
-          <Link href="/management/projects">
-            <Button variant="outline" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-semibold">项目分类管理</h1>
-        </div>
-        <Button onClick={handleCreate}>
-          <Plus className="w-4 h-4 mr-2" />
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold tracking-tight">项目分类管理</h1>
+        <Button onClick={() => setDialogOpen(true)}>
+          <PlusCircle className="mr-2 h-4 w-4" />
           新增分类
         </Button>
       </div>
       
-      {loading && !showForm ? (
-        <div className="flex justify-center items-center h-64">
-          <p>加载中...</p>
-        </div>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={categories}
-        />
-      )}
-      
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingCategory ? '编辑项目分类' : '新增项目分类'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleFormSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  分类名称
-                </Label>
-                <Input
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="code" className="text-right">
-                  分类编码
-                </Label>
-                <Input
-                  id="code"
-                  name="code"
-                  value={formData.code}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="organizationId" className="text-right">
-                  所属机构
-                </Label>
-                <Select
-                  value={formData.organizationId}
-                  onValueChange={handleOrganizationChange}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="选择机构" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {organizations.map(org => (
-                      <SelectItem key={org.id} value={org.id}>
-                        {org.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      {/* 统计卡片区域 */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              分类总数
+            </CardTitle>
+            <Tag className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {statsLoading ? <Spinner className="h-6 w-6" /> : stats.totalCategories}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleFormCancel}>
-                取消
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? '保存中...' : '保存'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            <p className="text-xs text-muted-foreground">
+              系统中所有项目分类的数量
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              项目总数
+            </CardTitle>
+            <FolderTree className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {statsLoading ? <Spinner className="h-6 w-6" /> : stats.totalProjects}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              系统中所有项目的数量
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 数据表格 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>项目分类列表</CardTitle>
+          <CardDescription>
+            管理系统中的所有项目分类，用于对项目进行分组和管理
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            columns={columns}
+            data={categories}
+            loading={loading}
+          />
+        </CardContent>
+      </Card>
+
+      {/* 分类表单对话框 */}
+      <CategoryDialog
+        open={dialogOpen}
+        onOpenChange={(open: boolean) => {
+          setDialogOpen(open)
+          if (!open) setSelectedCategory(null)
+        }}
+        category={selectedCategory}
+        onSubmit={handleSubmit}
+      />
     </div>
-  );
+  )
 } 

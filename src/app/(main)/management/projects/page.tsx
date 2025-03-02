@@ -1,348 +1,341 @@
-'use client';
+"use client"
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { DataTable } from '@/components/data-table';
-import { Plus, Tag } from 'lucide-react';
-import { ProjectForm } from './components/project-form';
-import { useToast } from '@/hooks/use-toast';
-import Link from 'next/link';
+import { useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { PlusCircle, FileText, Folder, Archive, Tag } from "lucide-react"
+import { columns } from "./columns"
+import { ProjectDialog } from "./components"
+import { toast } from "sonner"
+import { apiClient } from "@/lib/api-client"
+import { DataTable } from "@/components/ui/data-table"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 
-interface Project {
-  id: string;
-  name: string;
-  code: string;
-  status: 'active' | 'archived';
-  startYear: number;
-  createdAt: Date;
+export type Project = {
+  id: string
+  name: string
+  code: string
+  status: "ACTIVE" | "ARCHIVED"
+  startYear: number
+  organization: {
+    id: string
+    name: string
+    code?: string
+  }
   category?: {
-    id: string;
-    name: string;
-  };
-}
-
-interface RowType {
-  original: {
-    id: string;
-    status: string;
-    category?: {
-      id: string;
-      name: string;
-    };
-  };
+    id: string
+    name: string
+    code?: string
+  }
+  subProjects: Array<{
+    id: string
+    name: string
+    detailedFundNeeds: Array<{
+      id: string
+      department: {
+        id: string
+        name: string
+      }
+      fundType: {
+        id: string
+        name: string
+      }
+      organizationId: string
+    }>
+  }>
+  createdAt: Date
 }
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [editingProject, setEditingProject] = useState<any | null>(null);
-  const { toast } = useToast();
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [stats, setStats] = useState({
+    totalProjects: 0,
+    activeProjects: 0,
+    archivedProjects: 0,
+    totalSubProjects: 0
+  })
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
+  // 获取项目列表和统计数据
   const fetchProjects = async () => {
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/projects', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
-      console.log('获取到的项目数据:', data);
+      setLoading(true)
+      setStatsLoading(true)
       
-      // 检查响应数据格式，正确处理分页数据
-      if (data && data.items) {
-        setProjects(data.items);
-      } else if (Array.isArray(data)) {
-        setProjects(data);
-      } else {
-        console.error('项目数据格式不正确:', data);
-        setProjects([]);
-      }
-    } catch (error) {
-      console.error('获取项目列表失败:', error);
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: '获取项目列表失败，请稍后重试'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const columns = [
-    {
-      accessorKey: 'name',
-      header: '项目名称',
-    },
-    {
-      accessorKey: 'code',
-      header: '项目编码',
-    },
-    {
-      accessorKey: 'category',
-      header: '项目分类',
-      cell: ({ row }: { row: RowType }) => (
-        <span>
-          {row.original.category ? row.original.category.name : '未分类'}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'status',
-      header: '状态',
-      cell: ({ row }: { row: RowType }) => (
-        <span className={`px-2 py-1 rounded text-sm ${
-          row.original.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-        }`}>
-          {row.original.status === 'ACTIVE' ? '活跃' : '已归档'}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'startYear',
-      header: '开始年份',
-    },
-    {
-      accessorKey: 'actions',
-      header: '操作',
-      cell: ({ row }: { row: RowType }) => (
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => handleEdit(row.original.id)}>
-            编辑
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleArchive(row.original.id)}>
-            {row.original.status === 'ACTIVE' ? '归档' : '激活'}
-          </Button>
-        </div>
-      ),
-    },
-  ];
-
-  const handleEdit = async (id: string) => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/projects/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
+      // 直接使用fetch代替apiClient
+      const response = await fetch('/api/projects')
       if (!response.ok) {
-        throw new Error('获取项目详情失败');
+        throw new Error(`获取数据失败: ${response.status}`)
       }
       
-      const projectData = await response.json();
-      console.log('获取到的项目详情:', projectData);
+      const responseData = await response.json()
       
-      // 转换为表单需要的格式
-      const formData = {
-        id: projectData.id,
-        name: projectData.name,
-        code: projectData.code || '',
-        startYear: projectData.startYear,
-        departments: projectData.organizations.map((org: any) => {
-          // 找出属于这个机构的部门
-          const orgDepartments = projectData.departments.filter(
-            (dept: any) => dept.organizationId === org.id
-          );
-          
-          return {
-            organizationId: org.id,
-            departmentIds: orgDepartments.map((dept: any) => dept.id)
-          };
-        }),
-        subProjects: projectData.subProjects.map((sub: any) => ({
-          id: sub.id,
-          name: sub.name,
-          fundingTypes: sub.fundTypes.map((type: any) => type.id)
-        }))
-      };
+      // 处理返回数据结构
+      let data = Array.isArray(responseData) ? responseData : (responseData.items || [])
       
-      console.log('转换后的表单数据:', formData);
-      setEditingProject(formData);
-      setShowForm(true);
+      // 确保返回的数据格式正确
+      if (Array.isArray(data)) {
+        setProjects(data)
+        
+        // 计算基础统计数据
+        const activeProjects = data.filter(p => p.status === "ACTIVE").length
+        const archivedProjects = data.filter(p => p.status === "ARCHIVED").length
+        const totalSubProjects = data.reduce((sum, p) => 
+          sum + (p.subProjects?.length || 0), 0
+        )
+        
+        setStats({
+          totalProjects: data.length,
+          activeProjects,
+          archivedProjects,
+          totalSubProjects
+        })
+      } else {
+        console.error('API返回的项目数据格式不正确:', data)
+        toast.error("获取数据格式错误")
+        setProjects([])
+      }
     } catch (error) {
-      console.error('获取项目详情失败:', error);
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: '获取项目详情失败，请稍后重试'
-      });
+      console.error('获取项目列表失败:', error)
+      toast.error(error instanceof Error ? error.message : "获取项目列表失败")
+      setProjects([])
     } finally {
-      setLoading(false);
+      setLoading(false)
+      setStatsLoading(false)
     }
-  };
+  }
 
-  const handleArchive = async (id: string) => {
+  // 归档项目
+  const handleArchive = async (project: Project) => {
+    if (!confirm(`确定要${project.status === "ACTIVE" ? "归档" : "激活"}项目"${project.name}"吗？`)) {
+      return
+    }
+
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/projects/${id}/archive`, {
+      // TODO: 实现实际的API调用
+      // await apiClient.projects.archive(project.id)
+      
+      // 临时模拟API调用
+      const response = await fetch(`/api/projects/${project.id}/archive`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         }
-      });
-      if (!response.ok) throw new Error('归档失败');
+      })
       
-      toast({
-        title: '成功',
-        description: '项目状态已更新'
-      });
+      if (!response.ok) {
+        throw new Error('操作失败')
+      }
       
-      await fetchProjects();
-    } catch (error) {
-      console.error('更新项目状态失败:', error);
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: '更新项目状态失败，请稍后重试'
-      });
-    } finally {
-      setLoading(false);
+      toast.success(project.status === "ACTIVE" ? "项目已归档" : "项目已激活")
+      fetchProjects()
+    } catch (error: any) {
+      console.error('操作失败:', error)
+      toast.error(error.message || "操作失败")
     }
-  };
+  }
 
-  const handleCreate = () => {
-    setEditingProject(null);
-    setShowForm(true);
-  };
+  // 编辑项目
+  const handleEdit = (project: Project) => {
+    setSelectedProject(project)
+    setDialogOpen(true)
+  }
 
-  const handleFormSubmit = async (formData: any) => {
+  // 查看项目详情
+  const handleView = (project: Project) => {
+    // TODO: 实现项目详情查看
+    toast.info(`查看项目 ${project.name} 的详情`)
+  }
+
+  // 提交项目表单
+  const handleSubmit = async (data: any) => {
     try {
-      setLoading(true);
-      console.log('原始表单数据:', formData);
-      
-      // 转换数据格式以匹配API期望的格式
-      const apiData = {
-        name: formData.name,
-        code: formData.code,
-        status: editingProject?.status || 'ACTIVE', // 保留原状态或默认为活跃
-        startYear: formData.startYear,
-        organizationIds: formData.departments.map((d: any) => d.organizationId),
-        departmentIds: formData.departments.flatMap((d: any) => d.departmentIds),
-        subProjects: formData.subProjects.map((s: any) => ({
-          id: s.id, // 保留子项目ID用于更新
-          name: s.name,
-          fundTypeIds: s.fundingTypes
-        }))
-      };
-      
-      console.log('转换后的API数据:', apiData);
-      
-      const url = editingProject ? `/api/projects/${editingProject.id}` : '/api/projects';
-      const method = editingProject ? 'PUT' : 'POST';
-      const token = localStorage.getItem('token');
-      
-      console.log('发送请求到:', url, '方法:', method);
-      
-      try {
-        const response = await fetch(url, {
-          method,
+      if (selectedProject) {
+        // TODO: 实现实际的API调用
+        // await apiClient.projects.update(selectedProject.id, data)
+        
+        // 临时模拟API调用
+        const response = await fetch(`/api/projects/${selectedProject.id}`, {
+          method: 'PUT',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify(apiData)
-        });
-        
-        console.log('响应状态:', response.status);
-        const responseText = await response.text();
-        console.log('响应文本:', responseText);
-        
-        let responseData;
-        try {
-          responseData = responseText ? JSON.parse(responseText) : {};
-        } catch (e) {
-          console.error('解析响应JSON失败:', e);
-          responseData = { message: '服务器响应格式错误' };
-        }
-        
-        console.log('响应数据:', responseData);
+          body: JSON.stringify(data)
+        })
         
         if (!response.ok) {
-          throw new Error(responseData.message || '保存失败');
+          throw new Error('更新失败')
         }
         
-        toast({
-          title: '成功',
-          description: `项目已${editingProject ? '更新' : '创建'}`
-        });
+        toast.success("项目信息已更新")
+      } else {
+        // TODO: 实现实际的API调用
+        // await apiClient.projects.create(data)
         
-        setShowForm(false);
-        await fetchProjects();
-      } catch (fetchError: any) {
-        console.error('请求错误:', fetchError);
-        throw fetchError;
+        // 临时模拟API调用
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        })
+        
+        if (!response.ok) {
+          throw new Error('创建失败')
+        }
+        
+        toast.success("新项目已创建")
       }
+      
+      setDialogOpen(false)
+      setSelectedProject(null)
+      fetchProjects()
     } catch (error: any) {
-      console.error('保存项目失败:', error);
-      toast({
-        variant: 'destructive',
-        title: '错误',
-        description: error.message || '保存项目失败，请稍后重试'
-      });
-    } finally {
-      setLoading(false);
+      console.error('提交项目信息失败:', error)
+      toast.error(error.message || (selectedProject ? "更新失败" : "创建失败"))
     }
-  };
+  }
 
-  const handleFormCancel = () => {
-    setShowForm(false);
-    setEditingProject(null);
-  };
+  // 页面加载时获取数据
+  useEffect(() => {
+    fetchProjects()
+  }, [])
+
+  // 表格列配置
+  const tableColumns = columns({
+    onEdit: handleEdit,
+    onView: handleView,
+    onArchive: handleArchive,
+  })
 
   return (
-    <div className="container mx-auto py-6">
-      {showForm ? (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-semibold">{editingProject ? '编辑项目' : '新增项目'}</h1>
-          </div>
-          <ProjectForm
-            initialData={editingProject}
-            onSubmit={handleFormSubmit}
-            onCancel={handleFormCancel}
-          />
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold tracking-tight">项目管理</h1>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => window.location.href = "/management/project-categories"}>
+            <Tag className="mr-2 h-4 w-4" />
+            项目分类管理
+          </Button>
+          <Button onClick={() => setDialogOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            新增项目
+          </Button>
         </div>
-      ) : (
-        <>
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-semibold">项目管理</h1>
-            <div className="flex gap-2">
-              <Link href="/management/project-categories">
-                <Button variant="outline">
-                  <Tag className="w-4 h-4 mr-2" />
-                  项目分类管理
-                </Button>
-              </Link>
-              <Button onClick={handleCreate}>
-                <Plus className="w-4 h-4 mr-2" />
-                新增项目
-              </Button>
+      </div>
+      
+      {/* 统计卡片区域 */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              项目总数
+            </CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {statsLoading ? <Spinner className="h-6 w-6" /> : stats.totalProjects}
             </div>
-          </div>
-          
-          {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <p>加载中...</p>
+            <p className="text-xs text-muted-foreground">
+              系统中所有项目的数量
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              活跃项目
+            </CardTitle>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              className="h-4 w-4 text-muted-foreground"
+            >
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {statsLoading ? <Spinner className="h-6 w-6" /> : stats.activeProjects}
             </div>
-          ) : (
-            <DataTable
-              columns={columns}
-              data={projects}
-            />
-          )}
-        </>
+            <p className="text-xs text-muted-foreground">
+              当前活跃状态的项目数量
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              归档项目
+            </CardTitle>
+            <Archive className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {statsLoading ? <Spinner className="h-6 w-6" /> : stats.archivedProjects}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              已归档的项目数量
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              子项目总数
+            </CardTitle>
+            <Folder className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {statsLoading ? <Spinner className="h-6 w-6" /> : stats.totalSubProjects}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              所有项目下的子项目总数
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 数据表格 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>项目列表</CardTitle>
+          <CardDescription>
+            管理系统中的所有项目及其子项目和资金需求信息
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            columns={tableColumns}
+            data={projects}
+            loading={loading}
+          />
+        </CardContent>
+      </Card>
+
+      {/* 项目表单对话框 */}
+      {dialogOpen && (
+        <ProjectDialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open)
+            if (!open) setSelectedProject(null)
+          }}
+          project={selectedProject}
+          onSubmit={handleSubmit}
+        />
       )}
     </div>
-  );
+  )
 }

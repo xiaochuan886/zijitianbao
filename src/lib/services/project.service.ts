@@ -11,13 +11,16 @@ enum ProjectStatus {
 export interface CreateProjectDto {
   name: string
   code: string
-  status: ProjectStatus
+  status?: ProjectStatus
   startYear: number
-  organizationIds: string[]
-  departmentIds: string[]
+  organizationId?: string // 主要所属机构
+  categoryId?: string // 项目分类ID
   subProjects: {
     name: string
-    fundTypeIds: string[]
+    detailedFundNeeds: {
+      departmentId: string
+      fundTypeId: string
+    }[]
   }[]
 }
 
@@ -26,12 +29,15 @@ export interface UpdateProjectDto {
   code?: string
   status?: ProjectStatus
   startYear?: number
-  organizationIds?: string[]
-  departmentIds?: string[]
+  organizationId?: string
+  categoryId?: string
   subProjects?: {
     id?: string
     name: string
-    fundTypeIds: string[]
+    detailedFundNeeds: {
+      departmentId: string
+      fundTypeId: string
+    }[]
   }[]
 }
 
@@ -44,11 +50,8 @@ export class ProjectService {
       if (!data.name) throw new ServiceError(400, '项目名称不能为空');
       if (!data.code) throw new ServiceError(400, '项目编码不能为空');
       if (!data.startYear) throw new ServiceError(400, '开始年份不能为空');
-      if (!data.organizationIds || data.organizationIds.length === 0) {
-        throw new ServiceError(400, '至少选择一个机构');
-      }
-      if (!data.departmentIds || data.departmentIds.length === 0) {
-        throw new ServiceError(400, '至少选择一个部门');
+      if (!data.organizationId) {
+        throw new ServiceError(400, '必须选择一个主要所属机构');
       }
       if (!data.subProjects || data.subProjects.length === 0) {
         throw new ServiceError(400, '至少添加一个子项目');
@@ -57,49 +60,55 @@ export class ProjectService {
       // 检查每个子项目
       for (const sub of data.subProjects) {
         if (!sub.name) throw new ServiceError(400, '子项目名称不能为空');
-        if (!sub.fundTypeIds || sub.fundTypeIds.length === 0) {
+        if (!sub.detailedFundNeeds || sub.detailedFundNeeds.length === 0) {
           throw new ServiceError(400, '子项目至少选择一个资金需求类型');
         }
       }
       
-      // 根据Prisma模型定义，项目必须有一个主要所属机构
-      const organizationId = data.organizationIds[0];
-      
+      // 创建项目和子项目
       const result = await prisma.project.create({
         data: {
           name: data.name,
           code: data.code,
           status: data.status,
           startYear: data.startYear,
-          organizationId: organizationId, // 主要所属机构
-          organizations: {
-            connect: data.organizationIds.map((id) => ({ id })),
-          },
-          departments: {
-            connect: data.departmentIds.map((id) => ({ id })),
-          },
+          organizationId: data.organizationId,
+          categoryId: data.categoryId,
           subProjects: {
             create: data.subProjects.map((sub) => ({
               name: sub.name,
-              fundTypes: {
-                connect: sub.fundTypeIds.map((id) => ({ id })),
-              },
             })),
           },
         },
         include: {
-          organizations: true,
-          departments: true,
-          subProjects: {
-            include: {
-              fundTypes: true,
-            },
-          },
+          organization: true,
+          category: true,
+          subProjects: true,
         },
       });
       
-      console.log('项目创建成功:', result);
-      return result;
+      // 创建DetailedFundNeed关联
+      for (const sub of data.subProjects) {
+        const subProject = result.subProjects.find(s => s.name === sub.name);
+        if (subProject) {
+          for (const dfn of sub.detailedFundNeeds) {
+            await prisma.detailedFundNeed.create({
+              data: {
+                subProjectId: subProject.id,
+                departmentId: dfn.departmentId,
+                fundTypeId: dfn.fundTypeId,
+                organizationId: data.organizationId,
+              }
+            });
+          }
+        }
+      }
+      
+      // 获取完整的项目信息（包括新创建的关联）
+      const completeProject = await this.findById(result.id);
+      
+      console.log('项目创建成功:', completeProject);
+      return completeProject;
     } catch (error: any) {
       console.error('项目创建失败:', error);
       
@@ -135,101 +144,159 @@ export class ProjectService {
       throw new ServiceError(404, '项目不存在')
     }
 
-    return await prisma.project.update({
+    // 更新项目基本信息
+    const updatedProject = await prisma.project.update({
       where: { id },
       data: {
         name: data.name,
         code: data.code,
         status: data.status,
         startYear: data.startYear,
-        organizations: data.organizationIds
-          ? {
-              set: data.organizationIds.map((id) => ({ id })),
-            }
-          : undefined,
-        departments: data.departmentIds
-          ? {
-              set: data.departmentIds.map((id) => ({ id })),
-            }
-          : undefined,
-        subProjects: data.subProjects
-          ? {
-              upsert: data.subProjects.map((sub) => ({
-                where: { id: sub.id || 'new' },
-                create: {
-                  name: sub.name,
-                  fundTypes: {
-                    connect: sub.fundTypeIds.map((id) => ({ id })),
-                  },
-                },
-                update: {
-                  name: sub.name,
-                  fundTypes: {
-                    set: sub.fundTypeIds.map((id) => ({ id })),
-                  },
-                },
-              })),
-            }
-          : undefined,
+        organizationId: data.organizationId,
+        categoryId: data.categoryId,
       },
       include: {
-        organizations: true,
-        departments: true,
-        subProjects: {
-          include: {
-            fundTypes: true,
-          },
-        },
+        organization: true,
+        category: true,
+        subProjects: true,
       },
-    })
+    });
+
+    // 如果有更新子项目
+    if (data.subProjects && data.subProjects.length > 0) {
+      // 处理每个子项目
+      for (const sub of data.subProjects) {
+        if (sub.id) {
+          // 更新现有子项目
+          await prisma.subProject.update({
+            where: { id: sub.id },
+            data: { name: sub.name },
+          });
+          
+          // 先删除现有关联
+          await prisma.detailedFundNeed.deleteMany({
+            where: { subProjectId: sub.id },
+          });
+          
+          // 创建新的关联
+          for (const dfn of sub.detailedFundNeeds) {
+            await prisma.detailedFundNeed.create({
+              data: {
+                subProjectId: sub.id,
+                departmentId: dfn.departmentId,
+                fundTypeId: dfn.fundTypeId,
+                organizationId: updatedProject.organizationId,
+              }
+            });
+          }
+        } else {
+          // 创建新子项目
+          const newSub = await prisma.subProject.create({
+            data: {
+              name: sub.name,
+              projectId: id,
+            },
+          });
+          
+          // 创建关联
+          for (const dfn of sub.detailedFundNeeds) {
+            await prisma.detailedFundNeed.create({
+              data: {
+                subProjectId: newSub.id,
+                departmentId: dfn.departmentId,
+                fundTypeId: dfn.fundTypeId,
+                organizationId: updatedProject.organizationId,
+              }
+            });
+          }
+        }
+      }
+    }
+    
+    // 返回完整更新后的项目
+    return await this.findById(id);
   }
 
   async delete(id: string) {
+    // 检查项目是否存在
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
         subProjects: {
           include: {
-            records: true,
-          },
-        },
+            detailedFundNeeds: {
+              include: {
+                predictRecords: true,
+                actualUserRecords: true,
+                actualFinRecords: true,
+                auditRecords: true,
+              }
+            }
+          }
+        }
       },
-    })
+    });
 
     if (!project) {
-      throw new ServiceError(404, '项目不存在')
+      throw new ServiceError(404, '项目不存在');
     }
 
     // 检查是否有资金记录
-    const hasRecords = project.subProjects.some((sub) => sub.records.length > 0)
+    const hasRecords = project.subProjects.some(sub => 
+      sub.detailedFundNeeds.some(dfn => 
+        dfn.predictRecords.length > 0 || 
+        dfn.actualUserRecords.length > 0 || 
+        dfn.actualFinRecords.length > 0 || 
+        dfn.auditRecords.length > 0
+      )
+    );
+    
     if (hasRecords) {
-      throw new ServiceError(400, '项目下存在资金记录，无法删除')
+      throw new ServiceError(400, '项目下存在资金记录，无法删除');
     }
 
+    // 删除所有关联的DetailedFundNeed
+    for (const sub of project.subProjects) {
+      await prisma.detailedFundNeed.deleteMany({
+        where: { subProjectId: sub.id }
+      });
+    }
+
+    // 删除所有子项目
+    await prisma.subProject.deleteMany({
+      where: { projectId: id }
+    });
+
+    // 删除项目
     await prisma.project.delete({
-      where: { id },
-    })
+      where: { id }
+    });
   }
 
   async findById(id: string) {
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
-        organizations: true,
-        departments: true,
+        organization: true,
+        category: true,
         subProjects: {
           include: {
-            fundTypes: true,
-          },
-        },
+            detailedFundNeeds: {
+              include: {
+                department: true,
+                fundType: true,
+              }
+            }
+          }
+        }
       },
-    })
+    });
 
     if (!project) {
-      throw new ServiceError(404, '项目不存在')
+      throw new ServiceError(404, '项目不存在');
     }
 
-    return project
+    return project;
   }
 
   async findAll(
@@ -247,107 +314,50 @@ export class ProjectService {
           }
         : {}),
       ...(filters?.status ? { status: filters.status } : {}),
-      ...(filters?.organizationId
-        ? { organizationId: filters.organizationId as string }
-        : {}),
-      ...(filters?.categoryId
-        ? { categoryId: filters.categoryId as string }
-        : {}),
+      ...(filters?.organizationId ? { organizationId: filters.organizationId } : {}),
+      ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
+    };
+
+    // 获取总记录数
+    const total = await prisma.project.count({ where });
+
+    // 构建排序
+    const orderBy: any = {};
+    if (sorting?.field) {
+      orderBy[sorting.field] = sorting.order || 'asc';
+    } else {
+      orderBy.createdAt = 'desc';
     }
 
-    const [total, items] = await Promise.all([
-      prisma.project.count({ where }),
-      prisma.project.findMany({
-        where,
-        include: {
-          organization: true,
-          category: true,
-          subProjects: {
-            include: {
-              detailedFundNeeds: {
-                include: {
-                  fundType: true,
-                  department: true
-                }
+    // 查询数据并分页
+    const items = await prisma.project.findMany({
+      where,
+      orderBy,
+      skip: page ? (page - 1) * pageSize : 0,
+      take: pageSize,
+      include: {
+        organization: true,
+        category: true,
+        subProjects: {
+          include: {
+            detailedFundNeeds: {
+              include: {
+                department: true,
+                fundType: true,
               }
-            },
-          },
-        },
-        orderBy: sorting
-          ? { [sorting.field]: sorting.order }
-          : { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-    ])
+            }
+          }
+        }
+      },
+    });
 
+    // 返回分页结果
     return {
       items,
       total,
-      page,
+      page: page || 1,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
-    }
-  }
-
-  // 子项目相关方法
-  async addSubProject(projectId: string, data: {
-    name: string
-    fundTypeIds: string[]
-  }) {
-    return await prisma.subProject.create({
-      data: {
-        name: data.name,
-        project: {
-          connect: { id: projectId },
-        },
-        fundTypes: {
-          connect: data.fundTypeIds.map((id) => ({ id })),
-        },
-      },
-      include: {
-        fundTypes: true,
-      },
-    })
-  }
-
-  async updateSubProject(id: string, data: {
-    name: string
-    fundTypeIds: string[]
-  }) {
-    return await prisma.subProject.update({
-      where: { id },
-      data: {
-        name: data.name,
-        fundTypes: {
-          set: data.fundTypeIds.map((id) => ({ id })),
-        },
-      },
-      include: {
-        fundTypes: true,
-      },
-    })
-  }
-
-  async deleteSubProject(id: string) {
-    // 首先检查子项目是否存在
-    const subProject = await prisma.subProject.findUnique({
-      where: { id },
-    })
-
-    if (!subProject) {
-      throw new ServiceError(404, '子项目不存在')
-    }
-
-    try {
-      // 尝试删除子项目
-      await prisma.subProject.delete({
-        where: { id },
-      })
-    } catch (error: any) {
-      // 如果删除失败，可能是因为存在外键约束
-      console.error('删除子项目失败:', error)
-      throw new ServiceError(400, '子项目下可能存在资金记录，无法删除')
-    }
+    };
   }
 } 
