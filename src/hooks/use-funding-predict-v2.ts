@@ -156,7 +156,7 @@ export function useFundingPredictV2(
     
     try {
       console.log('开始获取元数据...');
-      const response = await fetch(`/api/funding/predict/meta`, {
+      const response = await fetch(`/api/funding/predict-v2/meta`, {
         method: 'GET',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',

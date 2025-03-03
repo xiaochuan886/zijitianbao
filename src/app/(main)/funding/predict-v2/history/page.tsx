@@ -2,9 +2,28 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { 
+  HistoryIcon, 
+  PlusIcon, 
+  Filter, 
+  RefreshCw, 
+  RotateCcw,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Upload,
+  Building2,
+  FileEdit,
+  Eye,
+  XCircle,
+  ArrowLeft
+} from "lucide-react"
 import { 
   Dialog,
   DialogContent,
@@ -13,104 +32,231 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table"
-import { ArrowLeft, RotateCcw } from "lucide-react"
-import { FilterCard } from "@/components/funding/filter-card"
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerFooter,
+} from "@/components/ui/drawer"
 import { DateRangeFilter } from "@/components/funding/date-range-filter"
-import { SimplePageHeader } from "@/components/funding/simple-page-header"
-import { Badge } from "@/components/ui/badge"
-import { Combobox } from "@/components/ui/combobox"
-import { RecordStatus } from "@/lib/enums"
+import { 
+  HistoryTableView, 
+  HistoryRecord 
+} from "@/components/funding/history-table-view"
+import { 
+  HistoryGroupedView, 
+  processGroupedData, 
+  getMonthColumns 
+} from "@/components/funding/history-grouped-view"
+import { useMediaQuery } from "@/hooks/use-media-query"
+import { Combobox, ComboboxOption } from "@/components/ui/combobox"
+import { FilterCard } from "@/components/funding/filter-card"
 
-// 历史记录类型
-interface HistoryRecord {
-  id: string
-  organization: string
-  department: string
-  category: string
-  project: string
-  subProject: string
-  fundType: string
-  year: number
-  month: number
-  amount: number | null
-  status: string
-  submittedAt: string
-  remark: string
-  canWithdraw: boolean
+// 筛选器类型
+interface Filters {
+  organization: string;
+  department: string;
+  category: string;
+  project: string;
+  subProject: string;
+  fundType: string;
+  status: string;
 }
 
-// 组织的历史记录
-interface GroupedHistory {
-  organization: string
-  departments: {
-    name: string
-    projects: {
-      name: string
-      subProjects: {
-        name: string
-        fundTypes: {
-          name: string
-          records: {
-            [key: string]: number | null // 月份: 金额
-          }[]
-        }[]
-      }[]
-    }[]
-  }[]
+// 日期范围类型
+interface DateRange {
+  startYear: number;
+  startMonth: number;
+  endYear: number;
+  endMonth: number;
+}
+
+// 自定义组件，简化版的 PageHeader
+function SimplePageHeader({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="flex flex-col space-y-2">
+      <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+      {description && <p className="text-muted-foreground">{description}</p>}
+    </div>
+  )
 }
 
 export default function PredictHistoryPageV2() {
   const router = useRouter()
   const { toast } = useToast()
-  const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState({
+  const isDesktop = useMediaQuery("(min-width: 768px)")
+  
+  // 视图模式
+  const [viewMode, setViewMode] = useState<"table" | "group">("table")
+  
+  // 筛选器状态
+  const [filters, setFilters] = useState<Filters>({
     organization: "all",
     department: "all",
     category: "all",
     project: "all",
     subProject: "all",
     fundType: "all",
-    status: "all",
+    status: "all"
   })
-  const [dateRange, setDateRange] = useState({
-    startYear: new Date().getFullYear(),
-    startMonth: new Date().getMonth() + 1,
-    endYear: new Date().getFullYear(),
-    endMonth: new Date().getMonth() + 1,
+  
+  // 日期范围状态
+  const getCurrentDateInfo = () => {
+    const now = new Date()
+    return {
+      currentYear: now.getFullYear(),
+      currentMonth: now.getMonth() + 1
+    }
+  }
+  
+  const { currentYear, currentMonth } = getCurrentDateInfo()
+  
+  // 计算12个月前的日期
+  const getStartDate = (year: number, month: number) => {
+    let startMonth = month
+    let startYear = year
+    
+    startMonth -= 11 // 减去11个月，加上当前月，总共12个月
+    
+    if (startMonth <= 0) {
+      startMonth += 12
+      startYear -= 1
+    }
+    
+    return { startYear, startMonth }
+  }
+  
+  const { startYear: defaultStartYear, startMonth: defaultStartMonth } = getStartDate(currentYear, currentMonth)
+  
+  const [dateRange, setDateRange] = useState<DateRange>({
+    startYear: defaultStartYear,
+    startMonth: defaultStartMonth,
+    endYear: currentYear,
+    endMonth: currentMonth
   })
-  const [organizations, setOrganizations] = useState<{id: string, name: string}[]>([])
-  const [departments, setDepartments] = useState<{id: string, name: string}[]>([])
-  const [categories, setCategories] = useState<{id: string, name: string}[]>([])
-  const [projects, setProjects] = useState<{id: string, name: string, categoryId?: string}[]>([])
-  const [subProjects, setSubProjects] = useState<{id: string, name: string, projectId: string}[]>([])
-  const [fundTypes, setFundTypes] = useState<{id: string, name: string}[]>([])
-  const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([])
-  const [groupedHistory, setGroupedHistory] = useState<GroupedHistory[]>([])
-  const [activeTab, setActiveTab] = useState("table")
+  
+  // 分页状态
+  const [page, setPage] = useState<number>(1)
+  const [pageSize, setPageSize] = useState<number>(10)
+  const [total, setTotal] = useState<number>(0)
+  
+  // 数据状态
+  const [records, setRecords] = useState<HistoryRecord[]>([])
+  const [loading, setLoading] = useState<boolean>(false)
+  
+  // 对话框状态
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false)
-  const [withdrawalReason, setWithdrawalReason] = useState("")
-  const [submitting, setSubmitting] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState<boolean>(false)
+  const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState<boolean>(false)
+  
+  // 选项数据
+  const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([])
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [projects, setProjects] = useState<{ id: string; name: string; categoryId?: string }[]>([])
+  const [subProjects, setSubProjects] = useState<{ id: string; name: string; projectId: string }[]>([])
+  const [fundTypes, setFundTypes] = useState<{ id: string; name: string }[]>([])
+  
+  // 获取元数据
+  const fetchMetadata = useCallback(async () => {
+    try {
+      const response = await fetch('/api/funding/predict-v2/meta')
+      if (!response.ok) {
+        throw new Error('获取元数据失败')
+      }
+      
+      const data = await response.json()
+      
+      if (data.organizations) {
+        setOrganizations(data.organizations)
+      }
+      
+      if (data.departments) {
+        setDepartments(data.departments)
+      }
+      
+      if (data.categories) {
+        setCategories(data.categories)
+      }
+      
+      if (data.projects) {
+        setProjects(data.projects)
+      }
+      
+      if (data.subProjects) {
+        setSubProjects(data.subProjects)
+      }
+      
+      if (data.fundTypes) {
+        setFundTypes(data.fundTypes)
+      }
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "错误",
+        description: error instanceof Error ? error.message : "获取元数据失败",
+        variant: "destructive"
+      })
+    }
+  }, [toast])
+  
+  // 处理筛选器变化
+  const handleFilterChange = (newFilters: Filters) => {
+    setFilters(newFilters)
+    setPage(1) // 重置页码
+  }
+  
+  // 处理日期范围变化
+  const handleDateRangeChange = (range: DateRange) => {
+    setDateRange(range)
+    setPage(1) // 重置页码
+  }
+  
+  // 重置筛选器
+  const handleResetFilters = () => {
+    setFilters({
+      organization: "all",
+      department: "all",
+      category: "all",
+      project: "all",
+      subProject: "all",
+      fundType: "all",
+      status: "all"
+    })
+    
+    // 重置为最近12个月
+    const { currentYear, currentMonth } = getCurrentDateInfo()
+    const { startYear: defaultStartYear, startMonth: defaultStartMonth } = getStartDate(currentYear, currentMonth)
+    
+    setDateRange({
+      startYear: defaultStartYear,
+      startMonth: defaultStartMonth,
+      endYear: currentYear,
+      endMonth: currentMonth
+    })
+    
+    setPage(1) // 重置页码
+  }
+  
+  // 格式化金额
+  const formatCurrency = (amount: number | null): string => {
+    if (amount === null) return "-"
+    return amount.toLocaleString("zh-CN", {
+      style: "currency",
+      currency: "CNY",
+      minimumFractionDigits: 2
+    })
+  }
   
   // 获取历史记录
-  const fetchHistory = useCallback(async (force = false) => {
+  const fetchHistory = useCallback(async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      
       // 构建查询参数
       const params = new URLSearchParams()
+      
+      // 添加筛选条件
       if (filters.organization !== "all") params.append("organizationId", filters.organization)
       if (filters.department !== "all") params.append("departmentId", filters.department)
       if (filters.category !== "all") params.append("categoryId", filters.category)
@@ -118,34 +264,28 @@ export default function PredictHistoryPageV2() {
       if (filters.subProject !== "all") params.append("subProjectId", filters.subProject)
       if (filters.fundType !== "all") params.append("fundTypeId", filters.fundType)
       if (filters.status !== "all") params.append("status", filters.status)
+      
+      // 添加日期范围
       params.append("startYear", dateRange.startYear.toString())
       params.append("startMonth", dateRange.startMonth.toString())
       params.append("endYear", dateRange.endYear.toString())
       params.append("endMonth", dateRange.endMonth.toString())
       
-      // 添加强制刷新参数
-      if (force) params.append("_t", Date.now().toString())
+      // 添加分页参数
+      params.append("page", page.toString())
+      params.append("pageSize", pageSize.toString())
       
+      // 发送请求
       const response = await fetch(`/api/funding/predict-v2/history?${params.toString()}`)
-      
       if (!response.ok) {
         throw new Error("获取历史记录失败")
       }
       
       const data = await response.json()
-      
-      setHistoryRecords(data.records || [])
-      setOrganizations(data.organizations || [])
-      setDepartments(data.departments || [])
-      setCategories(data.categories || [])
-      setProjects(data.projects || [])
-      setSubProjects(data.subProjects || [])
-      setFundTypes(data.fundTypes || [])
-      
-      // 处理分组数据
-      processGroupedData(data.records || [])
+      setRecords(data.records || [])
+      setTotal(data.total || 0)
     } catch (error) {
-      console.error("获取历史记录失败", error)
+      console.error(error)
       toast({
         title: "错误",
         description: error instanceof Error ? error.message : "获取历史记录失败",
@@ -154,241 +294,106 @@ export default function PredictHistoryPageV2() {
     } finally {
       setLoading(false)
     }
-  }, [filters, dateRange, toast])
+  }, [filters, dateRange, page, pageSize, toast])
   
-  // 处理分组数据
-  const processGroupedData = useCallback((records: HistoryRecord[]) => {
-    // 按组织、部门、项目、子项目、资金类型分组
-    const grouped: Record<string, any> = {}
-    
-    records.forEach(record => {
-      // 初始化组织结构
-      if (!grouped[record.organization]) {
-        grouped[record.organization] = {
-          name: record.organization,
-          departments: {}
-        }
-      }
-      
-      // 初始化部门结构
-      if (!grouped[record.organization].departments[record.department]) {
-        grouped[record.organization].departments[record.department] = {
-          name: record.department,
-          projects: {}
-        }
-      }
-      
-      // 初始化项目结构
-      if (!grouped[record.organization].departments[record.department].projects[record.project]) {
-        grouped[record.organization].departments[record.department].projects[record.project] = {
-          name: record.project,
-          subProjects: {}
-        }
-      }
-      
-      // 初始化子项目结构
-      if (!grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject]) {
-        grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject] = {
-          name: record.subProject,
-          fundTypes: {}
-        }
-      }
-      
-      // 初始化资金类型结构
-      if (!grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType]) {
-        grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType] = {
-          name: record.fundType,
-          records: []
-        }
-        
-        // 初始化记录对象
-        const recordObj: {[key: string]: number | null} = {}
-        grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType].records.push(recordObj)
-      }
-      
-      // 添加月份记录
-      const monthKey = `${record.year}-${record.month.toString().padStart(2, '0')}`
-      grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType].records[0][monthKey] = record.amount
-    })
-    
-    // 将嵌套对象转换为数组
-    const result: GroupedHistory[] = Object.values(grouped).map((org: any) => {
-      return {
-        organization: org.name,
-        departments: Object.values(org.departments).map((dept: any) => {
-          return {
-            name: dept.name,
-            projects: Object.values(dept.projects).map((proj: any) => {
-              return {
-                name: proj.name,
-                subProjects: Object.values(proj.subProjects).map((subProj: any) => {
-                  return {
-                    name: subProj.name,
-                    fundTypes: Object.values(subProj.fundTypes).map((fundType: any) => {
-                      return {
-                        name: fundType.name,
-                        records: fundType.records
-                      }
-                    })
-                  }
-                })
-              }
-            })
-          }
-        })
-      }
-    })
-    
-    setGroupedHistory(result)
-  }, [])
-  
-  // 重置筛选条件
-  const handleResetFilters = useCallback(() => {
-    setFilters({
-      organization: "all",
-      department: "all",
-      category: "all",
-      project: "all",
-      subProject: "all",
-      fundType: "all",
-      status: "all",
-    })
-  }, [])
-  
-  // 重置日期范围
-  const handleResetDateRange = useCallback(() => {
-    setDateRange({
-      startYear: new Date().getFullYear(),
-      startMonth: new Date().getMonth() + 1,
-      endYear: new Date().getFullYear(),
-      endMonth: new Date().getMonth() + 1,
-    })
-  }, [])
-  
-  // 查看记录详情
-  const handleViewRecord = useCallback((record: HistoryRecord) => {
+  // 处理查看记录
+  const handleViewRecord = (record: HistoryRecord) => {
     setSelectedRecord(record)
     setDialogOpen(true)
-  }, [])
+  }
   
-  // 申请撤回
-  const handleRequestWithdrawal = useCallback(() => {
-    if (!selectedRecord) return
-    setDialogOpen(false)
+  // 处理撤回申请
+  const handleWithdrawalRequest = (record: HistoryRecord) => {
+    setSelectedRecord(record)
     setWithdrawalDialogOpen(true)
-  }, [selectedRecord])
+  }
   
   // 提交撤回申请
-  const handleSubmitWithdrawal = useCallback(async () => {
+  const handleSubmitWithdrawal = async () => {
     if (!selectedRecord) return
     
-    if (withdrawalReason.trim().length < 5) {
-      toast({
-        title: "错误",
-        description: "撤回原因至少需要5个字符",
-        variant: "destructive"
-      })
-      return
-    }
-    
     try {
-      setSubmitting(true)
-      
+      // 发送撤回请求
       const response = await fetch(`/api/funding/predict-v2/submit/${selectedRecord.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
+        body: JSON.stringify({ 
           action: "withdrawal",
-          reason: withdrawalReason
+          reason: "申请撤回"
         })
       })
       
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "提交撤回申请失败")
+        throw new Error("撤回申请失败")
       }
-      
-      const result = await response.json()
       
       toast({
         title: "成功",
-        description: "撤回申请已提交，等待审核",
+        description: "撤回申请已提交",
       })
-      
-      // 关闭弹窗并重置状态
       setWithdrawalDialogOpen(false)
-      setWithdrawalReason("")
-      setSelectedRecord(null)
-      
-      // 刷新历史记录
-      fetchHistory(true)
+      fetchHistory() // 刷新数据
     } catch (error) {
-      console.error("提交撤回申请失败", error)
+      console.error(error)
       toast({
         title: "错误",
-        description: error instanceof Error ? error.message : "提交撤回申请失败",
+        description: error instanceof Error ? error.message : "撤回申请失败",
         variant: "destructive"
       })
-    } finally {
-      setSubmitting(false)
     }
-  }, [selectedRecord, withdrawalReason, toast, fetchHistory])
+  }
   
-  // 获取近12个月的月份列表
+  // 处理页码变化
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage)
+  }
+  
+  // 计算分组数据
+  const groupedHistory = useMemo(() => {
+    return processGroupedData(records)
+  }, [records])
+  
+  // 计算月份列
   const monthColumns = useMemo(() => {
-    const columns = []
-    const currentDate = new Date()
-    const currentYear = currentDate.getFullYear()
-    const currentMonth = currentDate.getMonth() + 1
-    
-    for (let i = 0; i < 12; i++) {
-      let month = currentMonth - i
-      let year = currentYear
-      
-      if (month <= 0) {
-        month += 12
-        year -= 1
-      }
-      
-      columns.unshift({
-        key: `${year}-${month.toString().padStart(2, '0')}`,
-        label: `${year}-${month.toString().padStart(2, '0')}`
-      })
-    }
-    
-    return columns
-  }, [])
+    return getMonthColumns(
+      dateRange.startYear,
+      dateRange.startMonth,
+      dateRange.endYear,
+      dateRange.endMonth
+    )
+  }, [dateRange])
   
-  // 格式化金额
-  const formatCurrency = useCallback((amount: number | null) => {
-    if (amount === null) return "-"
-    return new Intl.NumberFormat("zh-CN", {
-      style: "currency",
-      currency: "CNY",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount)
-  }, [])
+  // 页面加载时获取数据
+  useEffect(() => {
+    fetchMetadata()
+  }, [fetchMetadata])
   
-  // 初始化加载
+  // 当筛选条件或日期范围变化时获取数据
   useEffect(() => {
     fetchHistory()
   }, [fetchHistory])
   
+  // 当视图模式改变时，重置页码
+  useEffect(() => {
+    setPage(1)
+  }, [viewMode])
+  
   return (
     <div className="space-y-6">
+      {/* 页面标题 */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => router.push("/funding/predict-v2")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
           </Button>
-          <h1 className="text-3xl font-bold tracking-tight">资金需求预测提交历史</h1>
+          <h1 className="text-3xl font-bold tracking-tight">资金需求预测历史记录</h1>
         </div>
       </div>
       
+      {/* 筛选器 */}
       <FilterCard
         filters={filters}
         organizations={organizations}
@@ -398,19 +403,31 @@ export default function PredictHistoryPageV2() {
         subProjects={subProjects}
         fundTypes={fundTypes}
         loading={loading}
-        onFilterChange={setFilters}
+        onFilterChange={handleFilterChange}
         onReset={handleResetFilters}
-        onSearch={() => fetchHistory(true)}
+        onSearch={fetchHistory}
       />
-
-      <DateRangeFilter
-        {...dateRange}
-        onChange={setDateRange}
-        onReset={handleResetDateRange}
-      />
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-[400px] grid-cols-2">
+      
+      {/* 日期范围筛选器 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>日期范围</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DateRangeFilter
+            startYear={dateRange.startYear}
+            startMonth={dateRange.startMonth}
+            endYear={dateRange.endYear}
+            endMonth={dateRange.endMonth}
+            onChange={handleDateRangeChange}
+            onReset={handleResetFilters}
+          />
+        </CardContent>
+      </Card>
+      
+      {/* 视图切换 */}
+      <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "group")}>
+        <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="table">表格视图</TabsTrigger>
           <TabsTrigger value="group">分组视图</TabsTrigger>
         </TabsList>
@@ -418,268 +435,247 @@ export default function PredictHistoryPageV2() {
         <Card className="mt-4">
           <CardContent className="p-6">
             <TabsContent value="table" className="mt-0">
-              <div className="rounded-md border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>机构</TableHead>
-                      <TableHead>部门</TableHead>
-                      <TableHead>项目分类</TableHead>
-                      <TableHead>项目</TableHead>
-                      <TableHead>子项目</TableHead>
-                      <TableHead>资金类型</TableHead>
-                      <TableHead>金额 (¥)</TableHead>
-                      <TableHead>月份</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>提交时间</TableHead>
-                      <TableHead>操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={11} className="h-24 text-center">
-                          正在加载...
-                        </TableCell>
-                      </TableRow>
-                    ) : historyRecords.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={11} className="h-24 text-center">
-                          没有找到历史记录
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      historyRecords.map((record) => (
-                        <TableRow key={record.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewRecord(record)}>
-                          <TableCell>{record.organization}</TableCell>
-                          <TableCell>{record.department}</TableCell>
-                          <TableCell>{record.category}</TableCell>
-                          <TableCell>{record.project}</TableCell>
-                          <TableCell>{record.subProject}</TableCell>
-                          <TableCell>{record.fundType}</TableCell>
-                          <TableCell>{record.amount !== null ? formatCurrency(record.amount) : "-"}</TableCell>
-                          <TableCell>{`${record.year}-${record.month.toString().padStart(2, '0')}`}</TableCell>
-                          <TableCell>
-                            <Badge variant={record.status === RecordStatus.SUBMITTED ? "secondary" : "outline"}>
-                              {record.status === RecordStatus.SUBMITTED ? "已提交" : record.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{new Date(record.submittedAt).toLocaleString()}</TableCell>
-                          <TableCell>
-                            {record.canWithdraw && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedRecord(record)
-                                  setWithdrawalDialogOpen(true)
-                                }}
-                              >
-                                <RotateCcw className="h-4 w-4 mr-1" />
-                                申请撤回
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <HistoryTableView
+                records={records}
+                loading={loading}
+                total={total}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={handlePageChange}
+                onViewRecord={handleViewRecord}
+                onWithdrawalRequest={handleWithdrawalRequest}
+                formatCurrency={formatCurrency}
+              />
             </TabsContent>
             
             <TabsContent value="group" className="mt-0">
-              <div className="rounded-md border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>子项目</TableHead>
-                      <TableHead>资金类型</TableHead>
-                      {monthColumns.map(column => (
-                        <TableHead key={column.key}>{column.label}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={2 + monthColumns.length} className="h-24 text-center">
-                          正在加载...
-                        </TableCell>
-                      </TableRow>
-                    ) : groupedHistory.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={2 + monthColumns.length} className="h-24 text-center">
-                          没有找到历史记录
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      groupedHistory.flatMap(org => (
-                        org.departments.flatMap(dept => (
-                          dept.projects.flatMap(proj => (
-                            <>
-                              <TableRow key={`header-${org.organization}-${dept.name}-${proj.name}`} className="bg-muted/50">
-                                <TableCell colSpan={2 + monthColumns.length} className="font-medium">
-                                  {org.organization} &gt; {dept.name} &gt; {proj.name}
-                                </TableCell>
-                              </TableRow>
-                              {proj.subProjects.flatMap(subProj => (
-                                subProj.fundTypes.map(fundType => (
-                                  <TableRow key={`data-${org.organization}-${dept.name}-${proj.name}-${subProj.name}-${fundType.name}`}>
-                                    <TableCell>{subProj.name}</TableCell>
-                                    <TableCell>{fundType.name}</TableCell>
-                                    {monthColumns.map(column => (
-                                      <TableCell key={column.key}>
-                                        {fundType.records[0][column.key] !== undefined
-                                          ? formatCurrency(fundType.records[0][column.key])
-                                          : "-"}
-                                      </TableCell>
-                                    ))}
-                                  </TableRow>
-                                ))
-                              ))}
-                            </>
-                          ))
-                        ))
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <HistoryGroupedView
+                groupedHistory={groupedHistory}
+                loading={loading}
+                formatCurrency={formatCurrency}
+                monthColumns={monthColumns}
+                total={total}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={handlePageChange}
+              />
             </TabsContent>
           </CardContent>
         </Card>
       </Tabs>
       
       {/* 记录详情对话框 */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>资金预测详情</DialogTitle>
-            <DialogDescription>
-              查看填报记录的详细信息
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedRecord && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>机构</Label>
-                  <p className="text-sm mt-1">{selectedRecord.organization}</p>
+      {isDesktop ? (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>记录详情</DialogTitle>
+              <DialogDescription>
+                查看填报记录的详细信息
+              </DialogDescription>
+            </DialogHeader>
+            {selectedRecord && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">组织机构</div>
+                    <div>{selectedRecord.organization}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">部门</div>
+                    <div>{selectedRecord.department}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">项目分类</div>
+                    <div>{selectedRecord.category}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">项目</div>
+                    <div>{selectedRecord.project}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">子项目</div>
+                    <div>{selectedRecord.subProject}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">资金类型</div>
+                    <div>{selectedRecord.fundType}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">年份</div>
+                    <div>{selectedRecord.year}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">月份</div>
+                    <div>{selectedRecord.month}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">金额</div>
+                    <div>{formatCurrency(selectedRecord.amount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">状态</div>
+                    <div>
+                      <Badge variant={
+                        selectedRecord.status === "已保存" ? "outline" :
+                        selectedRecord.status === "已提交" ? "secondary" :
+                        selectedRecord.status === "已审核" ? "default" :
+                        "destructive"
+                      }>
+                        {selectedRecord.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">提交时间</div>
+                    <div>{new Date(selectedRecord.submittedAt).toLocaleString()}</div>
+                  </div>
                 </div>
                 <div>
-                  <Label>部门</Label>
-                  <p className="text-sm mt-1">{selectedRecord.department}</p>
-                </div>
-                <div>
-                  <Label>项目</Label>
-                  <p className="text-sm mt-1">{selectedRecord.project}</p>
-                </div>
-                <div>
-                  <Label>子项目</Label>
-                  <p className="text-sm mt-1">{selectedRecord.subProject}</p>
-                </div>
-                <div>
-                  <Label>资金类型</Label>
-                  <p className="text-sm mt-1">{selectedRecord.fundType}</p>
-                </div>
-                <div>
-                  <Label>年月</Label>
-                  <p className="text-sm mt-1">{`${selectedRecord.year}-${selectedRecord.month.toString().padStart(2, '0')}`}</p>
-                </div>
-                <div>
-                  <Label>金额</Label>
-                  <p className="text-sm mt-1">{selectedRecord.amount !== null ? formatCurrency(selectedRecord.amount) : "-"}</p>
-                </div>
-                <div>
-                  <Label>状态</Label>
-                  <p className="text-sm mt-1">{selectedRecord.status}</p>
-                </div>
-                <div className="col-span-2">
-                  <Label>提交时间</Label>
-                  <p className="text-sm mt-1">{new Date(selectedRecord.submittedAt).toLocaleString()}</p>
-                </div>
-                <div className="col-span-2">
-                  <Label>备注</Label>
-                  <p className="text-sm mt-1 whitespace-pre-wrap">{selectedRecord.remark || "-"}</p>
+                  <div className="text-sm text-muted-foreground">备注</div>
+                  <div className="p-4 bg-muted rounded-md min-h-[100px]">{selectedRecord.remark || "无"}</div>
                 </div>
               </div>
-            </div>
-          )}
-          
-          <DialogFooter>
-            {selectedRecord?.canWithdraw && (
-              <Button
-                variant="secondary"
-                onClick={handleRequestWithdrawal}
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                申请撤回
-              </Button>
             )}
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              关闭
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              {selectedRecord?.canWithdraw && (
+                <Button 
+                  variant="destructive" 
+                  onClick={() => {
+                    setDialogOpen(false)
+                    setWithdrawalDialogOpen(true)
+                  }}
+                >
+                  申请撤回
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                关闭
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Drawer open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DrawerContent>
+            <DrawerHeader className="text-left">
+              <DrawerTitle>记录详情</DrawerTitle>
+            </DrawerHeader>
+            {selectedRecord && (
+              <div className="px-4 pb-4 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">组织机构</div>
+                    <div>{selectedRecord.organization}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">部门</div>
+                    <div>{selectedRecord.department}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">项目分类</div>
+                    <div>{selectedRecord.category}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">项目</div>
+                    <div>{selectedRecord.project}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">子项目</div>
+                    <div>{selectedRecord.subProject}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">资金类型</div>
+                    <div>{selectedRecord.fundType}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">年份</div>
+                    <div>{selectedRecord.year}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">月份</div>
+                    <div>{selectedRecord.month}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">金额</div>
+                    <div>{formatCurrency(selectedRecord.amount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">状态</div>
+                    <div>
+                      <Badge variant={
+                        selectedRecord.status === "已保存" ? "outline" :
+                        selectedRecord.status === "已提交" ? "secondary" :
+                        selectedRecord.status === "已审核" ? "default" :
+                        "destructive"
+                      }>
+                        {selectedRecord.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">提交时间</div>
+                    <div>{new Date(selectedRecord.submittedAt).toLocaleString()}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">备注</div>
+                  <div className="p-4 bg-muted rounded-md min-h-[100px]">{selectedRecord.remark || "无"}</div>
+                </div>
+              </div>
+            )}
+            <DrawerFooter>
+              {selectedRecord?.canWithdraw && (
+                <Button 
+                  variant="destructive" 
+                  onClick={() => {
+                    setDialogOpen(false)
+                    setWithdrawalDialogOpen(true)
+                  }}
+                >
+                  申请撤回
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                关闭
+              </Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      )}
       
       {/* 撤回申请对话框 */}
-      <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>提交撤回申请</DialogTitle>
-            <DialogDescription>
-              {selectedRecord && (
-                <>
-                  项目: {selectedRecord.project}
-                  <br />
-                  子项目: {selectedRecord.subProject}
-                  <br />
-                  资金类型: {selectedRecord.fundType}
-                  <br />
-                  月份: {`${selectedRecord.year}-${selectedRecord.month.toString().padStart(2, '0')}`}
-                </>
-              )}
-              <br />
-              请填写撤回原因，管理员审核通过后将允许重新编辑。
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="reason">撤回原因</Label>
-              <Textarea
-                id="reason"
-                placeholder="请详细说明撤回原因..."
-                value={withdrawalReason}
-                onChange={(e) => setWithdrawalReason(e.target.value)}
-                className="min-h-[100px]"
-              />
+      {isDesktop ? (
+        <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>撤回申请</DialogTitle>
+              <DialogDescription>
+                确定要撤回此申请吗？
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setWithdrawalDialogOpen(false)}>取消</Button>
+              <Button variant="destructive" onClick={handleSubmitWithdrawal}>确认撤回</Button>
             </div>
-          </div>
-          
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setWithdrawalDialogOpen(false)
-                setWithdrawalReason("")
-              }}
-            >
-              取消
-            </Button>
-            <Button 
-              onClick={handleSubmitWithdrawal}
-              disabled={submitting || withdrawalReason.trim().length < 5}
-            >
-              {submitting ? "提交中..." : "提交申请"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Drawer open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
+          <DrawerContent>
+            <DrawerHeader className="text-left">
+              <DrawerTitle>撤回申请</DrawerTitle>
+            </DrawerHeader>
+            <div className="px-4 pb-4 space-y-4">
+              <p>确定要撤回此申请吗？</p>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setWithdrawalDialogOpen(false)}>取消</Button>
+                <Button variant="destructive" onClick={handleSubmitWithdrawal}>确认撤回</Button>
+              </div>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      )}
     </div>
   )
 } 

@@ -84,19 +84,36 @@ export async function GET(request: Request) {
       where.detailedFundNeed = {
         ...where.detailedFundNeed,
         subProject: {
+          ...where.detailedFundNeed?.subProject,
           project: {
+            ...where.detailedFundNeed?.subProject?.project,
             categoryId,
           },
         },
       };
     }
 
-    if (projectId) {
+    if (projectId && projectId !== "all") {
       where.detailedFundNeed = {
         ...where.detailedFundNeed,
         subProject: {
+          ...where.detailedFundNeed?.subProject,
           projectId,
         },
+      };
+    }
+
+    if (subProjectId && subProjectId !== "all") {
+      where.detailedFundNeed = {
+        ...where.detailedFundNeed,
+        subProjectId,
+      };
+    }
+
+    if (fundTypeId && fundTypeId !== "all") {
+      where.detailedFundNeed = {
+        ...where.detailedFundNeed,
+        fundTypeId,
       };
     }
 
