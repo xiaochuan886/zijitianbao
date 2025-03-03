@@ -57,7 +57,7 @@ export default function LoginPage() {
       localStorage.setItem("user", JSON.stringify(data.user))
 
       toast.success("登录成功")
-      router.push("/dashboard")
+      router.push("/")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "登录失败")
     } finally {

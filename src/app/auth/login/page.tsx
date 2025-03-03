@@ -62,7 +62,7 @@ export default function LoginPage() {
 
       if (result?.ok) {
         toast.success("登录成功")
-        router.push("/funding/predict")
+        router.push("/")
         router.refresh()
       }
     } catch (error) {
@@ -132,4 +132,4 @@ export default function LoginPage() {
       </CardContent>
     </Card>
   )
-} 
+}

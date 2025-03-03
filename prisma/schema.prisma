@@ -26,6 +26,8 @@ model User {
   actualFinRecords   ActualFinRecord[]   @relation("UserActualFinRecords")
   auditRecords       AuditRecord[]       @relation("UserAuditRecords")
   withdrawalRequests WithdrawalRequest[] @relation("UserWithdrawalRequests")
+  adminWithdrawalRequests WithdrawalRequest[] @relation("AdminWithdrawalRequests")
+  notifications         Notification[]     @relation("UserNotifications")
 
   @@index([organizationId])
   @@index([role])
@@ -188,7 +190,7 @@ model PredictRecord {
   detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
   user               User?              @relation("UserPredictRecords", fields: [submittedBy], references: [id])
   auditLogs          RecordAudit[]      @relation("PredictRecordAudits")
-  withdrawalRequest  WithdrawalRequest? @relation("PredictWithdrawalRequests")
+  withdrawalRequests WithdrawalRequest[] @relation("PredictWithdrawalRequests")
 
   @@unique([detailedFundNeedId, year, month]) // 同一资金需求明细在同一年月只能有一条记录
   @@index([detailedFundNeedId])
@@ -247,7 +249,7 @@ model ActualUserRecord {
   detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
   user               User?              @relation("UserActualRecords", fields: [submittedBy], references: [id])
   auditLogs          RecordAudit[]      @relation("ActualUserRecordAudits")
-  withdrawalRequest  WithdrawalRequest? @relation("ActualUserWithdrawalRequests")
+  withdrawalRequests WithdrawalRequest[] @relation("ActualUserWithdrawalRequests")
   financeRecord      ActualFinRecord?   @relation("UserToFinanceRecord")
 
   @@unique([detailedFundNeedId, year, month]) // 同一资金需求明细在同一年月只能有一条记录
@@ -277,7 +279,7 @@ model ActualFinRecord {
   user               User?              @relation("UserActualFinRecords", fields: [submittedBy], references: [id])
   userRecord         ActualUserRecord?  @relation("UserToFinanceRecord", fields: [userRecordId], references: [id])
   auditLogs          RecordAudit[]      @relation("ActualFinRecordAudits")
-  withdrawalRequest  WithdrawalRequest? @relation("ActualFinWithdrawalRequests")
+  withdrawalRequests WithdrawalRequest[] @relation("ActualFinWithdrawalRequests")
   // 关联到审核记录
   auditRecord        AuditRecord?       @relation("FinanceToAuditRecord")
 
@@ -309,7 +311,7 @@ model AuditRecord {
   user               User?              @relation("UserAuditRecords", fields: [submittedBy], references: [id])
   financeRecord      ActualFinRecord?   @relation("FinanceToAuditRecord", fields: [financeRecordId], references: [id])
   auditLogs          RecordAudit[]      @relation("AuditRecordAudits")
-  withdrawalRequest  WithdrawalRequest? @relation("AuditWithdrawalRequests")
+  withdrawalRequests WithdrawalRequest[] @relation("AuditWithdrawalRequests")
 
   @@unique([detailedFundNeedId, year, month]) // 同一资金需求明细在同一年月只能有一条记录
   @@index([detailedFundNeedId])
@@ -371,31 +373,68 @@ model AuditLog {
   @@index([timestamp])
 }
 
-// 撤回申请表
+// 撤回配置模型
+model WithdrawalConfig {
+  id                String   @id @default(cuid())
+  moduleType        String   // "predict", "actual_user", "actual_fin", "audit"
+  allowedStatuses   String   // 允许撤回的状态列表，JSON字符串
+  timeLimit         Int      // 撤回时间限制（小时）
+  maxAttempts       Int      // 最大撤回次数
+  requireApproval   Boolean  @default(true) // 是否需要管理员审批
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([moduleType])
+}
+
+// 通知模型
+model Notification {
+  id              String    @id @default(cuid())
+  userId          String    // 接收通知的用户
+  title           String
+  content         String
+  isRead          Boolean   @default(false)
+  type            String    // "withdrawal_request", "withdrawal_approved", "withdrawal_rejected"
+  relatedId       String?   // 相关记录ID
+  relatedType     String?   // 相关记录类型
+  createdAt       DateTime  @default(now())
+  readAt          DateTime?
+  
+  user            User      @relation("UserNotifications", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@index([createdAt])
+}
+
 model WithdrawalRequest {
   id                 String            @id @default(cuid())
-  predictRecordId    String?           @unique
-  actualUserRecordId String?           @unique
-  actualFinRecordId  String?           @unique
-  auditRecordId      String?           @unique
+  predictRecordId    String?           
+  actualUserRecordId String?           
+  actualFinRecordId  String?           
+  auditRecordId      String?           
   requesterId        String
   reason             String
-  status             String
+  status             String            // "pending", "approved", "rejected"
   adminId            String?
   adminComment       String?
+  reviewedAt         DateTime?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
-  predictRecord      PredictRecord?    @relation("PredictWithdrawalRequests", fields: [predictRecordId], references: [id])
-  actualUserRecord   ActualUserRecord? @relation("ActualUserWithdrawalRequests", fields: [actualUserRecordId], references: [id])
-  actualFinRecord    ActualFinRecord?  @relation("ActualFinWithdrawalRequests", fields: [actualFinRecordId], references: [id])
-  auditRecord        AuditRecord?      @relation("AuditWithdrawalRequests", fields: [auditRecordId], references: [id])
+  predictRecord      PredictRecord?    @relation("PredictWithdrawalRequests", fields: [predictRecordId], references: [id], onDelete: SetNull)
+  actualUserRecord   ActualUserRecord? @relation("ActualUserWithdrawalRequests", fields: [actualUserRecordId], references: [id], onDelete: SetNull)
+  actualFinRecord    ActualFinRecord?  @relation("ActualFinWithdrawalRequests", fields: [actualFinRecordId], references: [id], onDelete: SetNull)
+  auditRecord        AuditRecord?      @relation("AuditWithdrawalRequests", fields: [auditRecordId], references: [id], onDelete: SetNull)
   requester          User              @relation("UserWithdrawalRequests", fields: [requesterId], references: [id])
+  admin              User?             @relation("AdminWithdrawalRequests", fields: [adminId], references: [id])
 
   @@index([predictRecordId])
   @@index([actualUserRecordId])
   @@index([actualFinRecordId])
   @@index([auditRecordId])
   @@index([requesterId])
+  @@index([adminId])
   @@index([status])
   @@index([createdAt])
 }
