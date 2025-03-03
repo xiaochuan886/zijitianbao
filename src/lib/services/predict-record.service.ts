@@ -5,6 +5,7 @@ import { RecordStatus } from '../enums'
 export interface CreatePredictRecordDto {
   subProjectId: string
   fundTypeId: string
+  departmentId: string
   year: number
   month: number
   amount?: number
@@ -26,6 +27,7 @@ export class PredictRecordService {
       where: {
         subProjectId: data.subProjectId,
         fundTypeId: data.fundTypeId,
+        departmentId: data.departmentId,
         year: data.year,
         month: data.month,
       },
@@ -44,10 +46,10 @@ export class PredictRecordService {
         subProject: {
           include: {
             project: true,
-            fundTypes: true,
           },
         },
         fundType: true,
+        department: true,
       },
     })
   }
@@ -111,14 +113,20 @@ export class PredictRecordService {
           include: {
             project: {
               include: {
-                organizations: true,
-                departments: true,
+                category: true,
               },
             },
-            fundTypes: true,
+            detailedFundNeeds: {
+              include: {
+                department: true,
+                organization: true,
+                fundType: true,
+              }
+            },
           },
         },
         fundType: true,
+        department: true,
       },
     })
 
@@ -139,6 +147,7 @@ export class PredictRecordService {
       ...(filters?.month ? { month: parseInt(filters.month as string) } : {}),
       ...(filters?.status ? { status: filters.status } : {}),
       ...(filters?.submittedBy ? { submittedBy: filters.submittedBy } : {}),
+      ...(filters?.departmentId ? { departmentId: filters.departmentId } : {}),
     };
 
     // 特殊处理 subProjectId，它可能是一个对象 { in: [...] }
@@ -155,14 +164,20 @@ export class PredictRecordService {
             include: {
               project: {
                 include: {
-                  organizations: true,
-                  departments: true,
+                  category: true,
                 },
               },
-              fundTypes: true,
+              detailedFundNeeds: {
+                include: {
+                  department: true,
+                  organization: true,
+                  fundType: true,
+                }
+              },
             },
           },
           fundType: true,
+          department: true,
         },
         orderBy: sorting
           ? { [sorting.field]: sorting.order }

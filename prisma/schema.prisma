@@ -68,10 +68,6 @@ model Department {
   organization      Organization       @relation(fields: [organizationId], references: [id])
   userDepartments   UserDepartment[] // 部门下的用户
   detailedFundNeeds DetailedFundNeed[] // 部门可填报的子项目资金需求明细
-  predictRecords    PredictRecord[] // 关联的记录
-  actualUserRecords ActualUserRecord[] // 关联的实际支出填报记录
-  actualFinRecords  ActualFinRecord[] // 关联的财务记录
-  auditRecords      AuditRecord[] // 关联的审计记录
 
   @@index([organizationId])
   @@index([name])
@@ -123,10 +119,6 @@ model SubProject {
   updatedAt         DateTime           @updatedAt
   project           Project            @relation(fields: [projectId], references: [id])
   detailedFundNeeds DetailedFundNeed[] // 子项目关联的资金需求明细
-  predictRecords    PredictRecord[] // 关联的预测记录
-  actualUserRecords ActualUserRecord[] // 关联的实际支出填报记录
-  actualFinRecords  ActualFinRecord[] // 关联的财务记录
-  auditRecords      AuditRecord[] // 关联的审计记录
 
   @@index([projectId])
   @@index([name])
@@ -139,10 +131,6 @@ model FundType {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   detailedFundNeeds DetailedFundNeed[] // 关联子项目-部门-资金需求明细
-  predictRecords    PredictRecord[]
-  actualUserRecords ActualUserRecord[]
-  actualFinRecords  ActualFinRecord[]
-  auditRecords      AuditRecord[]
 
   @@index([name])
 }
@@ -187,10 +175,7 @@ enum RecordStatus {
 // 资金需求预测记录表
 model PredictRecord {
   id                 String             @id @default(cuid())
-  detailedFundNeedId String // 新增：关联到资金需求明细
-  subProjectId       String
-  fundTypeId         String
-  departmentId       String // 部门ID
+  detailedFundNeedId String // 关联到资金需求明细
   year               Int
   month              Int
   amount             Float?
@@ -201,19 +186,12 @@ model PredictRecord {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
-  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType           FundType           @relation(fields: [fundTypeId], references: [id])
-  department         Department         @relation(fields: [departmentId], references: [id])
   user               User?              @relation("UserPredictRecords", fields: [submittedBy], references: [id])
   auditLogs          RecordAudit[]      @relation("PredictRecordAudits")
   withdrawalRequest  WithdrawalRequest? @relation("PredictWithdrawalRequests")
 
-  @@unique([detailedFundNeedId, year, month]) // 新增约束：同一资金需求明细在同一年月只能有一条记录
-  @@unique([subProjectId, fundTypeId, departmentId, year, month]) // 保留原有约束
-  @@index([detailedFundNeedId]) // 新增索引
-  @@index([subProjectId])
-  @@index([fundTypeId])
-  @@index([departmentId])
+  @@unique([detailedFundNeedId, year, month]) // 同一资金需求明细在同一年月只能有一条记录
+  @@index([detailedFundNeedId])
   @@index([year])
   @@index([month])
   @@index([status])
@@ -256,10 +234,7 @@ model UserDepartment {
 // 实际支付填报人记录表
 model ActualUserRecord {
   id                 String             @id @default(cuid())
-  detailedFundNeedId String // 新增：关联到资金需求明细
-  subProjectId       String
-  fundTypeId         String
-  departmentId       String // 新增：关联部门ID
+  detailedFundNeedId String // 关联到资金需求明细
   year               Int
   month              Int
   amount             Float?
@@ -270,20 +245,13 @@ model ActualUserRecord {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
-  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType           FundType           @relation(fields: [fundTypeId], references: [id])
-  department         Department         @relation(fields: [departmentId], references: [id]) // 新增
   user               User?              @relation("UserActualRecords", fields: [submittedBy], references: [id])
   auditLogs          RecordAudit[]      @relation("ActualUserRecordAudits")
   withdrawalRequest  WithdrawalRequest? @relation("ActualUserWithdrawalRequests")
   financeRecord      ActualFinRecord?   @relation("UserToFinanceRecord")
 
-  @@unique([detailedFundNeedId, year, month]) // 新增约束
-  @@unique([subProjectId, fundTypeId, departmentId, year, month]) // 修改唯一约束
-  @@index([detailedFundNeedId]) // 新增索引
-  @@index([departmentId]) // 新增索引
-  @@index([subProjectId])
-  @@index([fundTypeId])
+  @@unique([detailedFundNeedId, year, month]) // 同一资金需求明细在同一年月只能有一条记录
+  @@index([detailedFundNeedId])
   @@index([year])
   @@index([month])
   @@index([status])
@@ -294,9 +262,7 @@ model ActualUserRecord {
 // 实际支付财务填报记录表
 model ActualFinRecord {
   id                 String             @id @default(cuid())
-  detailedFundNeedId String // 新增：关联到资金需求明细
-  subProjectId       String
-  fundTypeId         String // 添加资金需求类型ID字段
+  detailedFundNeedId String // 关联到资金需求明细
   year               Int
   month              Int
   amount             Float? // 财务填报的实际金额
@@ -308,22 +274,15 @@ model ActualFinRecord {
   updatedAt          DateTime           @updatedAt
   userRecordId       String?            @unique // 关联到填报人记录
   detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
-  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType           FundType           @relation(fields: [fundTypeId], references: [id]) // 添加与FundType的关系
   user               User?              @relation("UserActualFinRecords", fields: [submittedBy], references: [id])
   userRecord         ActualUserRecord?  @relation("UserToFinanceRecord", fields: [userRecordId], references: [id])
   auditLogs          RecordAudit[]      @relation("ActualFinRecordAudits")
   withdrawalRequest  WithdrawalRequest? @relation("ActualFinWithdrawalRequests")
   // 关联到审核记录
   auditRecord        AuditRecord?       @relation("FinanceToAuditRecord")
-  Department         Department?        @relation(fields: [departmentId], references: [id])
-  departmentId       String?
 
-  @@unique([detailedFundNeedId, year, month]) // 新增约束
-  @@unique([subProjectId, fundTypeId, year, month]) // 更新唯一约束
-  @@index([detailedFundNeedId]) // 新增索引
-  @@index([subProjectId])
-  @@index([fundTypeId]) // 添加索引
+  @@unique([detailedFundNeedId, year, month]) // 同一资金需求明细在同一年月只能有一条记录
+  @@index([detailedFundNeedId])
   @@index([year])
   @@index([month])
   @@index([status])
@@ -335,9 +294,7 @@ model ActualFinRecord {
 // 审核财务最终审核记录表
 model AuditRecord {
   id                 String             @id @default(cuid())
-  detailedFundNeedId String // 新增：关联到资金需求明细
-  subProjectId       String
-  fundTypeId         String // 添加资金需求类型ID字段
+  detailedFundNeedId String // 关联到资金需求明细
   year               Int
   month              Int
   amount             Float? // 审核后的最终金额
@@ -349,20 +306,13 @@ model AuditRecord {
   updatedAt          DateTime           @updatedAt
   financeRecordId    String?            @unique // 关联到财务填报记录
   detailedFundNeed   DetailedFundNeed   @relation(fields: [detailedFundNeedId], references: [id])
-  subProject         SubProject         @relation(fields: [subProjectId], references: [id])
-  fundType           FundType           @relation(fields: [fundTypeId], references: [id]) // 添加与FundType的关系
   user               User?              @relation("UserAuditRecords", fields: [submittedBy], references: [id])
   financeRecord      ActualFinRecord?   @relation("FinanceToAuditRecord", fields: [financeRecordId], references: [id])
   auditLogs          RecordAudit[]      @relation("AuditRecordAudits")
   withdrawalRequest  WithdrawalRequest? @relation("AuditWithdrawalRequests")
-  Department         Department?        @relation(fields: [departmentId], references: [id])
-  departmentId       String?
 
-  @@unique([detailedFundNeedId, year, month]) // 新增约束
-  @@unique([subProjectId, fundTypeId, year, month]) // 更新唯一约束
-  @@index([detailedFundNeedId]) // 新增索引
-  @@index([subProjectId])
-  @@index([fundTypeId]) // 添加索引
+  @@unique([detailedFundNeedId, year, month]) // 同一资金需求明细在同一年月只能有一条记录
+  @@index([detailedFundNeedId])
   @@index([year])
   @@index([month])
   @@index([status])

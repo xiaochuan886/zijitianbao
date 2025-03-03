@@ -21,42 +21,43 @@ export interface ProjectFilters {
 // 预测记录类型
 export interface PredictRecord {
   id: string;
-  subProjectId: string;
-  fundTypeId: string;
+  detailedFundNeedId: string;
   year: number;
   month: number;
   amount: number | null;
   status: RecordStatus;
   remark?: string;
-  submittedBy: string;
-  submittedAt: Date;
+  submittedBy: string | null;
+  submittedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  subProject: {
+  detailedFundNeed: {
     id: string;
-    name: string;
-    projectId: string;
-    project: {
+    subProject: {
       id: string;
       name: string;
-      organizations: {
+      project: {
         id: string;
         name: string;
-        code: string;
-      }[];
-      departments: {
-        id: string;
-        name: string;
-      }[];
+        category?: {
+          id: string;
+          name: string;
+        };
+      };
     };
-    fundTypes: {
+    department: {
       id: string;
       name: string;
-    }[];
-  };
-  fundType: {
-    id: string;
-    name: string;
+    };
+    organization: {
+      id: string;
+      name: string;
+      code: string;
+    };
+    fundType: {
+      id: string;
+      name: string;
+    };
   };
 }
 
@@ -470,6 +471,7 @@ export function useFundingPredictV2(
     id?: string;
     subProjectId: string;
     fundTypeId: string;
+    departmentId: string;
     year: number;
     month: number;
     amount: number | null;
@@ -661,6 +663,7 @@ export function useFundingPredictV2(
     fundTypes,
     currentMonth,
     setFilters,
+    setPagination,
     handleFilterChange,
     handlePageChange,
     handleReset,

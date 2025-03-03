@@ -74,7 +74,7 @@ const navigation = [
     items: [
       {
         title: "资金需求预测",
-        href: "/funding/predict",
+        href: "/funding/predict-v2",
         icon: FileSpreadsheet,
       },
       {

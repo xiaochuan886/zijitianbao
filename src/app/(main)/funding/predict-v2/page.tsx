@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Upload,
-  Building2
+  Building2,
+  FileEdit,
+  Eye,
+  XCircle
 } from "lucide-react"
 import {
   Select,
@@ -69,6 +72,138 @@ function SimplePageHeader({ title, description }: { title: string; description?:
       <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
       {description && <p className="text-muted-foreground">{description}</p>}
     </div>
+  )
+}
+
+// 自定义组件，创建填报记录对话框
+function CreateRecordsDialog({ 
+  open, 
+  setOpen, 
+  onSuccess 
+}: { 
+  open: boolean; 
+  setOpen: (open: boolean) => void; 
+  onSuccess: () => void; 
+}) {
+  const { toast } = useToast()
+  const [submitting, setSubmitting] = useState(false)
+  const [year, setYear] = useState(new Date().getFullYear())
+  const [month, setMonth] = useState(new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2)
+  
+  const handleSubmit = async () => {
+    try {
+      setSubmitting(true)
+      
+      // 调用API创建填报记录
+      const response = await fetch('/api/funding/predict-v2/create-records', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          year,
+          month
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || '创建填报记录失败')
+      }
+      
+      const result = await response.json()
+      
+      toast({
+        title: '创建成功',
+        description: result.message || `成功创建 ${result.created} 条填报记录`,
+      })
+      
+      setOpen(false)
+      onSuccess()
+    } catch (error) {
+      console.error('创建填报记录失败', error)
+      toast({
+        title: '创建失败',
+        description: error instanceof Error ? error.message : '请稍后重试',
+        variant: 'destructive',
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>创建填报记录</DialogTitle>
+          <DialogDescription>
+            根据资金需求明细创建填报记录
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="year" className="text-sm font-medium">年份</label>
+              <Select
+                value={year.toString()}
+                onValueChange={(value) => setYear(parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择年份" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...Array(5)].map((_, i) => {
+                    const yearValue = new Date().getFullYear() + i
+                    return (
+                      <SelectItem key={yearValue} value={yearValue.toString()}>
+                        {yearValue}年
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <label htmlFor="month" className="text-sm font-medium">月份</label>
+              <Select
+                value={month.toString()}
+                onValueChange={(value) => setMonth(parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择月份" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...Array(12)].map((_, i) => {
+                    const monthValue = i + 1
+                    return (
+                      <SelectItem key={monthValue} value={monthValue.toString()}>
+                        {monthValue}月
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <p className="text-sm text-muted-foreground">
+            将根据资金需求明细表和选择的年月创建填报记录。如果记录已存在，将不会重复创建。
+          </p>
+        </div>
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            取消
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? '创建中...' : '创建'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -133,8 +268,13 @@ export default function PredictV2Page() {
   const [withdrawalRecord, setWithdrawalRecord] = useState<string | null>(null)
   const [withdrawalReason, setWithdrawalReason] = useState("")
   const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] = useState(false)
+  const [isCreateRecordsDialogOpen, setIsCreateRecordsDialogOpen] = useState(false)
+  const [submitRecord, setSubmitRecord] = useState<string | null>(null)
+  const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false)
+  const [isBatchSubmitDialogOpen, setIsBatchSubmitDialogOpen] = useState(false)
   const { user, isLoading: userLoading } = useCurrentUser()
   const isAdmin = user?.role === Role.ADMIN
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // 使用新的预测填报钩子
   const {
@@ -142,6 +282,7 @@ export default function PredictV2Page() {
     records,
     filters,
     pagination,
+    setPagination,
     organizations,
     departments,
     projectCategories,
@@ -255,7 +396,7 @@ export default function PredictV2Page() {
   }, [selectedRecords, records, router, toast])
 
   // 处理批量提交
-  const handleBatchSubmit = useCallback(() => {
+  const handleBatchSubmitClick = useCallback(() => {
     if (selectedRecords.size === 0) {
       toast({
         title: "提示",
@@ -281,12 +422,52 @@ export default function PredictV2Page() {
       return
     }
     
-    // TODO: 实现批量提交功能
-    toast({
-      title: "功能开发中",
-      description: "批量提交功能正在开发中",
-    })
+    // 打开确认对话框
+    setIsBatchSubmitDialogOpen(true)
   }, [selectedRecords, records, toast])
+  
+  const handleBatchSubmit = useCallback(async () => {
+    try {
+      // 准备要提交的记录
+      const recordsToSubmit = Array.from(selectedRecords).map(id => ({ id }))
+      
+      // 调用API提交记录
+      const response = await fetch('/api/funding/predict-v2/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ records: recordsToSubmit })
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || '批量提交失败')
+      }
+      
+      const result = await response.json()
+      
+      toast({
+        title: "提交成功",
+        description: result.message || `成功提交${result.count}条记录`,
+      })
+      
+      // 刷新记录列表
+      fetchRecords(true)
+      
+      // 关闭对话框
+      setIsBatchSubmitDialogOpen(false)
+      // 清空选中记录
+      setSelectedRecords(new Set())
+    } catch (error) {
+      console.error("批量提交失败", error)
+      toast({
+        title: "提交失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive"
+      })
+    }
+  }, [selectedRecords, toast, fetchRecords])
 
   // 处理申请撤回
   const handleWithdrawalRequest = useCallback(async () => {
@@ -316,7 +497,7 @@ export default function PredictV2Page() {
 
   // 跳转到提交历史页面
   const navigateToHistory = useCallback(() => {
-    router.push("/funding/predict/history")
+    router.push("/funding/predict-v2/history")
   }, [router])
 
   // 创建项目-组织关联
@@ -381,6 +562,55 @@ export default function PredictV2Page() {
     }
   }, [toast, fetchRecords, filters, organizations]);
 
+  // 打开提交确认对话框
+  const openSubmitDialog = useCallback((recordId: string) => {
+    setSubmitRecord(recordId)
+    setIsSubmitDialogOpen(true)
+  }, [])
+
+  // 处理单条记录提交
+  const handleSingleSubmit = useCallback(async () => {
+    if (!submitRecord) return
+    
+    try {
+      // 调用API提交预测
+      const response = await fetch(`/api/funding/predict-v2/submit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: [{ id: submitRecord }]
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "提交失败");
+      }
+      
+      // 显示成功提示
+      toast({
+        title: "提交成功",
+        description: "记录已成功提交",
+      });
+      
+      // 刷新页面
+      fetchRecords(true);
+      
+      // 关闭对话框
+      setIsSubmitDialogOpen(false)
+      setSubmitRecord(null)
+    } catch (error) {
+      console.error("提交失败", error);
+      toast({
+        title: "提交失败",
+        description: error instanceof Error ? error.message : "提交失败",
+        variant: "destructive"
+      });
+    }
+  }, [submitRecord, toast, fetchRecords])
+
   // 渲染记录表格
   const renderRecordsTable = useCallback((recordsToRender: typeof records) => {
     const isAllSelected = recordsToRender.length > 0 && 
@@ -401,7 +631,7 @@ export default function PredictV2Page() {
               </TableHead>
               <TableHead>项目</TableHead>
               <TableHead>子项目</TableHead>
-              <TableHead>资金类型</TableHead>
+              <TableHead>资金需求类型</TableHead>
               <TableHead>年月</TableHead>
               <TableHead>金额</TableHead>
               <TableHead>状态</TableHead>
@@ -427,9 +657,22 @@ export default function PredictV2Page() {
                       onChange={() => handleRecordSelection(record.id)}
                     />
                   </TableCell>
-                  <TableCell>{record.subProject.project.name}</TableCell>
-                  <TableCell>{record.subProject.name}</TableCell>
-                  <TableCell>{record.fundType.name}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">
+                        {record.detailedFundNeed?.organization?.name || '未知机构'} - 
+                        {record.detailedFundNeed?.department?.name || '未知部门'} - 
+                        {record.detailedFundNeed?.subProject?.project?.category?.name || '未知类型'}
+                      </span>
+                      <span className="font-medium">
+                        {record.detailedFundNeed?.subProject?.project?.name || '未知项目'}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {record.detailedFundNeed?.subProject?.name || '未知子项目'}
+                  </TableCell>
+                  <TableCell>{record.detailedFundNeed?.fundType?.name || '-'}</TableCell>
                   <TableCell>{`${record.year}年${record.month}月`}</TableCell>
                   <TableCell>
                     {record.amount !== null 
@@ -437,38 +680,120 @@ export default function PredictV2Page() {
                       : '-'}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusMap[record.status]?.variant || "default"}>
-                      {statusMap[record.status]?.label || record.status}
+                    <Badge variant={statusMap[record.status.toLowerCase()]?.variant || "default"}>
+                      {statusMap[record.status.toLowerCase()]?.label || record.status}
                     </Badge>
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate" title={record.remark || ""}>
                     {record.remark || "-"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {record.status === RecordStatus.DRAFT || 
-                     record.status === ExtendedRecordStatus.REJECTED || 
-                     record.status === ExtendedRecordStatus.UNFILLED ? (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => router.push(`/funding/predict-v2/edit?recordIds[]=${record.id}`)}
-                      >
-                        编辑
-                      </Button>
-                    ) : record.status === RecordStatus.SUBMITTED ? (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => openWithdrawalDialog(record.id)}
-                      >
-                        申请撤回
-                      </Button>
+                    {record.status.toLowerCase() === RecordStatus.DRAFT.toLowerCase() || 
+                     record.status.toLowerCase() === ExtendedRecordStatus.REJECTED.toLowerCase() || 
+                     record.status.toLowerCase() === ExtendedRecordStatus.UNFILLED.toLowerCase() ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => router.push(`/funding/predict-v2/edit?recordIds[]=${record.id}`)}
+                          className="h-8 px-2 py-0"
+                        >
+                          <FileEdit className="h-4 w-4 mr-1" />
+                          填报
+                        </Button>
+                        {record.status.toLowerCase() === RecordStatus.DRAFT.toLowerCase() && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openSubmitDialog(record.id)}
+                            className="h-8 px-2 py-0"
+                          >
+                            <Upload className="h-4 w-4 mr-1" />
+                            提交
+                          </Button>
+                        )}
+                      </div>
+                    ) : record.status.toLowerCase() === RecordStatus.SUBMITTED.toLowerCase() ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
+                          className="h-8 px-2 py-0"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          查看
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => openWithdrawalDialog(record.id)}
+                          className="h-8 px-2 py-0"
+                        >
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          撤回
+                        </Button>
+                      </div>
+                    ) : record.status.toLowerCase() === RecordStatus.PENDING_WITHDRAWAL.toLowerCase() ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
+                          className="h-8 px-2 py-0"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          查看
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              // 调用API取消撤回
+                              const response = await fetch(`/api/funding/predict-v2/cancel-withdrawal/${record.id}`, {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                }
+                              });
+                              
+                              if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(errorData.error || "取消撤回失败");
+                              }
+                              
+                              // 显示成功提示
+                              toast({
+                                title: "取消撤回成功",
+                                description: "已取消撤回申请",
+                              });
+                              
+                              // 刷新页面
+                              fetchRecords(true);
+                            } catch (error) {
+                              console.error("取消撤回失败", error);
+                              toast({
+                                title: "取消撤回失败",
+                                description: error instanceof Error ? error.message : "取消撤回失败",
+                                variant: "destructive"
+                              });
+                            }
+                          }}
+                          className="h-8 px-2 py-0"
+                        >
+                          <XCircle className="h-4 w-4 mr-1" />
+                          取消撤回
+                        </Button>
+                      </div>
                     ) : (
                       <Button 
                         variant="outline" 
                         size="sm"
                         onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
+                        className="h-8 px-2 py-0"
                       >
+                        <Eye className="h-4 w-4 mr-1" />
                         查看
                       </Button>
                     )}
@@ -480,7 +805,7 @@ export default function PredictV2Page() {
         </Table>
       </div>
     )
-  }, [selectedRecords, handleRecordSelection, handleSelectAll, router, openWithdrawalDialog])
+  }, [selectedRecords, handleRecordSelection, handleSelectAll, router, openWithdrawalDialog, openSubmitDialog])
 
   // 渲染分页控件
   const renderPagination = useCallback(() => {
@@ -527,7 +852,19 @@ export default function PredictV2Page() {
           <Select
             value={pagination.pageSize.toString()}
             onValueChange={(value) => {
-              // TODO: 实现每页显示数量变化
+              // 更新每页显示数量
+              const newPageSize = parseInt(value);
+              setPagination((prev: typeof pagination) => ({ ...prev, pageSize: newPageSize, page: 1 }));
+              
+              // 取消之前的请求
+              if (fetchTimeoutRef.current) {
+                clearTimeout(fetchTimeoutRef.current);
+              }
+              
+              // 设置新的延迟请求
+              fetchTimeoutRef.current = setTimeout(() => {
+                fetchRecords(true);
+              }, 300);
             }}
           >
             <SelectTrigger className="w-[100px]">
@@ -547,10 +884,28 @@ export default function PredictV2Page() {
 
   return (
     <div className="space-y-4">
-      <SimplePageHeader 
-        title="资金需求预测填报 V2" 
-        description={`当前填报月份: ${currentMonth.year}年${currentMonth.month}月`}
-      />
+      <div className="flex justify-between items-center mb-4">
+        <SimplePageHeader 
+          title="资金需求预测填报 V2" 
+          description={`当前填报月份: ${currentMonth.label}`} 
+        />
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsCreateRecordsDialogOpen(true)}
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            创建填报记录
+          </Button>
+          <Button
+            variant="outline"
+            onClick={navigateToHistory}
+          >
+            <HistoryIcon className="h-4 w-4 mr-2" />
+            提交历史
+          </Button>
+        </div>
+      </div>
       
       <SimpleFilterCard>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -736,12 +1091,6 @@ export default function PredictV2Page() {
         </div>
         
         <div className="flex justify-end space-x-2 mt-4">
-          {isAdmin && (
-            <Button variant="outline" onClick={handleCreateProjectOrgLinks}>
-              <Building2 className="h-4 w-4 mr-2" />
-              修复项目-组织关联
-            </Button>
-          )}
           <Button variant="outline" onClick={handleReset}>
             <RotateCcw className="h-4 w-4 mr-2" />
             重置
@@ -758,18 +1107,28 @@ export default function PredictV2Page() {
           <Tabs defaultValue="pending" value={activeTab} onValueChange={setActiveTab}>
             <div className="flex justify-between items-center">
               <TabsList>
-                <TabsTrigger value="pending">待处理</TabsTrigger>
-                <TabsTrigger value="processed">已处理</TabsTrigger>
+                <TabsTrigger value="pending">
+                  待处理
+                  {pendingRecords.length > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {pagination.total > 0 && activeTab === "pending" ? pagination.total : pendingRecords.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="processed">
+                  已处理
+                  {processedRecords.length > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {pagination.total > 0 && activeTab === "processed" ? pagination.total : processedRecords.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
               </TabsList>
               
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => fetchRecords(true)}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   刷新
-                </Button>
-                <Button variant="outline" size="sm" onClick={navigateToHistory}>
-                  <HistoryIcon className="h-4 w-4 mr-2" />
-                  提交历史
                 </Button>
               </div>
             </div>
@@ -779,7 +1138,7 @@ export default function PredictV2Page() {
                 <CardTitle>待处理记录</CardTitle>
                 <ActionButtonsGroup
                   onEdit={handleBatchEdit}
-                  onSubmit={handleBatchSubmit}
+                  onSubmit={handleBatchSubmitClick}
                   editDisabled={selectedRecords.size === 0}
                   submitDisabled={selectedRecords.size === 0}
                 />
@@ -819,37 +1178,104 @@ export default function PredictV2Page() {
         </CardContent>
       </Card>
       
-      {/* 撤回申请对话框 */}
+      {/* 批量提交确认对话框 */}
+      <Dialog open={isBatchSubmitDialogOpen} onOpenChange={setIsBatchSubmitDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认批量提交</DialogTitle>
+            <DialogDescription>
+              提交后记录将不能再修改。确定要提交选中的 {selectedRecords.size} 条记录吗？
+            </DialogDescription>
+          </DialogHeader>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsBatchSubmitDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleBatchSubmit}
+            >
+              确认提交
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* 提交确认对话框 */}
+      <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认提交</DialogTitle>
+            <DialogDescription>
+              提交后记录将不能再修改。确定要提交吗？
+            </DialogDescription>
+          </DialogHeader>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsSubmitDialogOpen(false)
+                setSubmitRecord(null)
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleSingleSubmit}
+            >
+              确认提交
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* 撤回对话框 */}
       <Dialog open={isWithdrawalDialogOpen} onOpenChange={setIsWithdrawalDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>申请撤回</DialogTitle>
             <DialogDescription>
-              请填写撤回原因，管理员审核通过后将允许重新编辑该记录。
+              请填写撤回原因
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">撤回原因</label>
-              <Textarea
-                placeholder="请填写撤回原因..."
-                value={withdrawalReason}
-                onChange={(e) => setWithdrawalReason(e.target.value)}
-              />
-            </div>
+            <Textarea
+              placeholder="请输入撤回原因"
+              value={withdrawalReason}
+              onChange={(e) => setWithdrawalReason(e.target.value)}
+            />
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsWithdrawalDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsWithdrawalDialogOpen(false)
+                setWithdrawalReason("")
+              }}
+            >
               取消
             </Button>
-            <Button onClick={handleWithdrawalRequest}>
-              提交申请
+            <Button
+              onClick={handleWithdrawalRequest}
+            >
+              提交
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* 创建填报记录对话框 */}
+      <CreateRecordsDialog
+        open={isCreateRecordsDialogOpen}
+        setOpen={setIsCreateRecordsDialogOpen}
+        onSuccess={() => fetchRecords(true)}
+      />
     </div>
   )
 } 

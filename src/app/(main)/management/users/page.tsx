@@ -11,10 +11,12 @@ import { Role } from "@/lib/enums"
 import * as z from "zod"
 import { createUserSchema, editUserSchema } from "./user-form"
 import { Button } from "@/components/ui/button"
-import { PlusCircle, Users } from "lucide-react"
+import { PlusCircle, Users, Filter, X, Search } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export interface User {
   id: string
@@ -54,9 +56,20 @@ interface UserListResponse {
 type CreateUserFormValues = z.infer<typeof createUserSchema>
 type EditUserFormValues = z.infer<typeof editUserSchema>
 
+// 角色名称映射
+const roleLabels: Record<Role, string> = {
+  ADMIN: "系统管理员",
+  REPORTER: "填报人",
+  FINANCE: "财务人员",
+  AUDITOR: "审核人员",
+  OBSERVER: "观察者"
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [roleFilter, setRoleFilter] = useState<Role | "ALL">("ALL")
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL")
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState({
     page: 1,
@@ -75,6 +88,7 @@ export default function UsersPage() {
     activeUsers: 0,
     adminUsers: 0
   })
+  const [showFilters, setShowFilters] = useState(false)
 
   // 加载用户数据
   const loadUsers = async () => {
@@ -92,7 +106,23 @@ export default function UsersPage() {
       
       if (response && response.data && response.data.users) {
         const items = response.data.users
-        setUsers(items)
+        
+        // 应用前端筛选
+        let filteredItems = [...items]
+        
+        // 按角色筛选
+        if (roleFilter !== "ALL") {
+          filteredItems = filteredItems.filter(user => user.role === roleFilter)
+        }
+        
+        // 按状态筛选
+        if (activeFilter === "ACTIVE") {
+          filteredItems = filteredItems.filter(user => user.active)
+        } else if (activeFilter === "INACTIVE") {
+          filteredItems = filteredItems.filter(user => !user.active)
+        }
+        
+        setUsers(filteredItems)
         setPagination(response.data.pagination)
         
         // 计算基础统计数据
@@ -123,6 +153,11 @@ export default function UsersPage() {
   useEffect(() => {
     loadUsers()
   }, [pagination.page, pagination.pageSize, searchTerm])
+  
+  // 当筛选条件变化时，重新应用筛选
+  useEffect(() => {
+    loadUsers()
+  }, [roleFilter, activeFilter])
 
   // 处理添加用户
   const handleAddUser = async (userData: CreateUserFormValues) => {
@@ -254,6 +289,16 @@ export default function UsersPage() {
     setSelectedUser(null)
     setUserDialogOpen(true)
   }
+  
+  // 清除所有筛选条件
+  const clearFilters = () => {
+    setRoleFilter("ALL")
+    setActiveFilter("ALL")
+    setSearchTerm("")
+  }
+
+  // 检查是否有活跃的筛选条件
+  const hasActiveFilters = roleFilter !== "ALL" || activeFilter !== "ALL" || searchTerm.trim() !== ""
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -345,13 +390,79 @@ export default function UsersPage() {
       </div>
 
       {/* 搜索区域 */}
-      <div className="flex items-center">
-        <Input
-          placeholder="搜索用户..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-xs"
-        />
+      <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+        <div className="flex items-center gap-2 flex-1">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="搜索用户..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setShowFilters(!showFilters)}
+            className={showFilters ? "bg-accent" : ""}
+          >
+            <Filter className="h-4 w-4" />
+          </Button>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-8 gap-1 text-xs"
+            >
+              <X className="h-3 w-3" /> 清除筛选
+            </Button>
+          )}
+        </div>
+
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">角色:</span>
+              <Select
+                value={roleFilter}
+                onValueChange={(value) => setRoleFilter(value as Role | "ALL")}
+              >
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue placeholder="选择角色" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">全部角色</SelectItem>
+                  {Object.entries(roleLabels).map(([role, label]) => (
+                    <SelectItem key={role} value={role}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm">状态:</span>
+              <Select
+                value={activeFilter}
+                onValueChange={(value) => 
+                  setActiveFilter(value as "ALL" | "ACTIVE" | "INACTIVE")
+                }
+              >
+                <SelectTrigger className="w-[120px] h-8">
+                  <SelectValue placeholder="选择状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">全部</SelectItem>
+                  <SelectItem value="ACTIVE">启用</SelectItem>
+                  <SelectItem value="INACTIVE">禁用</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 数据表格 */}

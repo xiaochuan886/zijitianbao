@@ -21,262 +21,212 @@ const withdrawalRequestSchema = z.object({
   test: z.boolean().optional(),
 });
 
-// 验证查询参数
-const queryParamsSchema = z.object({
-  year: z.string().optional(),
-  month: z.string().optional(),
-  projectId: z.string().optional(),
-  organizationId: z.string().optional(),
-  departmentId: z.string().optional(),
-  projectCategoryId: z.string().optional(),
+// 查询参数验证
+const querySchema = z.object({
+  year: z.coerce.number().optional(),
+  month: z.coerce.number().optional(),
   subProjectId: z.string().optional(),
+  projectId: z.string().optional(),
+  projectCategoryId: z.string().optional(),
+  departmentId: z.string().optional(),
+  organizationId: z.string().optional(),
   fundTypeId: z.string().optional(),
-  status: z.string().optional(),
-  page: z.string().transform(val => parseInt(val) || 1).optional(),
-  pageSize: z.string().transform(val => parseInt(val) || 10).optional(),
+  status: z.enum(["unfilled", "filled", "submitted", "approved", "rejected", "all"]).optional().default("all"),
+  page: z.coerce.number().optional().default(1),
+  pageSize: z.coerce.number().optional().default(10),
+  sortBy: z.string().optional().default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
 });
 
 export async function GET(request: NextRequest) {
   try {
-    // 获取用户会话
+    // 获取会话信息
     const session = await getServerSession(authOptions);
-    
-    // 临时解决方案：即使没有会话也继续执行，不返回401错误
-    let userId = "temp-user-id";
-    let isAdmin = false;
-    
-    if (session && session.user) {
-      userId = session.user.id;
-      // 确定用户是否为管理员
-      isAdmin = session.user.role === Role.ADMIN;
-      console.log(`当前用户: ${userId}, 角色: ${session.user.role}, 是否管理员: ${isAdmin}`);
+    if (!session) {
+      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
     // 解析查询参数
-    const searchParams = request.nextUrl.searchParams;
-    const queryResult = queryParamsSchema.safeParse(Object.fromEntries(searchParams.entries()));
-    
-    if (!queryResult.success) {
-      return NextResponse.json({ 
-        error: "查询参数格式错误", 
-        details: queryResult.error.format() 
-      }, { status: 400 });
+    const { searchParams } = new URL(request.url);
+    const validatedParams = querySchema.safeParse(Object.fromEntries(searchParams.entries()));
+
+    if (!validatedParams.success) {
+      return NextResponse.json({ error: "无效的查询参数", details: validatedParams.error.format() }, { status: 400 });
     }
 
-    const { 
-      year, 
-      month, 
-      projectId, 
-      organizationId, 
-      departmentId,
-      projectCategoryId,
-      subProjectId,
-      fundTypeId, 
-      status, 
-      page = 1, 
-      pageSize = 10 
-    } = queryResult.data;
+    const params = validatedParams.data;
 
-    // 构建项目查询条件
-    const projectWhere: any = {
-      status: "ACTIVE"
+    // 确保提供了年份和月份
+    if (!params.year || !params.month) {
+      return NextResponse.json({ error: "必须提供年份和月份参数" }, { status: 400 });
+    }
+
+    // 构建DetailedFundNeed查询条件
+    const detailedFundNeedCondition: any = {
+      // 只查询有效的资金需求
+      isActive: true
     };
 
-    // 如果有项目ID，直接查询该项目
-    if (projectId) {
-      projectWhere.id = projectId;
+    // 添加过滤条件
+    if (params.subProjectId) {
+      detailedFundNeedCondition.subProjectId = params.subProjectId;
     }
 
-    // 如果有项目分类ID，筛选该分类下的项目
-    if (projectCategoryId) {
-      console.log(`按项目分类筛选: ${projectCategoryId}`);
-      projectWhere.categoryId = projectCategoryId;
+    if (params.projectId) {
+      if (!detailedFundNeedCondition.subProject) {
+        detailedFundNeedCondition.subProject = {};
+      }
+      if (!detailedFundNeedCondition.subProject.project) {
+        detailedFundNeedCondition.subProject.project = {};
+      }
+      detailedFundNeedCondition.subProject.project.id = params.projectId;
     }
 
-    // 如果有组织ID，查询该组织下的项目
-    if (organizationId) {
-      console.log(`按组织筛选项目: ${organizationId}`);
-      projectWhere.organizations = {
-        some: { id: organizationId }
-      };
+    if (params.projectCategoryId) {
+      if (!detailedFundNeedCondition.subProject) {
+        detailedFundNeedCondition.subProject = {};
+      }
+      if (!detailedFundNeedCondition.subProject.project) {
+        detailedFundNeedCondition.subProject.project = {};
+      }
+      detailedFundNeedCondition.subProject.project.categoryId = params.projectCategoryId;
     }
-    
-    // 如果有部门ID，查询该部门下的项目
-    if (departmentId) {
-      console.log(`按部门筛选项目: ${departmentId}`);
-      projectWhere.departments = {
-        some: { id: departmentId }
-      };
-    }
-    
-    // 打印查询条件
-    console.log('项目查询条件:', JSON.stringify(projectWhere, null, 2));
 
-    // 获取所有符合条件的项目及其子项目和资金类型
-    let projects = await prisma.project.findMany({
-      where: projectWhere,
+    if (params.departmentId) {
+      if (!detailedFundNeedCondition.department) {
+        detailedFundNeedCondition.department = {};
+      }
+      detailedFundNeedCondition.department.id = params.departmentId;
+    }
+
+    if (params.organizationId) {
+      if (!detailedFundNeedCondition.organization) {
+        detailedFundNeedCondition.organization = {};
+      }
+      detailedFundNeedCondition.organization.id = params.organizationId;
+    }
+
+    if (params.fundTypeId) {
+      if (!detailedFundNeedCondition.fundType) {
+        detailedFundNeedCondition.fundType = {};
+      }
+      detailedFundNeedCondition.fundType.id = params.fundTypeId;
+    }
+
+    // 查询DetailedFundNeed记录
+    const detailedFundNeeds = await prisma.detailedFundNeed.findMany({
+      where: detailedFundNeedCondition,
       include: {
-        category: true,
-        subProjects: {
+        subProject: {
           include: {
-            detailedFundNeeds: {
+            project: {
               include: {
-                department: true,
-                fundType: true,
-                organization: true
+                category: true
               }
             }
           }
-        }
+        },
+        department: true,
+        organization: true,
+        fundType: true
       }
     });
-    
-    console.log(`查询到 ${projects.length} 个项目`);
-    
-    // 如果没有找到项目但指定了组织ID，尝试检查组织是否存在
-    if (projects.length === 0 && organizationId) {
-      const organization = await prisma.organization.findUnique({
-        where: { id: organizationId }
-      });
-      
-      if (organization) {
-        console.log(`组织存在但未找到关联项目: ${organization.name}`);
-        
-        // 移除自动返回所有项目的逻辑，尊重用户筛选条件
-        console.log(`用户筛选了组织 '${organization.name}'，但未找到关联项目，返回空结果`);
-        
-        // 添加日志以查看关联表的情况
-        const projectOrganizations = await prisma.$queryRaw`
-          SELECT * FROM _ProjectOrganizations WHERE A = ${organizationId}
-        `;
-        console.log(`组织-项目关联记录数: ${Array.isArray(projectOrganizations) ? projectOrganizations.length : 0}`);
+
+    // 构建记录查询条件
+    const recordCondition: any = {
+      year: params.year,
+      month: params.month
+    };
+
+    // 添加过滤条件
+    if (params.subProjectId) {
+      recordCondition.detailedFundNeed = {
+        ...(recordCondition.detailedFundNeed || {}),
+        subProject: {
+          ...(recordCondition.detailedFundNeed?.subProject || {}),
+          id: params.subProjectId
+        }
+      };
+    }
+
+    if (params.departmentId) {
+      recordCondition.detailedFundNeed = {
+        ...(recordCondition.detailedFundNeed || {}),
+        department: {
+          id: params.departmentId
+        }
+      };
+    }
+
+    if (params.fundTypeId) {
+      recordCondition.detailedFundNeed = {
+        ...(recordCondition.detailedFundNeed || {}),
+        fundType: {
+          id: params.fundTypeId
+        }
+      };
+    }
+
+    if (params.organizationId) {
+      recordCondition.detailedFundNeed = {
+        ...(recordCondition.detailedFundNeed || {}),
+        organization: {
+          id: params.organizationId
+        }
+      };
+    }
+
+    if (params.projectId) {
+      recordCondition.detailedFundNeed = {
+        ...(recordCondition.detailedFundNeed || {}),
+        subProject: {
+          ...(recordCondition.detailedFundNeed?.subProject || {}),
+          project: {
+            id: params.projectId
+          }
+        }
+      };
+    }
+
+    if (params.projectCategoryId) {
+      recordCondition.detailedFundNeed = {
+        ...(recordCondition.detailedFundNeed || {}),
+        subProject: {
+          ...(recordCondition.detailedFundNeed?.subProject || {}),
+          project: {
+            ...(recordCondition.detailedFundNeed?.subProject?.project || {}),
+            categoryId: params.projectCategoryId
+          }
+        }
+      };
+    }
+
+    // 处理状态过滤
+    if (params.status !== "all") {
+      // 扩展状态处理
+      if (params.status === "unfilled") {
+        // 不使用in操作符，因为status是枚举类型
+        // 对于unfilled状态，我们只查询没有状态的记录
+        recordCondition.status = null;
+      } else if (params.status === "filled") {
+        recordCondition.status = RecordStatus.DRAFT;
+      } else if (params.status === "submitted") {
+        recordCondition.status = RecordStatus.SUBMITTED;
+      } else if (params.status === "approved" || params.status === "rejected") {
+        // 这些状态需要在内存中处理，不在数据库查询中筛选
       } else {
-        console.log(`未找到指定的组织: ${organizationId}`);
+        // 其他有效的枚举值直接使用
+        // 将字符串转换为RecordStatus枚举
+        const statusValue = params.status as string;
+        recordCondition.status = statusValue.toUpperCase() as any;
       }
     }
-    
-    // 如果子项目ID被指定，则过滤项目，只保留包含该子项目的项目
-    if (subProjectId && projects.length > 0) {
-      console.log(`按子项目ID筛选: ${subProjectId}`);
-      projects = projects.filter(project => 
-        project.subProjects.some(subProject => subProject.id === subProjectId)
-      );
-      console.log(`过滤后的项目数量: ${projects.length}`);
-    }
-    
-    if (projects.length > 0) {
-      // 获取第一个项目的所有关联机构（通过detailedFundNeeds）
-      const organizationNames = new Set<string>();
-      projects[0].subProjects.forEach(subProject => {
-        subProject.detailedFundNeeds.forEach(need => {
-          if (need.organization) {
-            organizationNames.add(need.organization.name);
-          }
-        });
-      });
-      
-      console.log('首个项目信息:', {
-        id: projects[0].id,
-        name: projects[0].name,
-        organizations: Array.from(organizationNames),
-        subProjects: projects[0].subProjects.length
-      });
-    } else {
-      console.log('未找到符合条件的项目');
-      
-      // 移除此处的管理员自动获取所有项目的逻辑
-      // 即使是管理员，也应该尊重筛选条件
-      console.log('尊重用户筛选条件，返回空结果');
-    }
 
-    // 获取所有子项目ID
-    const subProjectIds = projects.flatMap(p => 
-      p.subProjects.map(sp => sp.id)
-    );
-    
-    console.log(`找到 ${subProjectIds.length} 个子项目ID`);
-
-    // 查询已有的预测记录
-    const yearParam = year ? parseInt(year) : null;
-    const monthParam = month ? parseInt(month) : null;
-
-    let existingRecords: any[] = [];
-    if (yearParam && monthParam) {
-      // 处理状态筛选：
-      // 1. 标准状态：draft, submitted, pending_withdrawal 直接传递给 Prisma
-      // 2. 扩展状态：rejected, approved, unfilled 需要特殊处理
-      const statusCondition: any = {};
-      let useExtendedStatus = false;
-      
-      if (status) {
-        // 状态值转小写处理
-        const statusLower = status.toLowerCase();
-        console.log(`处理状态筛选: ${statusLower}`);
-        
-        // 判断是否为标准RecordStatus中的值
-        if (['draft', 'submitted', 'pending_withdrawal'].includes(statusLower)) {
-          // 重要修复：使用大写的枚举值，Prisma需要严格匹配枚举
-          if (statusLower === 'draft') {
-            statusCondition.status = RecordStatus.DRAFT;
-          } else if (statusLower === 'submitted') {
-            statusCondition.status = RecordStatus.SUBMITTED;
-          } else if (statusLower === 'pending_withdrawal') {
-            statusCondition.status = RecordStatus.PENDING_WITHDRAWAL;
-          }
-          console.log(`使用标准状态筛选: ${statusLower} => ${statusCondition.status}`);
-        } else {
-          // 标记这是扩展状态，后续需要内存处理
-          useExtendedStatus = true;
-          console.log(`识别到扩展状态: ${statusLower}, 将在内存中处理`);
-        }
-      }
-      
-      // 如果需要筛选资金类型
-      if (fundTypeId && fundTypeId !== 'all') {
-        console.log(`按资金类型筛选: ${fundTypeId}`);
-      }
-      
-      // 构建子项目ID条件
-      // 注意：如果子项目列表为空但是需要进行状态筛选，我们不设置子项目条件
-      // 这样可以确保管理员能看到所有状态的记录
-      const subProjectCondition = 
-        (subProjectIds.length > 0 && !isAdmin) || (subProjectIds.length > 0 && !status) ? 
-          (subProjectId && subProjectId !== 'all' ? { equals: subProjectId } : { in: subProjectIds }) :
-          undefined;
-      
-      // 构建资金类型条件
-      const fundTypeCondition = fundTypeId && fundTypeId !== 'all' && fundTypeId !== 'default'
-        ? { equals: fundTypeId }
-        : undefined;
-      
-      // 打印完整查询条件
-      console.log('记录查询条件:', {
-        subProjectId: subProjectCondition,
-        fundTypeId: fundTypeCondition,
-        year: yearParam,
-        month: monthParam,
-        status: statusCondition.status
-      });
-      
-      try {
-        // 构建查询条件
-        const queryConditions: any = {};
-        
-        // 仅当有有效的子项目ID条件时添加
-        if (subProjectCondition) {
-          queryConditions.subProjectId = subProjectCondition;
-        }
-        
-        // 添加其他条件
-        if (fundTypeCondition) queryConditions.fundTypeId = fundTypeCondition;
-        if (yearParam) queryConditions.year = yearParam;
-        if (monthParam) queryConditions.month = monthParam;
-        if (statusCondition.status) queryConditions.status = statusCondition.status;
-        
-        console.log('完整Prisma查询条件:', JSON.stringify(queryConditions, null, 2));
-        
-        existingRecords = await prisma.predictRecord.findMany({
-          where: queryConditions,
+    // 查询已存在的记录
+    const existingRecords = await prisma.predictRecord.findMany({
+      where: recordCondition,
+      include: {
+        detailedFundNeed: {
           include: {
             subProject: {
               include: {
@@ -284,320 +234,79 @@ export async function GET(request: NextRequest) {
                   include: {
                     category: true
                   }
-                },
-                detailedFundNeeds: {
-                  include: {
-                    department: true,
-                    fundType: true,
-                    organization: true
-                  }
                 }
               }
             },
-            fundType: true,
+            department: true,
+            organization: true,
+            fundType: true
           }
-        });
-        
-        console.log(`查询到 ${existingRecords.length} 条记录`);
-      } catch (error) {
-        console.error("查询记录时出错:", error);
-        // 继续执行，不抛出异常
-        existingRecords = [];
-      }
-      
-      // 如果是扩展状态，进行内存中的后处理筛选
-      if (useExtendedStatus && status) {
-        const statusLower = status.toLowerCase();
-        
-        // 对于"unfilled"扩展状态，实际上需要清空现有记录，稍后会重新生成
-        if (statusLower === 'unfilled') {
-          console.log('处理"未填写"状态，清空现有记录');
-          existingRecords = [];
-        } 
-        // 对于"approved"扩展状态，筛选出内容包含"已审核"的记录
-        else if (statusLower === 'approved') {
-          console.log('处理"已审核"状态，筛选包含"已审核"或"approved"的记录');
-          existingRecords = existingRecords.filter(r => 
-            r.remark && (r.remark.includes('已审核') || r.remark.toLowerCase().includes('approved'))
-          );
-          console.log(`筛选后剩余 ${existingRecords.length} 条记录`);
-        } 
-        // 对于"rejected"扩展状态，筛选出内容包含"已拒绝"的记录
-        else if (statusLower === 'rejected') {
-          console.log('处理"已拒绝"状态，筛选包含"已拒绝"或"rejected"的记录');
-          existingRecords = existingRecords.filter(r => 
-            r.remark && (r.remark.includes('已拒绝') || r.remark.toLowerCase().includes('rejected'))
-          );
-          console.log(`筛选后剩余 ${existingRecords.length} 条记录`);
         }
       }
-    }
+    });
 
-    // 按子项目ID和资金类型ID组织记录
-    const recordsMap = new Map<string, any>();
+    // 创建已存在记录的映射，用于快速查找
+    const existingRecordMap = new Map();
     existingRecords.forEach(record => {
-      const key = `${record.subProjectId}_${record.fundTypeId}`;
-      recordsMap.set(key, record);
+      const key = `${record.detailedFundNeedId}_${params.year}_${params.month}`;
+      existingRecordMap.set(key, record);
     });
 
-    // 构建完整的记录列表（包括未填写的记录）
-    let allRecords: any[] = [];
+    // 生成所有需要的记录
+    const allRecords = [];
 
-    // 为每个子项目和资金类型创建记录
-    projects.forEach(project => {
-      project.subProjects.forEach(subProject => {
-        // 如果指定了子项目ID，只处理匹配的子项目
-        if (subProjectId && subProjectId !== 'all' && subProject.id !== subProjectId) {
-          return;
-        }
-        
-        // 从detailedFundNeeds中提取唯一的资金类型
-        const fundTypes = Array.from(
-          new Map(
-            subProject.detailedFundNeeds.map(need => 
-              [need.fundType.id, need.fundType]
-            )
-          ).values()
-        );
-        
-        if (fundTypes.length > 0) {
-          // 为每个资金类型创建记录
-          fundTypes.forEach(fundType => {
-            // 如果指定了资金类型ID，只处理匹配的资金类型
-            if (fundTypeId && fundTypeId !== 'all' && fundType.id !== fundTypeId) {
-              return;
-            }
-            
-            const key = `${subProject.id}_${fundType.id}`;
-            const existingRecord = recordsMap.get(key);
-
-            if (existingRecord) {
-              // 使用已有记录
-              allRecords.push(existingRecord);
-            } else if (yearParam && monthParam) {
-              // 获取与该子项目和资金类型相关的部门和组织
-              const relatedDepartments = subProject.detailedFundNeeds
-                .filter(need => need.fundType.id === fundType.id)
-                .map(need => need.department);
-                
-              const relatedOrganizations = subProject.detailedFundNeeds
-                .filter(need => need.fundType.id === fundType.id)
-                .map(need => need.organization)
-                .filter(org => org !== null);
-              
-              // 创建未填写的记录
-              allRecords.push({
-                id: `temp_${key}_${yearParam}_${monthParam}`,
-                subProjectId: subProject.id,
-                fundTypeId: fundType.id,
-                year: yearParam,
-                month: monthParam,
-                amount: null,
-                status: "UNFILLED", // 特殊状态表示未填写
-                remark: null,
-                submittedBy: null,
-                submittedAt: null,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                subProject: {
-                  id: subProject.id,
-                  name: subProject.name,
-                  projectId: project.id,
-                  project: {
-                    id: project.id,
-                    name: project.name,
-                    // 使用从detailedFundNeeds中提取的组织和部门
-                    relatedOrganizations,
-                    relatedDepartments
-                  },
-                  // 不再使用fundTypes字段
-                  detailedFundNeeds: subProject.detailedFundNeeds
-                },
-                fundType: fundType
-              });
-            }
-          });
-        } else {
-          // 如果子项目没有关联的资金类型，创建一个默认记录
-          const defaultKey = `${subProject.id}_default`;
-          if (yearParam && monthParam) {
-            // 如果指定了资金类型且不是"default"，跳过
-            if (fundTypeId && fundTypeId !== 'all' && fundTypeId !== 'default') {
-              return;
-            }
-            
-            // 获取与该子项目相关的部门和组织
-            const relatedDepartments = subProject.detailedFundNeeds
-              .map(need => need.department);
-              
-            const relatedOrganizations = subProject.detailedFundNeeds
-              .map(need => need.organization)
-              .filter(org => org !== null);
-            
-            allRecords.push({
-              id: `temp_${defaultKey}_${yearParam}_${monthParam}`,
-              subProjectId: subProject.id,
-              fundTypeId: null,
-              year: yearParam,
-              month: monthParam,
-              amount: null,
-              status: "UNFILLED", // 特殊状态表示未填写
-              remark: null,
-              submittedBy: null,
-              submittedAt: null,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              subProject: {
-                id: subProject.id,
-                name: subProject.name,
-                projectId: project.id,
-                project: {
-                  id: project.id,
-                  name: project.name,
-                  // 使用从detailedFundNeeds中提取的组织和部门
-                  relatedOrganizations,
-                  relatedDepartments
-                },
-                // 使用detailedFundNeeds替代fundTypes
-                detailedFundNeeds: subProject.detailedFundNeeds
-              },
-              fundType: { id: "default", name: "未指定" }
-            });
-          }
-        }
-      });
-    });
-    
-    // 如果指定了特定状态，只返回符合该状态的记录
-    if (status && status.toLowerCase() !== 'all') {
-      const statusLower = status.toLowerCase();
-      console.log(`最终筛选状态 ${statusLower}, 当前记录数 ${allRecords.length}`);
+    // 基于DetailedFundNeed生成记录
+    for (const fundNeed of detailedFundNeeds) {
+      const key = `${fundNeed.id}_${params.year}_${params.month}`;
       
-      // 只保留符合状态条件的记录
-      if (statusLower === 'unfilled') {
-        allRecords = allRecords.filter(r => 
-          r.status.toLowerCase() === 'unfilled' || r.status.toLowerCase() === 'unfilled');
-      } else if (statusLower === 'draft') {
-        allRecords = allRecords.filter(r => 
-          r.status.toLowerCase() === 'draft' || r.status.toLowerCase() === RecordStatus.DRAFT.toLowerCase());
-      } else if (statusLower === 'submitted') {
-        allRecords = allRecords.filter(r => 
-          r.status.toLowerCase() === 'submitted' || r.status.toLowerCase() === RecordStatus.SUBMITTED.toLowerCase());
-      } else if (statusLower === 'pending_withdrawal') {
-        allRecords = allRecords.filter(r => 
-          r.status.toLowerCase() === 'pending_withdrawal' || r.status.toLowerCase() === RecordStatus.PENDING_WITHDRAWAL.toLowerCase());
-      } else if (statusLower === 'approved') {
-        allRecords = allRecords.filter(r => 
-          r.remark && (r.remark.includes('已审核') || r.remark.toLowerCase().includes('approved'))
-        );
-      } else if (statusLower === 'rejected') {
-        allRecords = allRecords.filter(r => 
-          r.remark && (r.remark.includes('已拒绝') || r.remark.toLowerCase().includes('rejected'))
-        );
-      }
-      
-      console.log(`状态筛选后的记录数 ${allRecords.length}`);
-    }
-    
-    // 如果筛选后记录为空但用户是管理员，考虑添加特殊处理
-    if (allRecords.length === 0 && isAdmin && status) {
-      console.log('管理员筛选记录为空，尝试更宽松的查询...');
-      
-      try {
-        // 对于管理员，仅使用年月和状态筛选，不考虑项目和组织限制
-        const adminQueryConditions: any = {
-          year: yearParam,
-          month: monthParam
+      // 检查是否已存在对应记录
+      if (existingRecordMap.has(key)) {
+        // 使用已存在的记录
+        allRecords.push(existingRecordMap.get(key));
+      } else {
+        // 创建新记录（未保存到数据库）
+        const newRecord = {
+          id: `temp_${fundNeed.id}_${params.year}_${params.month}`,
+          year: params.year,
+          month: params.month,
+          amount: null,
+          remark: null,
+          status: "unfilled",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          detailedFundNeedId: fundNeed.id,
+          detailedFundNeed: fundNeed
         };
-        
-        // 仅添加标准状态条件
-        if (status && ['draft', 'submitted', 'pending_withdrawal'].includes(status.toLowerCase())) {
-          const statusLower = status.toLowerCase();
-          if (statusLower === 'draft') {
-            adminQueryConditions.status = RecordStatus.DRAFT;
-          } else if (statusLower === 'submitted') {
-            adminQueryConditions.status = RecordStatus.SUBMITTED;
-          } else if (statusLower === 'pending_withdrawal') {
-            adminQueryConditions.status = RecordStatus.PENDING_WITHDRAWAL;
-          }
-        }
-        
-        console.log('管理员宽松查询条件:', JSON.stringify(adminQueryConditions, null, 2));
-        
-        const adminRecords = await prisma.predictRecord.findMany({
-          where: adminQueryConditions,
-          include: {
-            subProject: {
-              include: {
-                project: {
-                  include: {
-                    category: true
-                  }
-                },
-                detailedFundNeeds: {
-                  include: {
-                    department: true,
-                    fundType: true,
-                    organization: true
-                  }
-                }
-              }
-            },
-            fundType: true,
-          }
-        });
-        
-        console.log(`管理员宽松查询返回 ${adminRecords.length} 条记录`);
-        
-        // 如果是扩展状态，进行内存中筛选
-        if (status && ['approved', 'rejected', 'unfilled'].includes(status.toLowerCase())) {
-          const statusLower = status.toLowerCase();
-          if (statusLower === 'approved') {
-            allRecords = adminRecords.filter(r => 
-              r.remark && (r.remark.includes('已审核') || r.remark.toLowerCase().includes('approved'))
-            );
-          } else if (statusLower === 'rejected') {
-            allRecords = adminRecords.filter(r => 
-              r.remark && (r.remark.includes('已拒绝') || r.remark.toLowerCase().includes('rejected'))
-            );
-          } else if (statusLower === 'unfilled') {
-            // 对于未填写状态，需要特殊处理
-            // 这里我们可能需要另一种策略
-          }
-          
-          console.log(`管理员扩展状态筛选后 ${allRecords.length} 条记录`);
-        } else {
-          // 对于标准状态，直接使用查询结果
-          allRecords = adminRecords;
-        }
-      } catch (error) {
-        console.error('管理员宽松查询出错:', error);
+        allRecords.push(newRecord);
       }
     }
 
-    console.log(`最终返回记录总数: ${allRecords.length}`);
-    
-    // 应用分页
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const paginatedRecords = allRecords.slice(startIndex, endIndex);
+    // 排序
+    const sortedRecords = allRecords.sort((a, b) => {
+      if (params.sortBy === "createdAt") {
+        return params.sortOrder === "asc"
+          ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      return 0;
+    });
 
+    // 分页
+    const startIndex = (params.page - 1) * params.pageSize;
+    const endIndex = startIndex + params.pageSize;
+    const paginatedRecords = sortedRecords.slice(startIndex, endIndex);
+
+    // 返回结果
     return NextResponse.json({
       items: paginatedRecords,
-      total: allRecords.length,
-      page,
-      pageSize,
-      totalPages: Math.ceil(allRecords.length / pageSize),
-      warning: (projects.length > 0 && organizationId) ? 
-        `当前选择的组织未关联到任何项目，显示了所有项目。请先创建组织与项目的关联。` : 
-        undefined
+      total: sortedRecords.length,
+      page: params.page,
+      pageSize: params.pageSize,
+      totalPages: Math.ceil(sortedRecords.length / params.pageSize)
     });
   } catch (error) {
-    console.error("获取预测记录列表失败:", error);
-    return NextResponse.json({ 
-      error: "获取预测记录列表失败", 
-      details: error instanceof Error ? error.message : String(error) 
-    }, { status: 500 });
+    console.error("获取预测记录失败", error);
+    return NextResponse.json({ error: "获取预测记录失败" }, { status: 500 });
   }
 }
 

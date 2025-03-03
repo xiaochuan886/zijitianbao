@@ -1,3 +1,6 @@
+"use client"
+
+import { redirect } from "next/navigation"
 import { CardLayout } from "@/components/card-layout"
 import { DashboardStats } from "@/components/dashboard-stats"
 import { DataTable } from "@/components/data-table"
@@ -25,35 +28,6 @@ const data = [
 ]
 
 export default function FundingPage() {
-  return (
-    <div className="space-y-8">
-      <DashboardStats stats={stats} />
-
-      <CardLayout title="Funding Form" description="Enter funding details">
-        <RoleBasedUI roles={["admin", "manager"]}>
-          <FundingForm type="PredictTable" onSubmit={(data) => console.log(data)} />
-        </RoleBasedUI>
-      </CardLayout>
-
-      <CardLayout title="Funding Data" description="Overview of funding data">
-        <DataTable columns={columns} data={data} />
-      </CardLayout>
-
-      <CardLayout title="Multi-Step Form" description="Complete the funding process">
-        <MultiStepForm
-          steps={[
-            {
-              id: "1",
-              name: "Project Details",
-              fields: <FundingForm type="PredictTable" onSubmit={(data) => console.log(data)} />,
-            },
-            { id: "2", name: "Review", fields: <div>Review step content</div> },
-            { id: "3", name: "Submit", fields: <div>Submit step content</div> },
-          ]}
-          onSubmit={(data) => console.log(data)}
-        />
-      </CardLayout>
-    </div>
-  )
+  redirect("/funding/predict-v2")
 }
 
