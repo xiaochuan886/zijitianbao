@@ -1,174 +1,242 @@
 "use client"
 
-import { useCallback, memo } from "react"
+import { useCallback, useMemo } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select"
-import { ProjectFilters, commonStatusOptions } from "@/hooks/use-funding-common"
+import { Combobox } from "@/components/ui/combobox"
+import { RotateCcw, Search } from "lucide-react"
 
-interface FilterCardProps {
-  title?: string
-  filters: ProjectFilters
-  organizations: { id: string; name: string; code?: string }[]
+export interface FilterCardProps {
+  filters: {
+    organization: string
+    department: string
+    category?: string
+    project: string
+    subProject?: string
+    fundType?: string
+    status: string
+  }
+  organizations: { id: string; name: string }[]
   departments: { id: string; name: string }[]
-  categories: { id: string; name: string }[]
-  onFilterChange: (key: keyof ProjectFilters, value: string) => void
+  categories?: { id: string; name: string }[]
+  projects?: { id: string; name: string; categoryId?: string }[]
+  subProjects?: { id: string; name: string; projectId: string }[]
+  fundTypes?: { id: string; name: string }[]
+  loading?: boolean
+  showOrganization?: boolean
+  showDepartment?: boolean
+  showCategory?: boolean
+  showProject?: boolean
+  showSubProject?: boolean
+  showFundType?: boolean
+  showStatus?: boolean
+  onFilterChange: (filters: any) => void
   onReset: () => void
   onSearch: () => void
-  loading: boolean
-  debouncedFetch?: boolean
 }
 
-function FilterCardComponent({
-  title = "筛选条件",
+export function FilterCard({
   filters,
   organizations,
   departments,
-  categories,
+  categories = [],
+  projects = [],
+  subProjects = [],
+  fundTypes = [],
+  loading,
+  showOrganization = true,
+  showDepartment = true,
+  showCategory = true,
+  showProject = true,
+  showSubProject = true,
+  showFundType = true,
+  showStatus = true,
   onFilterChange,
   onReset,
   onSearch,
-  loading,
-  debouncedFetch = false
 }: FilterCardProps) {
-  // 使用useCallback包装事件处理函数，避免不必要的重新创建
-  const handleFilterChange = useCallback((key: keyof ProjectFilters, value: string) => {
-    onFilterChange(key, value);
-  }, [onFilterChange]);
+  // 处理筛选条件变更
+  const handleFilterChange = useCallback(
+    (key: string, value: any) => {
+      // 如果是机构变更，需要清空部门
+      if (key === "organization") {
+        onFilterChange({
+          ...filters,
+          organization: value,
+          department: "all",
+        })
+        return
+      }
 
-  const handleReset = useCallback(() => {
-    onReset();
-  }, [onReset]);
+      // 如果是项目变更，需要清空子项目
+      if (key === "project") {
+        onFilterChange({
+          ...filters,
+          project: value,
+          subProject: "all",
+        })
+        return
+      }
 
-  const handleSearch = useCallback(() => {
-    onSearch();
-  }, [onSearch]);
+      onFilterChange({
+        ...filters,
+        [key]: value,
+      })
+    },
+    [filters, onFilterChange]
+  )
+
+  // 获取当前项目可用的子项目
+  const availableSubProjects = useMemo(() => {
+    if (!filters.project || filters.project === "all") return subProjects
+    return subProjects.filter(sub => {
+      const project = projects.find(p => p.id === filters.project)
+      return project && sub.projectId === project.id
+    })
+  }, [filters.project, projects, subProjects])
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">机构</label>
-            <Select
-              value={filters.organizationId || "all"}
-              onValueChange={(value) => handleFilterChange("organizationId", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择机构" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部</SelectItem>
-                {organizations.map((org) => (
-                  <SelectItem key={org.id} value={org.id}>
-                    {org.code ? `${org.name} (${org.code})` : org.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium">部门</label>
-            <Select
-              value={filters.departmentId || "all"}
-              onValueChange={(value) => handleFilterChange("departmentId", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择部门" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部</SelectItem>
-                {departments.map((dep) => (
-                  <SelectItem key={dep.id} value={dep.id}>
-                    {dep.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium">项目分类</label>
-            <Select
-              value={filters.categoryId || "all"}
-              onValueChange={(value) => handleFilterChange("categoryId", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择项目分类" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium">项目名称</label>
-            <Input
-              type="text"
-              value={filters.projectName || ""}
-              onChange={(e) => handleFilterChange("projectName", e.target.value)}
-              placeholder="输入项目名称"
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium">状态</label>
-            <Select
-              value={filters.status || "all"}
-              onValueChange={(value) => handleFilterChange("status", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部</SelectItem>
-                {commonStatusOptions.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <CardContent className="pt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {showOrganization && (
+            <div>
+              <label className="text-sm font-medium">机构</label>
+              <Combobox
+                options={[
+                  { value: "all", label: "全部机构" },
+                  ...organizations.map((org) => ({
+                    value: org.id,
+                    label: org.name,
+                  })),
+                ]}
+                value={filters.organization}
+                onChange={(value) => handleFilterChange("organization", value)}
+                placeholder="选择机构"
+              />
+            </div>
+          )}
+
+          {showDepartment && (
+            <div>
+              <label className="text-sm font-medium">部门</label>
+              <Combobox
+                options={[
+                  { value: "all", label: "全部部门" },
+                  ...departments.map((dept) => ({
+                    value: dept.id,
+                    label: dept.name,
+                  })),
+                ]}
+                value={filters.department}
+                onChange={(value) => handleFilterChange("department", value)}
+                placeholder="选择部门"
+              />
+            </div>
+          )}
+
+          {showCategory && (
+            <div>
+              <label className="text-sm font-medium">项目分类</label>
+              <Combobox
+                options={[
+                  { value: "all", label: "全部分类" },
+                  ...categories.map((cat) => ({
+                    value: cat.id,
+                    label: cat.name,
+                  })),
+                ]}
+                value={filters.category || "all"}
+                onChange={(value) => handleFilterChange("category", value)}
+                placeholder="选择项目分类"
+              />
+            </div>
+          )}
+
+          {showProject && (
+            <div>
+              <label className="text-sm font-medium">项目</label>
+              <Combobox
+                options={[
+                  { value: "all", label: "全部项目" },
+                  ...projects.map((proj) => ({
+                    value: proj.id,
+                    label: proj.name,
+                  })),
+                ]}
+                value={filters.project}
+                onChange={(value) => handleFilterChange("project", value)}
+                placeholder="选择项目"
+              />
+            </div>
+          )}
+
+          {showSubProject && (
+            <div>
+              <label className="text-sm font-medium">子项目</label>
+              <Combobox
+                options={[
+                  { value: "all", label: "全部子项目" },
+                  ...availableSubProjects.map((sub) => ({
+                    value: sub.id,
+                    label: sub.name,
+                  })),
+                ]}
+                value={filters.subProject || "all"}
+                onChange={(value) => handleFilterChange("subProject", value)}
+                placeholder="选择子项目"
+              />
+            </div>
+          )}
+
+          {showFundType && (
+            <div>
+              <label className="text-sm font-medium">资金类型</label>
+              <Combobox
+                options={[
+                  { value: "all", label: "全部类型" },
+                  ...fundTypes.map((type) => ({
+                    value: type.id,
+                    label: type.name,
+                  })),
+                ]}
+                value={filters.fundType || "all"}
+                onChange={(value) => handleFilterChange("fundType", value)}
+                placeholder="选择资金类型"
+              />
+            </div>
+          )}
+
+          {showStatus && (
+            <div>
+              <label className="text-sm font-medium">状态</label>
+              <Combobox
+                options={[
+                  { value: "all", label: "全部状态" },
+                  { value: "DRAFT", label: "草稿" },
+                  { value: "SUBMITTED", label: "已提交" },
+                  { value: "WITHDRAWN", label: "已撤回" },
+                ]}
+                value={filters.status}
+                onChange={(value) => handleFilterChange("status", value)}
+                placeholder="选择状态"
+              />
+            </div>
+          )}
         </div>
-        
-        <div className="flex justify-end mt-4">
-          <Button 
-            variant="outline" 
-            onClick={handleReset}
-            disabled={loading || debouncedFetch}
-          >
+
+        <div className="flex justify-end space-x-2 mt-4">
+          <Button variant="outline" onClick={onReset}>
+            <RotateCcw className="h-4 w-4 mr-2" />
             重置
           </Button>
-          <Button 
-            className="ml-2"
-            onClick={handleSearch}
-            disabled={loading || debouncedFetch}
-          >
-            {loading ? "加载中..." : "查询"}
+          <Button onClick={onSearch} disabled={loading}>
+            <Search className="h-4 w-4 mr-2" />
+            {loading ? "搜索中..." : "搜索"}
           </Button>
         </div>
       </CardContent>
     </Card>
   )
-}
-
-// 使用React.memo包装组件，避免不必要的重渲染
-export const FilterCard = memo(FilterCardComponent); 
+} 

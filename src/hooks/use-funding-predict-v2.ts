@@ -7,15 +7,13 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 
 // 通用的筛选条件类型
 export interface ProjectFilters {
-  organizationId?: string;
-  departmentId?: string;
-  projectCategoryId?: string;
-  projectId?: string;
-  subProjectId?: string;
-  fundTypeId?: string;
-  year?: string;
-  month?: string;
-  status?: string;
+  organization: string;
+  department: string;
+  category?: string;
+  project: string;
+  subProject?: string;
+  fundType?: string;
+  status: string;
 }
 
 // 预测记录类型
@@ -98,11 +96,13 @@ export function getNextMonth(): MonthInfo {
 // 预测填报钩子函数 V2 版本
 export function useFundingPredictV2(
   initialFilters: ProjectFilters = {
-    organizationId: undefined,
-    projectId: undefined,
-    year: undefined,
-    month: undefined,
-    status: undefined
+    organization: 'all',
+    department: 'all',
+    project: 'all',
+    status: 'all',
+    category: 'all',
+    subProject: 'all',
+    fundType: 'all'
   }
 ) {
   const { toast } = useToast();
@@ -240,37 +240,36 @@ export function useFundingPredictV2(
     const month = currentMonthRef.current;
     const currentPagination = paginationRef.current;
     
-    // 添加调试日志查看筛选条件
     console.log('构建查询参数，当前筛选条件:', JSON.stringify(currentFilters, null, 2));
     
-    if (currentFilters.organizationId && currentFilters.organizationId !== 'all') {
-      params.append("organizationId", currentFilters.organizationId);
-      console.log(`添加组织筛选条件: ${currentFilters.organizationId}`);
+    if (currentFilters.organization && currentFilters.organization !== 'all') {
+      params.append("organizationId", currentFilters.organization);
+      console.log(`添加组织筛选条件: ${currentFilters.organization}`);
     }
     
-    if (currentFilters.departmentId && currentFilters.departmentId !== 'all') {
-      params.append("departmentId", currentFilters.departmentId);
-      console.log(`添加部门筛选条件: ${currentFilters.departmentId}`);
+    if (currentFilters.department && currentFilters.department !== 'all') {
+      params.append("departmentId", currentFilters.department);
+      console.log(`添加部门筛选条件: ${currentFilters.department}`);
     }
     
-    if (currentFilters.projectCategoryId && currentFilters.projectCategoryId !== 'all') {
-      params.append("projectCategoryId", currentFilters.projectCategoryId);
-      console.log(`添加项目分类筛选条件: ${currentFilters.projectCategoryId}`);
+    if (currentFilters.category && currentFilters.category !== 'all') {
+      params.append("categoryId", currentFilters.category);
+      console.log(`添加项目分类筛选条件: ${currentFilters.category}`);
     }
     
-    if (currentFilters.projectId && currentFilters.projectId !== 'all') {
-      params.append("projectId", currentFilters.projectId);
-      console.log(`添加项目筛选条件: ${currentFilters.projectId}`);
+    if (currentFilters.project && currentFilters.project !== 'all') {
+      params.append("projectId", currentFilters.project);
+      console.log(`添加项目筛选条件: ${currentFilters.project}`);
     }
     
-    if (currentFilters.subProjectId && currentFilters.subProjectId !== 'all') {
-      params.append("subProjectId", currentFilters.subProjectId);
-      console.log(`添加子项目筛选条件: ${currentFilters.subProjectId}`);
+    if (currentFilters.subProject && currentFilters.subProject !== 'all') {
+      params.append("subProjectId", currentFilters.subProject);
+      console.log(`添加子项目筛选条件: ${currentFilters.subProject}`);
     }
     
-    if (currentFilters.fundTypeId && currentFilters.fundTypeId !== 'all') {
-      params.append("fundTypeId", currentFilters.fundTypeId);
-      console.log(`添加资金类型筛选条件: ${currentFilters.fundTypeId}`);
+    if (currentFilters.fundType && currentFilters.fundType !== 'all') {
+      params.append("fundTypeId", currentFilters.fundType);
+      console.log(`添加资金类型筛选条件: ${currentFilters.fundType}`);
     }
     
     if (currentFilters.status && currentFilters.status !== 'all') {
@@ -346,12 +345,12 @@ export function useFundingPredictV2(
       if (data.total === 0) {
         // 检查是否应用了筛选
         const filters = filtersRef.current;
-        const hasOrganizationFilter = filters.organizationId && filters.organizationId !== 'all';
-        const hasDepartmentFilter = filters.departmentId && filters.departmentId !== 'all';
-        const hasProjectCategoryFilter = filters.projectCategoryId && filters.projectCategoryId !== 'all';
-        const hasProjectFilter = filters.projectId && filters.projectId !== 'all'; 
-        const hasSubProjectFilter = filters.subProjectId && filters.subProjectId !== 'all';
-        const hasFundTypeFilter = filters.fundTypeId && filters.fundTypeId !== 'all';
+        const hasOrganizationFilter = filters.organization && filters.organization !== 'all';
+        const hasDepartmentFilter = filters.department && filters.department !== 'all';
+        const hasProjectCategoryFilter = filters.category && filters.category !== 'all';
+        const hasProjectFilter = filters.project && filters.project !== 'all'; 
+        const hasSubProjectFilter = filters.subProject && filters.subProject !== 'all';
+        const hasFundTypeFilter = filters.fundType && filters.fundType !== 'all';
         const hasStatusFilter = filters.status && filters.status !== 'all';
         
         const hasAnyFilter = hasOrganizationFilter || hasDepartmentFilter || hasProjectCategoryFilter || 
@@ -365,7 +364,7 @@ export function useFundingPredictV2(
           
           if (hasOrganizationFilter) {
             // 查找所选组织的名称
-            const selectedOrg = organizations.find(org => org.id === filters.organizationId);
+            const selectedOrg = organizations.find(org => org.id === filters.organization);
             const orgName = selectedOrg ? selectedOrg.name : '所选组织';
             
             warningMessage = `未找到与 ${orgName} 相关的填报记录。`;

@@ -73,44 +73,29 @@ export async function GET(request: NextRequest) {
     }
 
     if (params.projectId) {
-      if (!detailedFundNeedCondition.subProject) {
-        detailedFundNeedCondition.subProject = {};
-      }
-      if (!detailedFundNeedCondition.subProject.project) {
-        detailedFundNeedCondition.subProject.project = {};
-      }
-      detailedFundNeedCondition.subProject.project.id = params.projectId;
+      detailedFundNeedCondition.subProject = {
+        projectId: params.projectId
+      };
     }
 
     if (params.projectCategoryId) {
-      if (!detailedFundNeedCondition.subProject) {
-        detailedFundNeedCondition.subProject = {};
-      }
-      if (!detailedFundNeedCondition.subProject.project) {
-        detailedFundNeedCondition.subProject.project = {};
-      }
-      detailedFundNeedCondition.subProject.project.categoryId = params.projectCategoryId;
+      detailedFundNeedCondition.subProject = {
+        project: {
+          categoryId: params.projectCategoryId
+        }
+      };
     }
 
     if (params.departmentId) {
-      if (!detailedFundNeedCondition.department) {
-        detailedFundNeedCondition.department = {};
-      }
-      detailedFundNeedCondition.department.id = params.departmentId;
+      detailedFundNeedCondition.departmentId = params.departmentId;
     }
 
     if (params.organizationId) {
-      if (!detailedFundNeedCondition.organization) {
-        detailedFundNeedCondition.organization = {};
-      }
-      detailedFundNeedCondition.organization.id = params.organizationId;
+      detailedFundNeedCondition.organizationId = params.organizationId;
     }
 
     if (params.fundTypeId) {
-      if (!detailedFundNeedCondition.fundType) {
-        detailedFundNeedCondition.fundType = {};
-      }
-      detailedFundNeedCondition.fundType.id = params.fundTypeId;
+      detailedFundNeedCondition.fundTypeId = params.fundTypeId;
     }
 
     // 查询DetailedFundNeed记录

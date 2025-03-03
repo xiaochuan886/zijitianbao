@@ -11,28 +11,58 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const year = searchParams.get("year");
-    const months = searchParams.get("months");
+    const startYear = parseInt(searchParams.get("startYear") || new Date().getFullYear().toString());
+    const startMonth = parseInt(searchParams.get("startMonth") || (new Date().getMonth() + 1).toString());
+    const endYear = parseInt(searchParams.get("endYear") || startYear.toString());
+    const endMonth = parseInt(searchParams.get("endMonth") || startMonth.toString());
     const page = parseInt(searchParams.get("page") || "1");
     const pageSize = parseInt(searchParams.get("pageSize") || "10");
     const organizationId = searchParams.get("organizationId");
     const departmentId = searchParams.get("departmentId");
+    const categoryId = searchParams.get("categoryId");
     const projectId = searchParams.get("projectId");
+    const subProjectId = searchParams.get("subProjectId");
+    const fundTypeId = searchParams.get("fundTypeId");
     const status = searchParams.get("status");
-
-    if (!year || !months) {
-      return NextResponse.json(
-        { error: "Year and months are required" },
-        { status: 400 }
-      );
-    }
 
     // 构建查询条件
     const where: any = {
-      year: parseInt(year),
-      month: {
-        lte: parseInt(months),
-      },
+      OR: [
+        {
+          // 开始年份和结束年份相同
+          AND: [
+            { year: startYear },
+            { month: { gte: startMonth } },
+            { month: { lte: endMonth } },
+          ],
+        },
+        {
+          // 开始年份和结束年份不同
+          OR: [
+            {
+              // 开始年份的月份
+              AND: [
+                { year: startYear },
+                { month: { gte: startMonth } },
+              ],
+            },
+            {
+              // 结束年份的月份
+              AND: [
+                { year: endYear },
+                { month: { lte: endMonth } },
+              ],
+            },
+            {
+              // 中间年份的所有月份
+              AND: [
+                { year: { gt: startYear } },
+                { year: { lt: endYear } },
+              ],
+            },
+          ],
+        },
+      ],
     };
 
     // 添加筛选条件
@@ -47,6 +77,17 @@ export async function GET(request: Request) {
       where.detailedFundNeed = {
         ...where.detailedFundNeed,
         departmentId,
+      };
+    }
+
+    if (categoryId && categoryId !== "all") {
+      where.detailedFundNeed = {
+        ...where.detailedFundNeed,
+        subProject: {
+          project: {
+            categoryId,
+          },
+        },
       };
     }
 
@@ -91,6 +132,9 @@ export async function GET(request: Request) {
       },
       orderBy: [
         {
+          year: "desc",
+        },
+        {
           month: "desc",
         },
         {
@@ -101,31 +145,80 @@ export async function GET(request: Request) {
       take: pageSize,
     });
 
-    // 查询所有机构和部门
+    // 获取所有机构
     const organizations = await prisma.organization.findMany({
       select: {
         id: true,
-        name: true,
+        name: true
       },
       orderBy: {
-        code: "asc",
-      },
+        code: "asc"
+      }
     });
 
+    // 获取所有部门
     const departments = await prisma.department.findMany({
       where: {
-        isDeleted: false,
-        ...(organizationId && organizationId !== "all"
-          ? { organizationId }
-          : {}),
+        isDeleted: false
+      },
+      select: {
+        id: true,
+        name: true
+      },
+      orderBy: {
+        name: "asc"
+      }
+    });
+
+    // 获取所有项目分类
+    const categories = await prisma.projectCategory.findMany({
+      select: {
+        id: true,
+        name: true
+      },
+      orderBy: {
+        name: "asc"
+      }
+    });
+    
+    // 获取所有项目
+    const projects = await prisma.project.findMany({
+      where: {
+        status: {
+          in: ['active', 'ACTIVE', 'Active']
+        }
       },
       select: {
         id: true,
         name: true,
+        categoryId: true
       },
       orderBy: {
-        name: "asc",
+        name: "asc"
+      }
+    });
+    
+    // 获取所有子项目
+    const subProjects = await prisma.subProject.findMany({
+      select: {
+        id: true,
+        name: true,
+        projectId: true
       },
+      orderBy: {
+        name: "asc"
+      }
+    });
+    
+    // 获取所有资金类型
+    const fundTypes = await prisma.fundType.findMany({
+      select: {
+        id: true,
+        name: true
+      },
+      orderBy: {
+        name: "asc"
+      }
     });
 
     // 转换记录格式
@@ -133,6 +226,7 @@ export async function GET(request: Request) {
       id: record.id,
       organization: record.detailedFundNeed.organization.name,
       department: record.detailedFundNeed.department.name,
+      category: record.detailedFundNeed.subProject.project.category?.name || "未分类",
       project: record.detailedFundNeed.subProject.project.name,
       subProject: record.detailedFundNeed.subProject.name,
       fundType: record.detailedFundNeed.fundType.name,
@@ -149,6 +243,10 @@ export async function GET(request: Request) {
       records: formattedRecords,
       organizations,
       departments,
+      categories,
+      projects,
+      subProjects,
+      fundTypes,
       total,
       page,
       pageSize,

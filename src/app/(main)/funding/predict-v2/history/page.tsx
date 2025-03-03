@@ -25,7 +25,8 @@ import {
   TableRow 
 } from "@/components/ui/table"
 import { ArrowLeft, RotateCcw } from "lucide-react"
-import { SimpleFilterCard } from "@/components/funding/simple-filter-card"
+import { FilterCard } from "@/components/funding/filter-card"
+import { DateRangeFilter } from "@/components/funding/date-range-filter"
 import { SimplePageHeader } from "@/components/funding/simple-page-header"
 import { Badge } from "@/components/ui/badge"
 import { Combobox } from "@/components/ui/combobox"
@@ -36,6 +37,7 @@ interface HistoryRecord {
   id: string
   organization: string
   department: string
+  category: string
   project: string
   subProject: string
   fundType: string
@@ -75,13 +77,24 @@ export default function PredictHistoryPageV2() {
   const [filters, setFilters] = useState({
     organization: "all",
     department: "all",
-    project: "",
+    category: "all",
+    project: "all",
+    subProject: "all",
+    fundType: "all",
     status: "all",
-    year: new Date().getFullYear(),
-    monthRange: 12 // 默认查看最近12个月
+  })
+  const [dateRange, setDateRange] = useState({
+    startYear: new Date().getFullYear(),
+    startMonth: new Date().getMonth() + 1,
+    endYear: new Date().getFullYear(),
+    endMonth: new Date().getMonth() + 1,
   })
   const [organizations, setOrganizations] = useState<{id: string, name: string}[]>([])
   const [departments, setDepartments] = useState<{id: string, name: string}[]>([])
+  const [categories, setCategories] = useState<{id: string, name: string}[]>([])
+  const [projects, setProjects] = useState<{id: string, name: string, categoryId?: string}[]>([])
+  const [subProjects, setSubProjects] = useState<{id: string, name: string, projectId: string}[]>([])
+  const [fundTypes, setFundTypes] = useState<{id: string, name: string}[]>([])
   const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([])
   const [groupedHistory, setGroupedHistory] = useState<GroupedHistory[]>([])
   const [activeTab, setActiveTab] = useState("table")
@@ -100,10 +113,15 @@ export default function PredictHistoryPageV2() {
       const params = new URLSearchParams()
       if (filters.organization !== "all") params.append("organizationId", filters.organization)
       if (filters.department !== "all") params.append("departmentId", filters.department)
-      if (filters.project) params.append("project", filters.project)
+      if (filters.category !== "all") params.append("categoryId", filters.category)
+      if (filters.project !== "all") params.append("projectId", filters.project)
+      if (filters.subProject !== "all") params.append("subProjectId", filters.subProject)
+      if (filters.fundType !== "all") params.append("fundTypeId", filters.fundType)
       if (filters.status !== "all") params.append("status", filters.status)
-      params.append("year", filters.year.toString())
-      params.append("months", filters.monthRange.toString())
+      params.append("startYear", dateRange.startYear.toString())
+      params.append("startMonth", dateRange.startMonth.toString())
+      params.append("endYear", dateRange.endYear.toString())
+      params.append("endMonth", dateRange.endMonth.toString())
       
       // 添加强制刷新参数
       if (force) params.append("_t", Date.now().toString())
@@ -119,6 +137,10 @@ export default function PredictHistoryPageV2() {
       setHistoryRecords(data.records || [])
       setOrganizations(data.organizations || [])
       setDepartments(data.departments || [])
+      setCategories(data.categories || [])
+      setProjects(data.projects || [])
+      setSubProjects(data.subProjects || [])
+      setFundTypes(data.fundTypes || [])
       
       // 处理分组数据
       processGroupedData(data.records || [])
@@ -132,7 +154,7 @@ export default function PredictHistoryPageV2() {
     } finally {
       setLoading(false)
     }
-  }, [filters, toast])
+  }, [filters, dateRange, toast])
   
   // 处理分组数据
   const processGroupedData = useCallback((records: HistoryRecord[]) => {
@@ -220,23 +242,26 @@ export default function PredictHistoryPageV2() {
     setGroupedHistory(result)
   }, [])
   
-  // 筛选条件变更
-  const handleFilterChange = useCallback((key: string, value: any) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: value
-    }))
-  }, [])
-  
   // 重置筛选条件
   const handleResetFilters = useCallback(() => {
     setFilters({
       organization: "all",
       department: "all",
-      project: "",
+      category: "all",
+      project: "all",
+      subProject: "all",
+      fundType: "all",
       status: "all",
-      year: new Date().getFullYear(),
-      monthRange: 12
+    })
+  }, [])
+  
+  // 重置日期范围
+  const handleResetDateRange = useCallback(() => {
+    setDateRange({
+      startYear: new Date().getFullYear(),
+      startMonth: new Date().getMonth() + 1,
+      endYear: new Date().getFullYear(),
+      endMonth: new Date().getMonth() + 1,
     })
   }, [])
   
@@ -318,7 +343,7 @@ export default function PredictHistoryPageV2() {
     const currentYear = currentDate.getFullYear()
     const currentMonth = currentDate.getMonth() + 1
     
-    for (let i = 0; i < filters.monthRange; i++) {
+    for (let i = 0; i < 12; i++) {
       let month = currentMonth - i
       let year = currentYear
       
@@ -334,7 +359,7 @@ export default function PredictHistoryPageV2() {
     }
     
     return columns
-  }, [filters.monthRange])
+  }, [])
   
   // 格式化金额
   const formatCurrency = useCallback((amount: number | null) => {
@@ -364,75 +389,26 @@ export default function PredictHistoryPageV2() {
         </div>
       </div>
       
-      <SimpleFilterCard
-        filters={{
-          organization: filters.organization,
-          department: filters.department,
-          project: filters.project,
-          status: filters.status
-        }}
+      <FilterCard
+        filters={filters}
         organizations={organizations}
         departments={departments}
-        onFilterChange={(newFilters) => {
-          setFilters(prev => ({
-            ...prev,
-            ...newFilters
-          }))
-        }}
+        categories={categories}
+        projects={projects}
+        subProjects={subProjects}
+        fundTypes={fundTypes}
+        loading={loading}
+        onFilterChange={setFilters}
         onReset={handleResetFilters}
         onSearch={() => fetchHistory(true)}
-        loading={loading}
       />
 
-      <Card className="mt-4">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">年份</label>
-              <Combobox
-                options={Array.from({length: 5}, (_, i) => {
-                  const year = new Date().getFullYear() - i
-                  return {
-                    value: year.toString(),
-                    label: `${year}年`
-                  }
-                })}
-                value={filters.year.toString()}
-                onChange={(value) => setFilters(prev => ({
-                  ...prev,
-                  year: parseInt(value)
-                }))}
-                placeholder="选择年份"
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium">月份范围</label>
-              <Combobox
-                options={[
-                  { value: "3", label: "最近3个月" },
-                  { value: "6", label: "最近6个月" },
-                  { value: "12", label: "最近12个月" }
-                ]}
-                value={filters.monthRange.toString()}
-                onChange={(value) => setFilters(prev => ({
-                  ...prev,
-                  monthRange: parseInt(value)
-                }))}
-                placeholder="选择月份范围"
-              />
-            </div>
-          </div>
+      <DateRangeFilter
+        {...dateRange}
+        onChange={setDateRange}
+        onReset={handleResetDateRange}
+      />
 
-          <div className="flex justify-end space-x-2 mt-4">
-            <Button variant="outline" onClick={() => fetchHistory(true)}>
-              <RotateCcw className="h-4 w-4 mr-2" />
-              刷新
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-      
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-[400px] grid-cols-2">
           <TabsTrigger value="table">表格视图</TabsTrigger>
@@ -448,6 +424,7 @@ export default function PredictHistoryPageV2() {
                     <TableRow>
                       <TableHead>机构</TableHead>
                       <TableHead>部门</TableHead>
+                      <TableHead>项目分类</TableHead>
                       <TableHead>项目</TableHead>
                       <TableHead>子项目</TableHead>
                       <TableHead>资金类型</TableHead>
@@ -461,13 +438,13 @@ export default function PredictHistoryPageV2() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="h-24 text-center">
+                        <TableCell colSpan={11} className="h-24 text-center">
                           正在加载...
                         </TableCell>
                       </TableRow>
                     ) : historyRecords.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="h-24 text-center">
+                        <TableCell colSpan={11} className="h-24 text-center">
                           没有找到历史记录
                         </TableCell>
                       </TableRow>
@@ -476,6 +453,7 @@ export default function PredictHistoryPageV2() {
                         <TableRow key={record.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewRecord(record)}>
                           <TableCell>{record.organization}</TableCell>
                           <TableCell>{record.department}</TableCell>
+                          <TableCell>{record.category}</TableCell>
                           <TableCell>{record.project}</TableCell>
                           <TableCell>{record.subProject}</TableCell>
                           <TableCell>{record.fundType}</TableCell>

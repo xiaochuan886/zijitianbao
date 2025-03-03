@@ -49,10 +49,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { useFundingPredictV2 } from "@/hooks/use-funding-predict-v2"
+import { useFundingPredictV2, ProjectFilters } from "@/hooks/use-funding-predict-v2"
 import { RecordStatus, Role } from "@/lib/enums"
 import { Combobox, ComboboxOption } from "@/components/ui/combobox"
 import { useCurrentUser } from "@/hooks/use-current-user"
+import { FilterCard } from "@/components/funding/filter-card"
 
 // 自定义组件，简化版的 FilterCard
 function SimpleFilterCard({ children }: { children: React.ReactNode }) {
@@ -260,6 +261,17 @@ const statusMap: Record<string, { label: string; variant: "default" | "outline" 
   [ExtendedRecordStatus.UNFILLED]: { label: "未填写", variant: "outline" },
 }
 
+// 本地筛选器状态类型
+interface LocalFilters {
+  organization: string;
+  department: string;
+  category: string;
+  project: string;
+  subProject: string;
+  fundType: string;
+  status: string;
+}
+
 export default function PredictV2Page() {
   const router = useRouter()
   const { toast } = useToast()
@@ -275,12 +287,22 @@ export default function PredictV2Page() {
   const { user, isLoading: userLoading } = useCurrentUser()
   const isAdmin = user?.role === Role.ADMIN
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [filters, setFilters] = useState<LocalFilters>({
+    organization: "all",
+    department: "all",
+    category: "all",
+    project: "all",
+    subProject: "all",
+    fundType: "all",
+    status: "all",
+  })
+  const filterTimeout = useRef<NodeJS.Timeout | null>(null)
 
   // 使用新的预测填报钩子
   const {
     loading,
     records,
-    filters,
+    filters: apiFilters,
     pagination,
     setPagination,
     organizations,
@@ -290,7 +312,7 @@ export default function PredictV2Page() {
     subProjects,
     fundTypes,
     currentMonth,
-    handleFilterChange,
+    handleFilterChange: apiHandleFilterChange,
     handlePageChange,
     handleReset,
     fetchRecords,
@@ -540,8 +562,8 @@ export default function PredictV2Page() {
         fetchRecords(true);
         
         // 如果当前有组织筛选，提示用户
-        if (filters.organizationId && filters.organizationId !== 'all') {
-          const selectedOrg = organizations.find(org => org.id === filters.organizationId);
+        if (apiFilters.organization && apiFilters.organization !== 'all') {
+          const selectedOrg = organizations.find(org => org.id === apiFilters.organization);
           const orgName = selectedOrg ? selectedOrg.name : '所选组织';
           
           toast({
@@ -560,7 +582,7 @@ export default function PredictV2Page() {
         variant: "destructive",
       });
     }
-  }, [toast, fetchRecords, filters, organizations]);
+  }, [toast, fetchRecords, apiFilters, organizations]);
 
   // 打开提交确认对话框
   const openSubmitDialog = useCallback((recordId: string) => {
@@ -882,6 +904,81 @@ export default function PredictV2Page() {
     )
   }, [pagination, handlePageChange])
 
+  // 检查组织筛选条件
+  const checkOrganizationFilter = useCallback(() => {
+    if (apiFilters.organization && apiFilters.organization !== 'all') {
+      const selectedOrg = organizations.find(org => org.id === apiFilters.organization);
+      const orgName = selectedOrg ? selectedOrg.name : '所选组织';
+      
+      toast({
+        title: "提示",
+        description: `当前正在查看 ${orgName} 的记录`,
+      })
+    }
+  }, [apiFilters.organization, organizations, toast])
+
+  // 处理筛选条件变更
+  const handleFilterChange = useCallback((newFilters: LocalFilters) => {
+    // 清除之前的超时
+    if (filterTimeout.current) {
+      clearTimeout(filterTimeout.current);
+    }
+
+    // 更新本地状态
+    setFilters(newFilters);
+
+    // 创建apiFilters对象
+    filterTimeout.current = setTimeout(() => {
+      // 遍历所有筛选条件并逐个更新
+      Object.entries(newFilters).forEach(([key, value]) => {
+        // 如果是状态筛选，需要转换为枚举值
+        if (key === 'status' && value !== 'all') {
+          // 将状态值转换为大写以匹配枚举
+          apiHandleFilterChange(key as keyof ProjectFilters, value.toUpperCase());
+        } 
+        // 处理项目分类筛选器
+        else if (key === 'category') {
+          apiHandleFilterChange('category', value);
+          
+          // 如果选择了特定分类，更新项目列表
+          if (value !== 'all') {
+            const categoryProjects = getProjectsByCategory(value);
+            console.log(`更新项目分类 ${value} 的项目列表:`, categoryProjects.length);
+          }
+        }
+        // 处理项目筛选器 
+        else if (key === 'project') {
+          apiHandleFilterChange('project', value);
+          
+          // 如果选择了特定项目，更新子项目列表
+          if (value !== 'all') {
+            const projectSubProjects = getSubProjectsByProject(value);
+            console.log(`更新项目 ${value} 的子项目列表:`, projectSubProjects.length);
+          }
+        }
+        else {
+          apiHandleFilterChange(key as keyof ProjectFilters, value);
+        }
+      });
+    }, 300);
+  }, [apiHandleFilterChange, getProjectsByCategory, getSubProjectsByProject]);
+
+  // 重置筛选条件
+  const handleResetFilters = useCallback(() => {
+    const initialFilters: LocalFilters = {
+      organization: "all",
+      department: "all",
+      category: "all",
+      project: "all",
+      subProject: "all",
+      fundType: "all",
+      status: "all",
+    }
+    
+    setFilters(initialFilters)
+    handleReset()
+  }, [handleReset])
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-4">
@@ -907,200 +1004,19 @@ export default function PredictV2Page() {
         </div>
       </div>
       
-      <SimpleFilterCard>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="text-sm font-medium">机构</label>
-            <Combobox
-              options={[
-                { value: "all", label: "全部机构" },
-                ...organizations.map(org => ({ value: org.id, label: org.name }))
-              ]}
-              value={filters.organizationId || "all"}
-              onChange={(value) => {
-                console.log(`选择机构: ${value}`);
-                // 当机构变化时，重置部门、项目和子项目的选择
-                handleFilterChange("organizationId", value);
-                handleFilterChange("departmentId", "all");
-                handleFilterChange("projectId", "all");
-                handleFilterChange("subProjectId", "all");
-              }}
-              placeholder="选择机构"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium">部门</label>
-            <Combobox
-              options={[
-                { value: "all", label: "全部部门" },
-                ...departments.map(dept => ({ value: dept.id, label: dept.name }))
-              ]}
-              value={filters.departmentId || "all"}
-              onChange={(value) => {
-                console.log(`选择部门: ${value}`);
-                handleFilterChange("departmentId", value);
-                // 重置项目和子项目的选择
-                handleFilterChange("projectId", "all");
-                handleFilterChange("subProjectId", "all");
-              }}
-              placeholder="选择部门"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium">项目分类</label>
-            <Combobox
-              options={[
-                { value: "all", label: "全部分类" },
-                ...projectCategories.map(category => ({ value: category.id, label: category.name }))
-              ]}
-              value={filters.projectCategoryId || "all"}
-              onChange={(value) => {
-                console.log('选择项目分类:', value);
-                // 当项目分类变化时，重置项目和子项目的选择
-                handleFilterChange("projectCategoryId", value);
-                handleFilterChange("projectId", "all");
-                handleFilterChange("subProjectId", "all");
-              }}
-              placeholder="选择项目分类"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium">项目</label>
-            <Combobox
-              options={(() => {
-                // 检查是否有项目数据
-                if (!projects || projects.length === 0) {
-                  console.log('没有可用的项目数据 - 从数据库获取的项目总数: 0');
-                  return [
-                    { value: "all", label: "暂无项目数据" }
-                  ];
-                }
-                
-                // 如果没有选择项目分类或选择了"全部分类"，则显示所有项目
-                if (!filters.projectCategoryId || filters.projectCategoryId === 'all') {
-                  console.log('显示所有项目，数量:', projects.length);
-                  return [
-                    { value: "all", label: "全部项目" },
-                    ...projects.map(project => ({ 
-                      value: project.id, 
-                      label: project.name 
-                    }))
-                  ];
-                }
-                
-                // 尝试获取指定分类下的项目
-                const filteredProjects = getProjectsByCategory(filters.projectCategoryId);
-                console.log(`分类[${filters.projectCategoryId}]下的项目数量: ${filteredProjects.length}`);
-                
-                // 如果筛选结果为空，提供友好提示
-                if (filteredProjects.length === 0) {
-                  return [
-                    { value: "all", label: `该分类下暂无项目` }
-                  ];
-                }
-                
-                return [
-                  { value: "all", label: "全部项目" },
-                  ...filteredProjects.map(project => ({ 
-                    value: project.id, 
-                    label: project.name 
-                  }))
-                ];
-              })()}
-              value={filters.projectId || "all"}
-              onChange={(value) => {
-                console.log('选择项目:', value);
-                // 当项目变化时，重置子项目的选择
-                handleFilterChange("projectId", value);
-                handleFilterChange("subProjectId", "all");
-              }}
-              placeholder="选择项目"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium">子项目</label>
-            <Combobox
-              options={(() => {
-                const subProjectOptions = getSubProjectsByProject(filters.projectId);
-                
-                // 如果没有子项目数据，提供友好提示
-                if (subProjectOptions.length === 0) {
-                  return [
-                    { value: "all", label: "暂无子项目数据" }
-                  ];
-                }
-                
-                return [
-                  { value: "all", label: "全部子项目" },
-                  ...subProjectOptions.map(subProject => ({ 
-                    value: subProject.id, 
-                    label: subProject.name 
-                  }))
-                ];
-              })()}
-              value={filters.subProjectId || "all"}
-              onChange={(value) => handleFilterChange("subProjectId", value)}
-              placeholder="选择子项目"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium">资金类型</label>
-            <Combobox
-              options={[
-                { value: "all", label: "全部资金类型" },
-                ...getAllFundTypes().map(fundType => ({ value: fundType.id, label: fundType.name }))
-              ]}
-              value={filters.fundTypeId || "all"}
-              onChange={(value) => handleFilterChange("fundTypeId", value)}
-              placeholder="选择资金类型"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium">状态</label>
-            <Combobox
-              options={[
-                { value: "all", label: "全部状态" },
-                { value: RecordStatus.DRAFT, label: "草稿" },
-                { value: RecordStatus.SUBMITTED, label: "已提交" },
-                { value: RecordStatus.PENDING_WITHDRAWAL, label: "待撤回" },
-                { value: ExtendedRecordStatus.APPROVED, label: "已审核" },
-                { value: ExtendedRecordStatus.REJECTED, label: "已拒绝" },
-                { value: ExtendedRecordStatus.UNFILLED, label: "未填写" }
-              ]}
-              value={filters.status || "all"}
-              onChange={(value) => {
-                console.log(`选择状态: ${value}, 显示文本: ${statusMap[value]?.label || value}`);
-                // 确保状态值始终是小写的
-                if (value !== 'all') {
-                  const statusValue = value.toLowerCase();
-                  console.log(`将状态值标准化为小写: ${statusValue}`);
-                  handleFilterChange("status", statusValue);
-                } else {
-                  handleFilterChange("status", value);
-                }
-              }}
-              placeholder="选择状态"
-            />
-          </div>
-        </div>
-        
-        <div className="flex justify-end space-x-2 mt-4">
-          <Button variant="outline" onClick={handleReset}>
-            <RotateCcw className="h-4 w-4 mr-2" />
-            重置
-          </Button>
-          <Button onClick={() => fetchRecords(true)}>
-            <Filter className="h-4 w-4 mr-2" />
-            筛选
-          </Button>
-        </div>
-      </SimpleFilterCard>
+      <FilterCard
+        filters={filters}
+        organizations={organizations}
+        departments={departments}
+        categories={projectCategories}
+        projects={projects}
+        subProjects={subProjects}
+        fundTypes={fundTypes}
+        loading={loading}
+        onFilterChange={handleFilterChange}
+        onReset={handleResetFilters}
+        onSearch={() => fetchRecords(true)}
+      />
       
       <Card>
         <CardHeader className="p-4 pb-0">
