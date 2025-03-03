@@ -27,7 +27,7 @@ const querySchema = z.object({
   month: z.coerce.number().optional(),
   subProjectId: z.string().optional(),
   projectId: z.string().optional(),
-  projectCategoryId: z.string().optional(),
+  categoryId: z.string().optional(),
   departmentId: z.string().optional(),
   organizationId: z.string().optional(),
   fundTypeId: z.string().optional(),
@@ -74,14 +74,17 @@ export async function GET(request: NextRequest) {
 
     if (params.projectId) {
       detailedFundNeedCondition.subProject = {
+        ...(detailedFundNeedCondition.subProject || {}),
         projectId: params.projectId
       };
     }
 
-    if (params.projectCategoryId) {
+    if (params.categoryId) {
       detailedFundNeedCondition.subProject = {
+        ...(detailedFundNeedCondition.subProject || {}),
         project: {
-          categoryId: params.projectCategoryId
+          ...(detailedFundNeedCondition.subProject?.project || {}),
+          categoryId: params.categoryId
         }
       };
     }
@@ -97,6 +100,9 @@ export async function GET(request: NextRequest) {
     if (params.fundTypeId) {
       detailedFundNeedCondition.fundTypeId = params.fundTypeId;
     }
+
+    // 调试信息
+    console.log('DetailedFundNeed查询条件:', JSON.stringify(detailedFundNeedCondition, null, 2));
 
     // 查询DetailedFundNeed记录
     const detailedFundNeeds = await prisma.detailedFundNeed.findMany({
@@ -122,69 +128,47 @@ export async function GET(request: NextRequest) {
       year: params.year,
       month: params.month
     };
+    
+    // 如果有多个嵌套条件，先创建detailedFundNeed属性
+    if (params.subProjectId || params.departmentId || params.fundTypeId || 
+        params.organizationId || params.projectId || params.categoryId) {
+      recordCondition.detailedFundNeed = {};
+    }
 
     // 添加过滤条件
     if (params.subProjectId) {
-      recordCondition.detailedFundNeed = {
-        ...(recordCondition.detailedFundNeed || {}),
-        subProject: {
-          ...(recordCondition.detailedFundNeed?.subProject || {}),
-          id: params.subProjectId
-        }
-      };
+      recordCondition.detailedFundNeed.subProjectId = params.subProjectId;
     }
 
     if (params.departmentId) {
-      recordCondition.detailedFundNeed = {
-        ...(recordCondition.detailedFundNeed || {}),
-        department: {
-          id: params.departmentId
-        }
-      };
+      recordCondition.detailedFundNeed.departmentId = params.departmentId;
     }
 
     if (params.fundTypeId) {
-      recordCondition.detailedFundNeed = {
-        ...(recordCondition.detailedFundNeed || {}),
-        fundType: {
-          id: params.fundTypeId
-        }
-      };
+      recordCondition.detailedFundNeed.fundTypeId = params.fundTypeId;
     }
 
     if (params.organizationId) {
-      recordCondition.detailedFundNeed = {
-        ...(recordCondition.detailedFundNeed || {}),
-        organization: {
-          id: params.organizationId
-        }
-      };
+      recordCondition.detailedFundNeed.organizationId = params.organizationId;
+    }
+    
+    // 项目和类别条件需要创建嵌套结构
+    if (params.projectId || params.categoryId) {
+      recordCondition.detailedFundNeed.subProject = {};
+      
+      if (params.projectId) {
+        recordCondition.detailedFundNeed.subProject.projectId = params.projectId;
+      }
+      
+      if (params.categoryId) {
+        recordCondition.detailedFundNeed.subProject.project = {
+          categoryId: params.categoryId
+        };
+      }
     }
 
-    if (params.projectId) {
-      recordCondition.detailedFundNeed = {
-        ...(recordCondition.detailedFundNeed || {}),
-        subProject: {
-          ...(recordCondition.detailedFundNeed?.subProject || {}),
-          project: {
-            id: params.projectId
-          }
-        }
-      };
-    }
-
-    if (params.projectCategoryId) {
-      recordCondition.detailedFundNeed = {
-        ...(recordCondition.detailedFundNeed || {}),
-        subProject: {
-          ...(recordCondition.detailedFundNeed?.subProject || {}),
-          project: {
-            ...(recordCondition.detailedFundNeed?.subProject?.project || {}),
-            categoryId: params.projectCategoryId
-          }
-        }
-      };
-    }
+    // 调试信息
+    console.log('Record查询条件:', JSON.stringify(recordCondition, null, 2));
 
     // 处理状态过滤
     if (params.status !== "all") {
@@ -203,7 +187,7 @@ export async function GET(request: NextRequest) {
         // 其他有效的枚举值直接使用
         // 将字符串转换为RecordStatus枚举
         const statusValue = params.status as string;
-        recordCondition.status = statusValue.toUpperCase() as any;
+        recordCondition.status = statusValue as any;  // 状态值已在前端转为大写，无需再次转换
       }
     }
 

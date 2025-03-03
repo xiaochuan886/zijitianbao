@@ -927,7 +927,7 @@ export default function PredictV2Page() {
     // 更新本地状态
     setFilters(newFilters);
 
-    // 创建apiFilters对象
+    // 设置超时，防止频繁更新
     filterTimeout.current = setTimeout(() => {
       // 遍历所有筛选条件并逐个更新
       Object.entries(newFilters).forEach(([key, value]) => {
@@ -935,6 +935,7 @@ export default function PredictV2Page() {
         if (key === 'status' && value !== 'all') {
           // 将状态值转换为大写以匹配枚举
           apiHandleFilterChange(key as keyof ProjectFilters, value.toUpperCase());
+          console.log(`状态筛选转换: ${value} -> ${value.toUpperCase()}`);
         } 
         // 处理项目分类筛选器
         else if (key === 'category') {
@@ -943,7 +944,7 @@ export default function PredictV2Page() {
           // 如果选择了特定分类，更新项目列表
           if (value !== 'all') {
             const categoryProjects = getProjectsByCategory(value);
-            console.log(`更新项目分类 ${value} 的项目列表:`, categoryProjects.length);
+            console.log(`更新项目分类 ${value} 的项目列表: ${categoryProjects.length}`);
           }
         }
         // 处理项目筛选器 
@@ -953,7 +954,7 @@ export default function PredictV2Page() {
           // 如果选择了特定项目，更新子项目列表
           if (value !== 'all') {
             const projectSubProjects = getSubProjectsByProject(value);
-            console.log(`更新项目 ${value} 的子项目列表:`, projectSubProjects.length);
+            console.log(`更新项目 ${value} 的子项目列表: ${projectSubProjects.length}`);
           }
         }
         else {

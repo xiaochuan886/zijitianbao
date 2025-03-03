@@ -273,8 +273,8 @@ export function useFundingPredictV2(
     }
     
     if (currentFilters.status && currentFilters.status !== 'all') {
-      // 确保状态值是小写的，与后端API匹配
-      const statusValue = currentFilters.status.toLowerCase();
+      // 直接使用状态值，不再转为小写（页面中已转为大写，与枚举匹配）
+      const statusValue = currentFilters.status;
       params.append("status", statusValue);
       console.log(`添加状态筛选条件: ${statusValue}`);
     }
