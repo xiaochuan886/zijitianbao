@@ -253,12 +253,11 @@ export default function PredictV2EditPage() {
     setSubmitting(true);
     
     try {
-      // 先保存记录
-      await handleSave();
-      
       // 准备要提交的记录数据
       const recordsToSubmit = records.map(record => ({
-        id: record.id
+        id: record.id,
+        amount: formData[record.id]?.amount || '',
+        remark: formData[record.id]?.remark || ''
       }));
       
       // 发送提交请求
@@ -411,11 +410,18 @@ export default function PredictV2EditPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
-              取消
+            <AlertDialogCancel onClick={() => {
+              setShowConfirmDialog(false);
+              router.push('/funding/predict-v2');
+            }}>
+              不保存并返回
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleSubmit}>
-              保存并继续
+            <AlertDialogAction onClick={async () => {
+              await handleSave();
+              setShowConfirmDialog(false);
+              router.push('/funding/predict-v2');
+            }}>
+              保存并返回
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

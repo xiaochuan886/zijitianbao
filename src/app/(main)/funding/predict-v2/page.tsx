@@ -931,11 +931,10 @@ export default function PredictV2Page() {
     filterTimeout.current = setTimeout(() => {
       // 遍历所有筛选条件并逐个更新
       Object.entries(newFilters).forEach(([key, value]) => {
-        // 如果是状态筛选，需要转换为枚举值
-        if (key === 'status' && value !== 'all') {
-          // 将状态值转换为大写以匹配枚举
-          apiHandleFilterChange(key as keyof ProjectFilters, value.toUpperCase());
-          console.log(`状态筛选转换: ${value} -> ${value.toUpperCase()}`);
+        // 状态筛选直接使用原始值，不做额外处理
+        if (key === 'status') {
+          console.log(`应用状态筛选: ${value}`);
+          apiHandleFilterChange(key as keyof ProjectFilters, value);
         } 
         // 处理项目分类筛选器
         else if (key === 'category') {

@@ -9,6 +9,8 @@ const requestSchema = z.object({
   records: z.array(
     z.object({
       id: z.string(),
+      amount: z.string().optional(),
+      remark: z.string().optional(),
     })
   ),
 });
@@ -34,34 +36,110 @@ export async function POST(request: NextRequest) {
 
     const { records } = validationResult.data;
 
-    // 过滤出真实ID记录（不处理临时ID）
-    const realRecordIds = records
-      .filter(record => !record.id.startsWith("temp_"))
-      .map(record => record.id);
+    // 分离临时ID和真实ID记录
+    const tempRecords = records.filter(record => record.id.startsWith("temp_"));
+    const realRecords = records.filter(record => !record.id.startsWith("temp_"));
 
-    if (realRecordIds.length === 0) {
-      return NextResponse.json({ error: "没有有效的记录ID" }, { status: 400 });
+    console.log(`处理${records.length}条记录，其中临时ID: ${tempRecords.length}，真实ID: ${realRecords.length}`);
+
+    // 处理结果
+    const results = {
+      created: 0,
+      updated: 0,
+      failed: 0,
+      errors: [] as string[]
+    };
+
+    // 处理真实ID记录 - 更新为已提交状态
+    if (realRecords.length > 0) {
+      for (const record of realRecords) {
+        try {
+          // 转换金额为数字
+          const amount = record.amount ? parseFloat(record.amount) : null;
+
+          // 更新记录为已提交状态
+          await prisma.predictRecord.update({
+            where: { id: record.id },
+            data: {
+              amount,
+              remark: record.remark || null,
+              status: "SUBMITTED",
+              updatedAt: new Date(),
+              submittedAt: new Date(),
+              submittedBy: session.user.id
+            }
+          });
+
+          results.updated++;
+        } catch (error) {
+          console.error(`更新记录 ${record.id} 失败:`, error);
+          results.failed++;
+          results.errors.push(`记录 ${record.id} 更新失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+      }
     }
 
-    console.log(`提交${realRecordIds.length}条记录`);
-
-    // 更新记录状态为已提交
-    const updateResult = await prisma.predictRecord.updateMany({
-      where: {
-        id: {
-          in: realRecordIds
+    // 处理临时ID记录 - 创建新记录并设置为已提交状态
+    if (tempRecords.length > 0) {
+      for (const record of tempRecords) {
+        try {
+          // 解析临时ID，提取detailedFundNeedId、年份和月份
+          const parts = record.id.split('_');
+          if (parts.length >= 4 && parts[0] === 'temp') {
+            const detailedFundNeedId = parts[1];
+            const year = parseInt(parts[2]);
+            const month = parseInt(parts[3]);
+            
+            if (detailedFundNeedId && !isNaN(year) && !isNaN(month)) {
+              // 查询资金需求明细
+              const detailedFundNeed = await prisma.detailedFundNeed.findUnique({
+                where: { id: detailedFundNeedId },
+                include: {
+                  subProject: true,
+                  fundType: true,
+                  department: true,
+                },
+              });
+              
+              if (detailedFundNeed) {
+                // 转换金额为数字
+                const amount = record.amount ? parseFloat(record.amount) : null;
+                
+                // 创建新记录并直接设置为已提交状态
+                await prisma.predictRecord.create({
+                  data: {
+                    year,
+                    month,
+                    amount,
+                    remark: record.remark || null,
+                    status: "SUBMITTED",
+                    submittedAt: new Date(),
+                    submittedBy: session.user.id,
+                    detailedFundNeedId: detailedFundNeed.id
+                  }
+                });
+                
+                results.created++;
+              } else {
+                throw new Error(`未找到资金需求明细: ${detailedFundNeedId}`);
+              }
+            } else {
+              throw new Error(`临时ID格式错误: ${record.id}`);
+            }
+          } else {
+            throw new Error(`临时ID格式错误: ${record.id}`);
+          }
+        } catch (error) {
+          console.error(`创建记录 ${record.id} 失败:`, error);
+          results.failed++;
+          results.errors.push(`记录 ${record.id} 创建失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
-      },
-      data: {
-        status: "SUBMITTED",
-        submittedAt: new Date(),
-        submittedBy: session.user.id
       }
-    });
+    }
 
     return NextResponse.json({
-      message: `成功提交${updateResult.count}条记录`,
-      count: updateResult.count
+      message: `成功提交记录: 创建 ${results.created} 条, 更新 ${results.updated} 条`,
+      results
     });
   } catch (error) {
     console.error("提交记录失败", error);

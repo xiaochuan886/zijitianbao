@@ -31,7 +31,7 @@ const querySchema = z.object({
   departmentId: z.string().optional(),
   organizationId: z.string().optional(),
   fundTypeId: z.string().optional(),
-  status: z.enum(["unfilled", "filled", "submitted", "approved", "rejected", "all"]).optional().default("all"),
+  status: z.string().default("all"), // 使用字符串类型接受任何状态值
   page: z.coerce.number().optional().default(1),
   pageSize: z.coerce.number().optional().default(10),
   sortBy: z.string().optional().default("createdAt"),
@@ -61,222 +61,449 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "必须提供年份和月份参数" }, { status: 400 });
     }
 
-    // 构建DetailedFundNeed查询条件
-    const detailedFundNeedCondition: any = {
-      // 只查询有效的资金需求
-      isActive: true
-    };
-
-    // 添加过滤条件
-    if (params.subProjectId) {
-      detailedFundNeedCondition.subProjectId = params.subProjectId;
-    }
-
-    if (params.projectId) {
-      detailedFundNeedCondition.subProject = {
-        ...(detailedFundNeedCondition.subProject || {}),
-        projectId: params.projectId
-      };
-    }
-
-    if (params.categoryId) {
-      detailedFundNeedCondition.subProject = {
-        ...(detailedFundNeedCondition.subProject || {}),
-        project: {
-          ...(detailedFundNeedCondition.subProject?.project || {}),
-          categoryId: params.categoryId
-        }
-      };
-    }
-
-    if (params.departmentId) {
-      detailedFundNeedCondition.departmentId = params.departmentId;
-    }
-
-    if (params.organizationId) {
-      detailedFundNeedCondition.organizationId = params.organizationId;
-    }
-
-    if (params.fundTypeId) {
-      detailedFundNeedCondition.fundTypeId = params.fundTypeId;
-    }
-
-    // 调试信息
-    console.log('DetailedFundNeed查询条件:', JSON.stringify(detailedFundNeedCondition, null, 2));
-
-    // 查询DetailedFundNeed记录
-    const detailedFundNeeds = await prisma.detailedFundNeed.findMany({
-      where: detailedFundNeedCondition,
-      include: {
-        subProject: {
-          include: {
-            project: {
-              include: {
-                category: true
-              }
-            }
-          }
-        },
-        department: true,
-        organization: true,
-        fundType: true
-      }
-    });
-
-    // 构建记录查询条件
-    const recordCondition: any = {
-      year: params.year,
-      month: params.month
-    };
+    // 将状态转换为大写以统一处理
+    const status = params.status.toUpperCase();
+    console.log(`请求状态筛选: ${params.status} -> ${status}`);
     
-    // 如果有多个嵌套条件，先创建detailedFundNeed属性
-    if (params.subProjectId || params.departmentId || params.fundTypeId || 
-        params.organizationId || params.projectId || params.categoryId) {
-      recordCondition.detailedFundNeed = {};
+    // 区分三种查询策略：
+    // 1. 对于"UNFILLED"状态，需要找出没有记录的需求
+    // 2. 对于"ALL"状态，需要同时包含数据库记录和未填写记录
+    // 3. 对于其他状态，直接在数据库中查询对应状态的记录
+    if (status === "UNFILLED") {
+      return await handleUnfilledStatus(params);
+    } else if (status === "ALL") {
+      return await handleAllStatus(params);
+    } else {
+      return await handleDatabaseStatus(params, status);
     }
-
-    // 添加过滤条件
-    if (params.subProjectId) {
-      recordCondition.detailedFundNeed.subProjectId = params.subProjectId;
-    }
-
-    if (params.departmentId) {
-      recordCondition.detailedFundNeed.departmentId = params.departmentId;
-    }
-
-    if (params.fundTypeId) {
-      recordCondition.detailedFundNeed.fundTypeId = params.fundTypeId;
-    }
-
-    if (params.organizationId) {
-      recordCondition.detailedFundNeed.organizationId = params.organizationId;
-    }
-    
-    // 项目和类别条件需要创建嵌套结构
-    if (params.projectId || params.categoryId) {
-      recordCondition.detailedFundNeed.subProject = {};
-      
-      if (params.projectId) {
-        recordCondition.detailedFundNeed.subProject.projectId = params.projectId;
-      }
-      
-      if (params.categoryId) {
-        recordCondition.detailedFundNeed.subProject.project = {
-          categoryId: params.categoryId
-        };
-      }
-    }
-
-    // 调试信息
-    console.log('Record查询条件:', JSON.stringify(recordCondition, null, 2));
-
-    // 处理状态过滤
-    if (params.status !== "all") {
-      // 扩展状态处理
-      if (params.status === "unfilled") {
-        // 不使用in操作符，因为status是枚举类型
-        // 对于unfilled状态，我们只查询没有状态的记录
-        recordCondition.status = null;
-      } else if (params.status === "filled") {
-        recordCondition.status = RecordStatus.DRAFT;
-      } else if (params.status === "submitted") {
-        recordCondition.status = RecordStatus.SUBMITTED;
-      } else if (params.status === "approved" || params.status === "rejected") {
-        // 这些状态需要在内存中处理，不在数据库查询中筛选
-      } else {
-        // 其他有效的枚举值直接使用
-        // 将字符串转换为RecordStatus枚举
-        const statusValue = params.status as string;
-        recordCondition.status = statusValue as any;  // 状态值已在前端转为大写，无需再次转换
-      }
-    }
-
-    // 查询已存在的记录
-    const existingRecords = await prisma.predictRecord.findMany({
-      where: recordCondition,
-      include: {
-        detailedFundNeed: {
-          include: {
-            subProject: {
-              include: {
-                project: {
-                  include: {
-                    category: true
-                  }
-                }
-              }
-            },
-            department: true,
-            organization: true,
-            fundType: true
-          }
-        }
-      }
-    });
-
-    // 创建已存在记录的映射，用于快速查找
-    const existingRecordMap = new Map();
-    existingRecords.forEach(record => {
-      const key = `${record.detailedFundNeedId}_${params.year}_${params.month}`;
-      existingRecordMap.set(key, record);
-    });
-
-    // 生成所有需要的记录
-    const allRecords = [];
-
-    // 基于DetailedFundNeed生成记录
-    for (const fundNeed of detailedFundNeeds) {
-      const key = `${fundNeed.id}_${params.year}_${params.month}`;
-      
-      // 检查是否已存在对应记录
-      if (existingRecordMap.has(key)) {
-        // 使用已存在的记录
-        allRecords.push(existingRecordMap.get(key));
-      } else {
-        // 创建新记录（未保存到数据库）
-        const newRecord = {
-          id: `temp_${fundNeed.id}_${params.year}_${params.month}`,
-          year: params.year,
-          month: params.month,
-          amount: null,
-          remark: null,
-          status: "unfilled",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          detailedFundNeedId: fundNeed.id,
-          detailedFundNeed: fundNeed
-        };
-        allRecords.push(newRecord);
-      }
-    }
-
-    // 排序
-    const sortedRecords = allRecords.sort((a, b) => {
-      if (params.sortBy === "createdAt") {
-        return params.sortOrder === "asc"
-          ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      }
-      return 0;
-    });
-
-    // 分页
-    const startIndex = (params.page - 1) * params.pageSize;
-    const endIndex = startIndex + params.pageSize;
-    const paginatedRecords = sortedRecords.slice(startIndex, endIndex);
-
-    // 返回结果
-    return NextResponse.json({
-      items: paginatedRecords,
-      total: sortedRecords.length,
-      page: params.page,
-      pageSize: params.pageSize,
-      totalPages: Math.ceil(sortedRecords.length / params.pageSize)
-    });
   } catch (error) {
     console.error("获取预测记录失败", error);
     return NextResponse.json({ error: "获取预测记录失败" }, { status: 500 });
   }
+}
+
+// 处理未填写状态的专用函数
+async function handleUnfilledStatus(params: any) {
+  console.log("处理未填写状态查询");
+  
+  // 构建DetailedFundNeed查询条件
+  const detailedFundNeedCondition: any = {
+    // 只查询有效的资金需求
+    isActive: true
+  };
+
+  // 添加过滤条件
+  if (params.subProjectId) {
+    detailedFundNeedCondition.subProjectId = params.subProjectId;
+  }
+
+  if (params.departmentId) {
+    detailedFundNeedCondition.departmentId = params.departmentId;
+  }
+
+  if (params.organizationId) {
+    detailedFundNeedCondition.organizationId = params.organizationId;
+  }
+
+  if (params.fundTypeId) {
+    detailedFundNeedCondition.fundTypeId = params.fundTypeId;
+  }
+  
+  // 项目和类别条件需要创建嵌套结构
+  if (params.projectId || params.categoryId) {
+    detailedFundNeedCondition.subProject = {};
+    
+    if (params.projectId) {
+      detailedFundNeedCondition.subProject.projectId = params.projectId;
+    }
+    
+    if (params.categoryId) {
+      detailedFundNeedCondition.subProject.project = {
+        categoryId: params.categoryId
+      };
+    }
+  }
+
+  console.log('DetailedFundNeed查询条件:', JSON.stringify(detailedFundNeedCondition, null, 2));
+
+  // 查询所有符合条件的DetailedFundNeed
+  const detailedFundNeeds = await prisma.detailedFundNeed.findMany({
+    where: detailedFundNeedCondition,
+    include: {
+      subProject: {
+        include: {
+          project: {
+            include: {
+              category: true
+            }
+          }
+        }
+      },
+      department: true,
+      organization: true,
+      fundType: true
+    }
+  });
+
+  console.log(`查询到 ${detailedFundNeeds.length} 个DetailedFundNeed记录`);
+
+  // 查询已经有记录的DetailedFundNeed IDs
+  const recordsWithFundNeeds = await prisma.predictRecord.findMany({
+    where: {
+      year: params.year,
+      month: params.month,
+    },
+    select: {
+      detailedFundNeedId: true
+    }
+  });
+
+  // 创建已有记录的ID集合，用于快速查找
+  const existingFundNeedIds = new Set(recordsWithFundNeeds.map(r => r.detailedFundNeedId));
+  console.log(`已有记录的DetailedFundNeed数量: ${existingFundNeedIds.size}`);
+
+  // 筛选出没有对应记录的DetailedFundNeed
+  const unfilledFundNeeds = detailedFundNeeds.filter(fundNeed => !existingFundNeedIds.has(fundNeed.id));
+  console.log(`未填写状态的DetailedFundNeed数量: ${unfilledFundNeeds.length}`);
+
+  // 为每个未填写的需求创建临时记录
+  const unfilledRecords = unfilledFundNeeds.map(fundNeed => ({
+    id: `temp_${fundNeed.id}_${params.year}_${params.month}`,
+    year: params.year,
+    month: params.month,
+    amount: null,
+    remark: null,
+    status: "UNFILLED",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    detailedFundNeedId: fundNeed.id,
+    detailedFundNeed: fundNeed
+  }));
+
+  // 排序
+  const sortedRecords = unfilledRecords.sort((a, b) => {
+    if (params.sortBy === "createdAt") {
+      return params.sortOrder === "asc"
+        ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+    return 0;
+  });
+
+  // 分页
+  const startIndex = (params.page - 1) * params.pageSize;
+  const endIndex = startIndex + params.pageSize;
+  const paginatedRecords = sortedRecords.slice(startIndex, endIndex);
+
+  // 返回结果
+  return NextResponse.json({
+    items: paginatedRecords,
+    total: sortedRecords.length,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.ceil(sortedRecords.length / params.pageSize)
+  });
+}
+
+// 处理全部状态的专用函数，包含数据库记录和未填写记录
+async function handleAllStatus(params: any) {
+  console.log("处理全部状态查询，包含数据库记录和未填写记录");
+  
+  // 1. 构建DetailedFundNeed的查询条件（用于未填写记录）
+  const detailedFundNeedCondition: any = {
+    // 只查询有效的资金需求
+    isActive: true
+  };
+
+  // 2. 构建PredictRecord的查询条件（用于数据库记录）
+  const recordCondition: any = {
+    year: params.year,
+    month: params.month
+  };
+  
+  // 3. 为两种查询添加共同的过滤条件
+  // 如果有多个嵌套条件，先创建detailedFundNeed属性
+  if (params.subProjectId || params.departmentId || params.fundTypeId || 
+      params.organizationId || params.projectId || params.categoryId) {
+    recordCondition.detailedFundNeed = {};
+  }
+  
+  // 添加过滤条件
+  if (params.subProjectId) {
+    detailedFundNeedCondition.subProjectId = params.subProjectId;
+    recordCondition.detailedFundNeed.subProjectId = params.subProjectId;
+  }
+
+  if (params.departmentId) {
+    detailedFundNeedCondition.departmentId = params.departmentId;
+    recordCondition.detailedFundNeed.departmentId = params.departmentId;
+  }
+
+  if (params.organizationId) {
+    detailedFundNeedCondition.organizationId = params.organizationId;
+    recordCondition.detailedFundNeed.organizationId = params.organizationId;
+  }
+
+  if (params.fundTypeId) {
+    detailedFundNeedCondition.fundTypeId = params.fundTypeId;
+    recordCondition.detailedFundNeed.fundTypeId = params.fundTypeId;
+  }
+  
+  // 项目和类别条件需要创建嵌套结构
+  if (params.projectId || params.categoryId) {
+    detailedFundNeedCondition.subProject = {};
+    recordCondition.detailedFundNeed.subProject = {};
+    
+    if (params.projectId) {
+      detailedFundNeedCondition.subProject.projectId = params.projectId;
+      recordCondition.detailedFundNeed.subProject.projectId = params.projectId;
+    }
+    
+    if (params.categoryId) {
+      detailedFundNeedCondition.subProject.project = {
+        categoryId: params.categoryId
+      };
+      recordCondition.detailedFundNeed.subProject.project = {
+        categoryId: params.categoryId
+      };
+    }
+  }
+
+  console.log('DetailedFundNeed查询条件:', JSON.stringify(detailedFundNeedCondition, null, 2));
+  console.log('Record查询条件:', JSON.stringify(recordCondition, null, 2));
+
+  // 4. 查询数据库中已有的记录
+  const dbRecords = await prisma.predictRecord.findMany({
+    where: recordCondition,
+    include: {
+      detailedFundNeed: {
+        include: {
+          subProject: {
+            include: {
+              project: {
+                include: {
+                  category: true
+                }
+              }
+            }
+          },
+          department: true,
+          organization: true,
+          fundType: true
+        }
+      }
+    },
+    orderBy: {
+      [params.sortBy]: params.sortOrder
+    }
+  });
+
+  console.log(`数据库中查询到 ${dbRecords.length} 条记录`);
+  // 日志记录数据库记录的状态分布，帮助调试
+  const statusCount = dbRecords.reduce((acc: any, record: any) => {
+    const status = record.status || 'UNKNOWN';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  console.log(`数据库记录状态分布: ${JSON.stringify(statusCount)}`);
+
+  // 5. 查询所有符合条件的DetailedFundNeed
+  const detailedFundNeeds = await prisma.detailedFundNeed.findMany({
+    where: detailedFundNeedCondition,
+    include: {
+      subProject: {
+        include: {
+          project: {
+            include: {
+              category: true
+            }
+          }
+        }
+      },
+      department: true,
+      organization: true,
+      fundType: true
+    }
+  });
+
+  console.log(`查询到 ${detailedFundNeeds.length} 个DetailedFundNeed记录`);
+
+  // 6. 创建已有记录的ID集合，用于快速查找哪些需求已经有对应记录
+  const existingFundNeedIds = new Set(dbRecords.map(r => r.detailedFundNeedId));
+  console.log(`已有记录的DetailedFundNeed数量: ${existingFundNeedIds.size}`);
+
+  // 7. 筛选出没有对应记录的DetailedFundNeed
+  const unfilledFundNeeds = detailedFundNeeds.filter(fundNeed => !existingFundNeedIds.has(fundNeed.id));
+  console.log(`未填写状态的DetailedFundNeed数量: ${unfilledFundNeeds.length}`);
+
+  // 8. 为每个未填写的需求创建临时记录
+  const unfilledRecords = unfilledFundNeeds.map(fundNeed => ({
+    id: `temp_${fundNeed.id}_${params.year}_${params.month}`,
+    year: parseInt(params.year),
+    month: parseInt(params.month),
+    amount: null,
+    remark: null,
+    status: "UNFILLED",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    detailedFundNeedId: fundNeed.id,
+    detailedFundNeed: fundNeed
+  }));
+
+  console.log(`生成了 ${unfilledRecords.length} 条未填写临时记录`);
+  
+  // 9. 合并两种记录
+  const allRecords = [...dbRecords, ...unfilledRecords];
+  const totalRecords = dbRecords.length + unfilledRecords.length;
+
+  console.log(`合并前数据库记录示例:`, dbRecords.length > 0 ? JSON.stringify({
+    id: dbRecords[0].id,
+    status: dbRecords[0].status,
+    detailedFundNeedId: dbRecords[0].detailedFundNeedId
+  }) : '无记录');
+  
+  console.log(`合并前未填写记录示例:`, unfilledRecords.length > 0 ? JSON.stringify({
+    id: unfilledRecords[0].id,
+    status: unfilledRecords[0].status,
+    detailedFundNeedId: unfilledRecords[0].detailedFundNeedId
+  }) : '无记录');
+  
+  // 10. 排序合并后的结果
+  const sortedRecords = allRecords.sort((a, b) => {
+    if (params.sortBy === "createdAt") {
+      // 确保日期比较不会出错
+      const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+      const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+      return params.sortOrder === "asc" ? aTime - bTime : bTime - aTime;
+    }
+    return 0;
+  });
+  
+  // 11. 分页
+  const startIndex = (params.page - 1) * params.pageSize;
+  const endIndex = startIndex + params.pageSize;
+  const paginatedRecords = sortedRecords.slice(startIndex, endIndex);
+  
+  console.log(`合并后总记录数 ${allRecords.length} 条，分页后 ${paginatedRecords.length} 条`);
+  console.log(`分页记录状态分布:`, paginatedRecords.reduce((acc: any, record: any) => {
+    const status = record.status || 'UNKNOWN';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {}));
+  
+  // 12. 返回结果
+  return NextResponse.json({
+    items: paginatedRecords,
+    total: totalRecords,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.ceil(totalRecords / params.pageSize)
+  });
+}
+
+// 处理数据库中已有状态的专用函数
+async function handleDatabaseStatus(params: any, status: string) {
+  console.log(`处理数据库状态查询: ${status}`);
+  
+  // 构建查询条件
+  const recordCondition: any = {
+    year: params.year,
+    month: params.month
+  };
+  
+  // 设置状态条件（如果不是"all"）
+  if (status !== "ALL") {
+    // 特殊状态处理
+    if (status === "FILLED") {
+      recordCondition.status = "DRAFT";
+    } else {
+      recordCondition.status = status;
+    }
+  }
+  
+  // 如果有多个嵌套条件，先创建detailedFundNeed属性
+  if (params.subProjectId || params.departmentId || params.fundTypeId || 
+      params.organizationId || params.projectId || params.categoryId) {
+    recordCondition.detailedFundNeed = {};
+  }
+
+  // 添加过滤条件
+  if (params.subProjectId) {
+    recordCondition.detailedFundNeed.subProjectId = params.subProjectId;
+  }
+
+  if (params.departmentId) {
+    recordCondition.detailedFundNeed.departmentId = params.departmentId;
+  }
+
+  if (params.fundTypeId) {
+    recordCondition.detailedFundNeed.fundTypeId = params.fundTypeId;
+  }
+
+  if (params.organizationId) {
+    recordCondition.detailedFundNeed.organizationId = params.organizationId;
+  }
+  
+  // 项目和类别条件需要创建嵌套结构
+  if (params.projectId || params.categoryId) {
+    recordCondition.detailedFundNeed.subProject = {};
+    
+    if (params.projectId) {
+      recordCondition.detailedFundNeed.subProject.projectId = params.projectId;
+    }
+    
+    if (params.categoryId) {
+      recordCondition.detailedFundNeed.subProject.project = {
+        categoryId: params.categoryId
+      };
+    }
+  }
+
+  console.log(`Record查询条件: ${JSON.stringify(recordCondition, null, 2)}`);
+
+  // 查询记录
+  const records = await prisma.predictRecord.findMany({
+    where: recordCondition,
+    include: {
+      detailedFundNeed: {
+        include: {
+          subProject: {
+            include: {
+              project: {
+                include: {
+                  category: true
+                }
+              }
+            }
+          },
+          department: true,
+          organization: true,
+          fundType: true
+        }
+      }
+    },
+    orderBy: {
+      [params.sortBy]: params.sortOrder
+    },
+    skip: (params.page - 1) * params.pageSize,
+    take: params.pageSize
+  });
+
+  // 获取总记录数
+  const totalRecords = await prisma.predictRecord.count({
+    where: recordCondition
+  });
+
+  console.log(`查询到 ${records.length} 条记录，总共 ${totalRecords} 条`);
+
+  // 返回结果
+  return NextResponse.json({
+    items: records,
+    total: totalRecords,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.ceil(totalRecords / params.pageSize)
+  });
 }
 
 export async function POST(request: NextRequest) {

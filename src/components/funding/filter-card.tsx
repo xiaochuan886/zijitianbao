@@ -214,8 +214,12 @@ export function FilterCard({
               <Combobox
                 options={[
                   { value: "all", label: "全部状态" },
+                  { value: "UNFILLED", label: "未填写" },
                   { value: "DRAFT", label: "草稿" },
                   { value: "SUBMITTED", label: "已提交" },
+                  { value: "APPROVED", label: "已通过" },
+                  { value: "REJECTED", label: "已拒绝" },
+                  { value: "PENDING_WITHDRAWAL", label: "待撤回" },
                   { value: "WITHDRAWN", label: "已撤回" },
                 ]}
                 value={filters.status}
