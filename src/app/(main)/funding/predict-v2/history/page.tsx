@@ -207,38 +207,6 @@ export default function PredictHistoryPageV2() {
     setPage(1) // 重置页码
   }
   
-  // 处理日期范围变化
-  const handleDateRangeChange = (range: DateRange) => {
-    setDateRange(range)
-    setPage(1) // 重置页码
-  }
-  
-  // 重置筛选器
-  const handleResetFilters = () => {
-    setFilters({
-      organization: "all",
-      department: "all",
-      category: "all",
-      project: "all",
-      subProject: "all",
-      fundType: "all",
-      status: "all"
-    })
-    
-    // 重置为最近12个月
-    const { currentYear, currentMonth } = getCurrentDateInfo()
-    const { startYear: defaultStartYear, startMonth: defaultStartMonth } = getStartDate(currentYear, currentMonth)
-    
-    setDateRange({
-      startYear: defaultStartYear,
-      startMonth: defaultStartMonth,
-      endYear: currentYear,
-      endMonth: currentMonth
-    })
-    
-    setPage(1) // 重置页码
-  }
-  
   // 格式化金额
   const formatCurrency = (amount: number | null): string => {
     if (amount === null) return "-"
@@ -275,13 +243,40 @@ export default function PredictHistoryPageV2() {
       params.append("page", page.toString())
       params.append("pageSize", pageSize.toString())
       
+      // 输出日志，便于调试
+      console.log("发送请求参数:", {
+        filters,
+        dateRange,
+        page,
+        pageSize,
+        url: `/api/funding/predict-v2/history?${params.toString()}`
+      });
+      
       // 发送请求
-      const response = await fetch(`/api/funding/predict-v2/history?${params.toString()}`)
+      const response = await fetch(`/api/funding/predict-v2/history?${params.toString()}`, {
+        // 添加缓存控制头，确保不使用缓存
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
+      
       if (!response.ok) {
         throw new Error("获取历史记录失败")
       }
       
       const data = await response.json()
+      console.log("获取到的数据:", {
+        recordsCount: data.records?.length || 0,
+        total: data.total || 0,
+        firstRecord: data.records?.length > 0 ? {
+          id: data.records[0].id,
+          year: data.records[0].year,
+          month: data.records[0].month
+        } : null
+      });
+      
       setRecords(data.records || [])
       setTotal(data.total || 0)
     } catch (error) {
@@ -295,6 +290,46 @@ export default function PredictHistoryPageV2() {
       setLoading(false)
     }
   }, [filters, dateRange, page, pageSize, toast])
+  
+  // 处理日期范围变化
+  const handleDateRangeChange = useCallback((range: DateRange) => {
+    console.log("日期范围变化:", range);
+    setDateRange(range);
+    setPage(1); // 重置页码
+    
+    // 不再自动调用fetchHistory，由用户点击搜索按钮触发
+  }, []);
+  
+  // 重置筛选器
+  const handleResetFilters = useCallback(() => {
+    setFilters({
+      organization: "all",
+      department: "all",
+      category: "all",
+      project: "all",
+      subProject: "all",
+      fundType: "all",
+      status: "all"
+    });
+    
+    // 重置为最近12个月
+    const { currentYear, currentMonth } = getCurrentDateInfo();
+    const { startYear: defaultStartYear, startMonth: defaultStartMonth } = getStartDate(currentYear, currentMonth);
+    
+    setDateRange({
+      startYear: defaultStartYear,
+      startMonth: defaultStartMonth,
+      endYear: currentYear,
+      endMonth: currentMonth
+    });
+    
+    setPage(1); // 重置页码
+    
+    // 重置后自动获取数据
+    setTimeout(() => {
+      fetchHistory();
+    }, 0);
+  }, [fetchHistory, getCurrentDateInfo, getStartDate]);
   
   // 处理查看记录
   const handleViewRecord = (record: HistoryRecord) => {
@@ -367,18 +402,15 @@ export default function PredictHistoryPageV2() {
   
   // 页面加载时获取数据
   useEffect(() => {
-    fetchMetadata()
-  }, [fetchMetadata])
-  
-  // 当筛选条件或日期范围变化时获取数据
-  useEffect(() => {
-    fetchHistory()
-  }, [fetchHistory])
+    fetchMetadata();
+    // 初始加载数据
+    fetchHistory();
+  }, [fetchMetadata, fetchHistory]);
   
   // 当视图模式改变时，重置页码
   useEffect(() => {
-    setPage(1)
-  }, [viewMode])
+    setPage(1);
+  }, [viewMode]);
   
   return (
     <div className="space-y-6">
@@ -421,6 +453,7 @@ export default function PredictHistoryPageV2() {
             endMonth={dateRange.endMonth}
             onChange={handleDateRangeChange}
             onReset={handleResetFilters}
+            onSearch={fetchHistory}
           />
         </CardContent>
       </Card>

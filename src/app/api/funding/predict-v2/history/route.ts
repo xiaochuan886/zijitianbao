@@ -25,96 +25,107 @@ export async function GET(request: Request) {
     const fundTypeId = searchParams.get("fundTypeId");
     const status = searchParams.get("status");
 
-    // 构建查询条件
-    const where: any = {
-      OR: [
-        {
-          // 开始年份和结束年份相同
-          AND: [
-            { year: startYear },
-            { month: { gte: startMonth } },
-            { month: { lte: endMonth } },
-          ],
-        },
-        {
-          // 开始年份和结束年份不同
-          OR: [
-            {
-              // 开始年份的月份
-              AND: [
-                { year: startYear },
-                { month: { gte: startMonth } },
-              ],
-            },
-            {
-              // 结束年份的月份
-              AND: [
-                { year: endYear },
-                { month: { lte: endMonth } },
-              ],
-            },
-            {
-              // 中间年份的所有月份
-              AND: [
-                { year: { gt: startYear } },
-                { year: { lt: endYear } },
-              ],
-            },
-          ],
-        },
-      ],
-    };
+    // 输出接收到的参数
+    console.log("API接收到的参数:", {
+      startYear,
+      startMonth,
+      endYear,
+      endMonth,
+      page,
+      pageSize,
+      organizationId,
+      departmentId,
+      categoryId,
+      projectId,
+      subProjectId,
+      fundTypeId,
+      status
+    });
 
-    // 添加筛选条件
-    if (organizationId && organizationId !== "all") {
-      where.detailedFundNeed = {
-        ...where.detailedFundNeed,
-        organizationId,
+    // 构建查询条件
+    const where: any = {};
+    
+    // 构建日期范围条件
+    // 简化日期范围查询逻辑，避免复杂的嵌套条件
+    if (startYear === endYear) {
+      // 同一年内的月份范围
+      where.year = startYear;
+      where.month = {
+        gte: startMonth,
+        lte: endMonth
       };
+    } else {
+      // 跨年的日期范围
+      where.OR = [
+        // 开始年份的月份
+        {
+          year: startYear,
+          month: { gte: startMonth }
+        },
+        // 结束年份的月份
+        {
+          year: endYear,
+          month: { lte: endMonth }
+        }
+      ];
+      
+      // 如果开始年份和结束年份相差超过1年，添加中间年份的所有月份
+      if (endYear - startYear > 1) {
+        const middleYears = [];
+        for (let year = startYear + 1; year < endYear; year++) {
+          middleYears.push({ year });
+        }
+        if (middleYears.length > 0) {
+          where.OR.push(...middleYears);
+        }
+      }
+    }
+    
+    // 添加筛选条件
+    const detailedFundNeedConditions: any = {};
+    let hasDetailedConditions = false;
+
+    if (organizationId && organizationId !== "all") {
+      detailedFundNeedConditions.organizationId = organizationId;
+      hasDetailedConditions = true;
     }
 
     if (departmentId && departmentId !== "all") {
-      where.detailedFundNeed = {
-        ...where.detailedFundNeed,
-        departmentId,
-      };
+      detailedFundNeedConditions.departmentId = departmentId;
+      hasDetailedConditions = true;
     }
 
     if (categoryId && categoryId !== "all") {
-      where.detailedFundNeed = {
-        ...where.detailedFundNeed,
-        subProject: {
-          ...where.detailedFundNeed?.subProject,
-          project: {
-            ...where.detailedFundNeed?.subProject?.project,
-            categoryId,
-          },
+      detailedFundNeedConditions.subProject = {
+        ...detailedFundNeedConditions.subProject,
+        project: {
+          ...detailedFundNeedConditions.subProject?.project,
+          categoryId,
         },
       };
+      hasDetailedConditions = true;
     }
 
     if (projectId && projectId !== "all") {
-      where.detailedFundNeed = {
-        ...where.detailedFundNeed,
-        subProject: {
-          ...where.detailedFundNeed?.subProject,
-          projectId,
-        },
+      detailedFundNeedConditions.subProject = {
+        ...detailedFundNeedConditions.subProject,
+        projectId,
       };
+      hasDetailedConditions = true;
     }
 
     if (subProjectId && subProjectId !== "all") {
-      where.detailedFundNeed = {
-        ...where.detailedFundNeed,
-        subProjectId,
-      };
+      detailedFundNeedConditions.subProjectId = subProjectId;
+      hasDetailedConditions = true;
     }
 
     if (fundTypeId && fundTypeId !== "all") {
-      where.detailedFundNeed = {
-        ...where.detailedFundNeed,
-        fundTypeId,
-      };
+      detailedFundNeedConditions.fundTypeId = fundTypeId;
+      hasDetailedConditions = true;
+    }
+
+    if (hasDetailedConditions) {
+      where.detailedFundNeed = detailedFundNeedConditions;
     }
 
     if (status && status !== "all") {
@@ -122,6 +133,8 @@ export async function GET(request: Request) {
     }
 
     // 查询总数
+    console.log("执行查询，条件:", JSON.stringify(where, null, 2));
+    
     const total = await prisma.predictRecord.count({
       where,
     });
@@ -160,6 +173,16 @@ export async function GET(request: Request) {
       ],
       skip: (page - 1) * pageSize,
       take: pageSize,
+    });
+
+    console.log("查询结果:", {
+      total,
+      recordsCount: records.length,
+      firstRecord: records.length > 0 ? {
+        id: records[0].id,
+        year: records[0].year,
+        month: records[0].month
+      } : null
     });
 
     // 获取所有机构

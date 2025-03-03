@@ -319,7 +319,8 @@ export default function PredictV2Page() {
     requestWithdrawal,
     getProjectsByCategory,
     getSubProjectsByProject,
-    getAllFundTypes
+    getAllFundTypes,
+    handleMonthChange: apiHandleMonthChange
   } = useFundingPredictV2()
 
   // 分离待处理和已处理的记录
@@ -979,6 +980,12 @@ export default function PredictV2Page() {
     handleReset()
   }, [handleReset])
 
+  // 处理月份变更
+  const handleMonthChange = useCallback((year: number, month: number) => {
+    // 直接调用API的月份变更函数
+    apiHandleMonthChange(year, month);
+  }, [apiHandleMonthChange])
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-4">
@@ -1017,6 +1024,79 @@ export default function PredictV2Page() {
         onReset={handleResetFilters}
         onSearch={() => fetchRecords(true)}
       />
+      
+      {/* 添加日期筛选器 */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col space-y-4">
+            <h3 className="text-lg font-medium">日期范围</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">年份</label>
+                <Select
+                  value={currentMonth.year.toString()}
+                  onValueChange={(value) => {
+                    const year = parseInt(value);
+                    handleMonthChange(year, currentMonth.month);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择年份" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i - 2).map((year) => (
+                      <SelectItem key={year} value={year.toString()}>
+                        {year}年
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">月份</label>
+                <Select
+                  value={currentMonth.month.toString()}
+                  onValueChange={(value) => {
+                    const month = parseInt(value);
+                    handleMonthChange(currentMonth.year, month);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择月份" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                      <SelectItem key={month} value={month.toString()}>
+                        {month}月
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  const now = new Date();
+                  let nextMonth = now.getMonth() + 2;
+                  let year = now.getFullYear();
+                  
+                  if (nextMonth > 12) {
+                    nextMonth = nextMonth - 12;
+                    year += 1;
+                  }
+                  
+                  handleMonthChange(year, nextMonth);
+                }}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                重置为下月
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
       <Card>
         <CardHeader className="p-4 pb-0">

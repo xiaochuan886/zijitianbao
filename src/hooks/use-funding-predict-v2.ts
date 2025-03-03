@@ -432,6 +432,29 @@ export function useFundingPredictV2(
     }
   }, [buildQueryParams, fetchMetadata, toast, organizations]);
 
+  // 处理月份变更
+  const handleMonthChange = useCallback((year: number, month: number) => {
+    console.log(`月份变更: ${year}年${month}月`);
+    setCurrentMonth({
+      year,
+      month,
+      label: `${year}年${month}月`
+    });
+    
+    // 重置分页
+    setPagination(prev => ({ ...prev, page: 1 }));
+    
+    // 取消之前的请求
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+    
+    // 设置新的延迟请求
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchRecords(true);
+    }, 300);
+  }, [fetchRecords]);
+
   // 处理筛选条件变化 - 添加防抖处理
   const handleFilterChange = useCallback((key: keyof ProjectFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -649,11 +672,13 @@ export function useFundingPredictV2(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 返回钩子函数的值
   return {
     loading,
     records,
     filters,
     pagination,
+    setPagination,
     organizations,
     departments,
     projectCategories,
@@ -661,16 +686,14 @@ export function useFundingPredictV2(
     subProjects,
     fundTypes,
     currentMonth,
-    setFilters,
-    setPagination,
     handleFilterChange,
     handlePageChange,
     handleReset,
     fetchRecords,
-    saveRecords,
     requestWithdrawal,
     getProjectsByCategory,
     getSubProjectsByProject,
     getAllFundTypes,
+    handleMonthChange
   };
 } 
