@@ -185,7 +185,15 @@ export function HistoryTableView({
                   <TableCell>{`${record.year}-${record.month.toString().padStart(2, '0')}`}</TableCell>
                   <TableCell>
                     <Badge variant={record.status === RecordStatus.SUBMITTED ? "secondary" : "outline"}>
-                      {record.status === RecordStatus.SUBMITTED ? "已提交" : record.status}
+                      {record.status === RecordStatus.SUBMITTED 
+                        ? "已提交" 
+                        : record.status === RecordStatus.DRAFT 
+                          ? "草稿" 
+                          : record.status === RecordStatus.PENDING_WITHDRAWAL 
+                            ? "待撤回" 
+                            : record.status === "UNFILLED" 
+                              ? "未填报" 
+                              : record.status}
                     </Badge>
                   </TableCell>
                   <TableCell>{new Date(record.submittedAt).toLocaleString()}</TableCell>

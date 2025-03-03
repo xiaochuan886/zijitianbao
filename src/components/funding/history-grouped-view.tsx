@@ -19,20 +19,32 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
+import React from "react"
+
+// 记录对象接口
+interface MonthRecord {
+  [key: string]: number | null; // 月份: 金额
+}
+
+interface RecordData {
+  monthValues: MonthRecord; // 月份数据
+  remark?: string; // 备注信息
+}
 
 // 分组历史记录类型
 export interface GroupedHistory {
   organization: string
   departments: {
     name: string
-    projects: {
+    categories: {
       name: string
-      subProjects: {
+      projects: {
         name: string
-        fundTypes: {
+        subProjects: {
           name: string
-          records: {
-            [key: string]: number | null // 月份: 金额
+          fundTypes: {
+            name: string
+            records: RecordData[]
           }[]
         }[]
       }[]
@@ -166,29 +178,36 @@ export function HistoryGroupedView({
             ) : (
               groupedHistory.flatMap(org => (
                 org.departments.flatMap(dept => (
-                  dept.projects.flatMap(proj => (
-                    <>
-                      <TableRow key={`header-${org.organization}-${dept.name}-${proj.name}`} className="bg-muted/50">
-                        <TableCell colSpan={2 + monthColumns.length} className="font-medium">
-                          {org.organization} &gt; {dept.name} &gt; {proj.name}
-                        </TableCell>
-                      </TableRow>
-                      {proj.subProjects.flatMap(subProj => (
-                        subProj.fundTypes.map(fundType => (
-                          <TableRow key={`data-${org.organization}-${dept.name}-${proj.name}-${subProj.name}-${fundType.name}`}>
-                            <TableCell>{subProj.name}</TableCell>
-                            <TableCell>{fundType.name}</TableCell>
-                            {monthColumns.map(column => (
-                              <TableCell key={column.key}>
-                                {fundType.records[0][column.key] !== undefined
-                                  ? formatCurrency(fundType.records[0][column.key])
-                                  : "-"}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        ))
-                      ))}
-                    </>
+                  dept.categories.flatMap(category => (
+                    category.projects.flatMap((proj, projIndex) => (
+                      <React.Fragment key={`section-${org.organization}-${dept.name}-${category.name}-${proj.name}-${projIndex}`}>
+                        <TableRow className="bg-muted/50">
+                          <TableCell colSpan={2 + monthColumns.length} className="font-medium">
+                            {org.organization} &gt; {dept.name} &gt; {category.name} &gt; {proj.name}
+                          </TableCell>
+                        </TableRow>
+                        {proj.subProjects.flatMap((subProj, subProjIndex) => (
+                          subProj.fundTypes.map((fundType, fundTypeIndex) => (
+                            <TableRow key={`data-${org.organization}-${dept.name}-${category.name}-${proj.name}-${subProj.name}-${fundType.name}-${subProjIndex}-${fundTypeIndex}`}>
+                              <TableCell>{subProj.name}</TableCell>
+                              <TableCell>{fundType.name}</TableCell>
+                              {monthColumns.map(column => (
+                                <TableCell key={`cell-${column.key}-${org.organization}-${dept.name}-${category.name}-${proj.name}-${subProj.name}-${fundType.name}`}>
+                                  {fundType.records[0].monthValues[column.key] !== undefined ? (
+                                    <div 
+                                      className="cursor-help" 
+                                      title={fundType.records[0].remark ? `备注: ${fundType.records[0].remark}` : "无备注"}
+                                    >
+                                      {formatCurrency(fundType.records[0].monthValues[column.key])}
+                                    </div>
+                                  ) : "-"}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))
+                        ))}
+                      </React.Fragment>
+                    ))
                   ))
                 ))
               ))
@@ -230,7 +249,7 @@ export function HistoryGroupedView({
 
 // 将历史记录转换为分组视图数据
 export function processGroupedData(records: HistoryRecord[]): GroupedHistory[] {
-  // 按组织、部门、项目、子项目、资金类型分组
+  // 按组织、部门、项目类型、项目、子项目、资金类型分组
   const grouped: Record<string, any> = {}
   
   records.forEach(record => {
@@ -246,41 +265,59 @@ export function processGroupedData(records: HistoryRecord[]): GroupedHistory[] {
     if (!grouped[record.organization].departments[record.department]) {
       grouped[record.organization].departments[record.department] = {
         name: record.department,
+        categories: {}
+      }
+    }
+    
+    // 初始化项目类型结构
+    if (!grouped[record.organization].departments[record.department].categories[record.category]) {
+      grouped[record.organization].departments[record.department].categories[record.category] = {
+        name: record.category,
         projects: {}
       }
     }
     
     // 初始化项目结构
-    if (!grouped[record.organization].departments[record.department].projects[record.project]) {
-      grouped[record.organization].departments[record.department].projects[record.project] = {
+    if (!grouped[record.organization].departments[record.department].categories[record.category].projects[record.project]) {
+      grouped[record.organization].departments[record.department].categories[record.category].projects[record.project] = {
         name: record.project,
         subProjects: {}
       }
     }
     
     // 初始化子项目结构
-    if (!grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject]) {
-      grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject] = {
+    if (!grouped[record.organization].departments[record.department].categories[record.category].projects[record.project].subProjects[record.subProject]) {
+      grouped[record.organization].departments[record.department].categories[record.category].projects[record.project].subProjects[record.subProject] = {
         name: record.subProject,
         fundTypes: {}
       }
     }
     
     // 初始化资金类型结构
-    if (!grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType]) {
-      grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType] = {
+    if (!grouped[record.organization].departments[record.department].categories[record.category].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType]) {
+      grouped[record.organization].departments[record.department].categories[record.category].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType] = {
         name: record.fundType,
         records: []
       }
       
       // 初始化记录对象
-      const recordObj: {[key: string]: number | null} = {}
-      grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType].records.push(recordObj)
+      const recordObj: RecordData = {
+        monthValues: {}
+      }
+      if (record.remark) {
+        recordObj.remark = record.remark;
+      }
+      grouped[record.organization].departments[record.department].categories[record.category].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType].records.push(recordObj)
     }
     
     // 添加月份记录
     const monthKey = `${record.year}-${record.month.toString().padStart(2, '0')}`
-    grouped[record.organization].departments[record.department].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType].records[0][monthKey] = record.amount
+    grouped[record.organization].departments[record.department].categories[record.category].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType].records[0].monthValues[monthKey] = record.amount
+    
+    // 添加备注信息
+    if (record.remark) {
+      grouped[record.organization].departments[record.department].categories[record.category].projects[record.project].subProjects[record.subProject].fundTypes[record.fundType].records[0].remark = record.remark
+    }
   })
   
   // 将嵌套对象转换为数组
@@ -290,16 +327,21 @@ export function processGroupedData(records: HistoryRecord[]): GroupedHistory[] {
       departments: Object.values(org.departments).map((dept: any) => {
         return {
           name: dept.name,
-          projects: Object.values(dept.projects).map((proj: any) => {
+          categories: Object.values(dept.categories).map((category: any) => {
             return {
-              name: proj.name,
-              subProjects: Object.values(proj.subProjects).map((subProj: any) => {
+              name: category.name,
+              projects: Object.values(category.projects).map((proj: any) => {
                 return {
-                  name: subProj.name,
-                  fundTypes: Object.values(subProj.fundTypes).map((fundType: any) => {
+                  name: proj.name,
+                  subProjects: Object.values(proj.subProjects).map((subProj: any) => {
                     return {
-                      name: fundType.name,
-                      records: fundType.records
+                      name: subProj.name,
+                      fundTypes: Object.values(subProj.fundTypes).map((fundType: any) => {
+                        return {
+                          name: fundType.name,
+                          records: fundType.records
+                        }
+                      })
                     }
                   })
                 }
