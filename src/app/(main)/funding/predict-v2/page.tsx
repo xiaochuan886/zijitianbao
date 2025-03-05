@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo, useRef } from "react"
+import { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 import { Button } from "@/components/ui/button"
@@ -54,6 +54,8 @@ import { RecordStatus, Role } from "@/lib/enums"
 import { Combobox, ComboboxOption } from "@/components/ui/combobox"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { FilterCard } from "@/components/funding/filter-card"
+import Link from "next/link"
+import { CreateWithdrawalRequestButton } from "@/components/create-withdrawal-request-button"
 
 // 自定义组件，简化版的 FilterCard
 function SimpleFilterCard({ children }: { children: React.ReactNode }) {
@@ -277,9 +279,6 @@ export default function PredictV2Page() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("pending")
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set())
-  const [withdrawalRecord, setWithdrawalRecord] = useState<string | null>(null)
-  const [withdrawalReason, setWithdrawalReason] = useState("")
-  const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] = useState(false)
   const [isCreateRecordsDialogOpen, setIsCreateRecordsDialogOpen] = useState(false)
   const [submitRecord, setSubmitRecord] = useState<string | null>(null)
   const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false)
@@ -316,7 +315,6 @@ export default function PredictV2Page() {
     handlePageChange,
     handleReset,
     fetchRecords,
-    requestWithdrawal,
     getProjectsByCategory,
     getSubProjectsByProject,
     getAllFundTypes,
@@ -492,36 +490,53 @@ export default function PredictV2Page() {
     }
   }, [selectedRecords, toast, fetchRecords])
 
-  // 处理申请撤回
-  const handleWithdrawalRequest = useCallback(async () => {
-    if (!withdrawalRecord || !withdrawalReason.trim()) {
-      toast({
-        title: "提示",
-        description: "请填写撤回原因",
-      })
-      return
-    }
-    
-    const success = await requestWithdrawal(withdrawalRecord, withdrawalReason)
-    
-    if (success) {
-      setWithdrawalRecord(null)
-      setWithdrawalReason("")
-      setIsWithdrawalDialogOpen(false)
-    }
-  }, [withdrawalRecord, withdrawalReason, requestWithdrawal, toast])
-
-  // 打开撤回对话框
-  const openWithdrawalDialog = useCallback((recordId: string) => {
-    setWithdrawalRecord(recordId)
-    setWithdrawalReason("")
-    setIsWithdrawalDialogOpen(true)
-  }, [])
-
   // 跳转到提交历史页面
   const navigateToHistory = useCallback(() => {
     router.push("/funding/predict-v2/history")
   }, [router])
+
+  // 处理记录提交
+  const handleSubmitRecord = useCallback(async () => {
+    if (!submitRecord) return
+    
+    try {
+      // 调用API提交预测
+      const response = await fetch(`/api/funding/predict-v2/submit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: [{ id: submitRecord }]
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "提交失败");
+      }
+      
+      // 显示成功提示
+      toast({
+        title: "提交成功",
+        description: "记录已成功提交",
+      });
+      
+      // 刷新页面
+      fetchRecords(true);
+      
+      // 关闭对话框
+      setIsSubmitDialogOpen(false)
+      setSubmitRecord(null)
+    } catch (error) {
+      console.error("提交失败", error);
+      toast({
+        title: "提交失败",
+        description: error instanceof Error ? error.message : "提交失败",
+        variant: "destructive"
+      });
+    }
+  }, [submitRecord, toast, fetchRecords])
 
   // 创建项目-组织关联
   const handleCreateProjectOrgLinks = useCallback(async () => {
@@ -585,54 +600,11 @@ export default function PredictV2Page() {
     }
   }, [toast, fetchRecords, apiFilters, organizations]);
 
-  // 打开提交确认对话框
+  // 打开提交对话框
   const openSubmitDialog = useCallback((recordId: string) => {
     setSubmitRecord(recordId)
     setIsSubmitDialogOpen(true)
   }, [])
-
-  // 处理单条记录提交
-  const handleSingleSubmit = useCallback(async () => {
-    if (!submitRecord) return
-    
-    try {
-      // 调用API提交预测
-      const response = await fetch(`/api/funding/predict-v2/submit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          records: [{ id: submitRecord }]
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "提交失败");
-      }
-      
-      // 显示成功提示
-      toast({
-        title: "提交成功",
-        description: "记录已成功提交",
-      });
-      
-      // 刷新页面
-      fetchRecords(true);
-      
-      // 关闭对话框
-      setIsSubmitDialogOpen(false)
-      setSubmitRecord(null)
-    } catch (error) {
-      console.error("提交失败", error);
-      toast({
-        title: "提交失败",
-        description: error instanceof Error ? error.message : "提交失败",
-        variant: "destructive"
-      });
-    }
-  }, [submitRecord, toast, fetchRecords])
 
   // 渲染记录表格
   const renderRecordsTable = useCallback((recordsToRender: typeof records) => {
@@ -658,6 +630,7 @@ export default function PredictV2Page() {
               <TableHead>年月</TableHead>
               <TableHead>金额</TableHead>
               <TableHead>状态</TableHead>
+              <TableHead>撤回</TableHead>
               <TableHead>备注</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
@@ -665,7 +638,7 @@ export default function PredictV2Page() {
           <TableBody>
             {recordsToRender.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center">
+                <TableCell colSpan={10} className="h-24 text-center">
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -707,6 +680,15 @@ export default function PredictV2Page() {
                       {statusMap[record.status.toLowerCase()]?.label || record.status}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    {record.status.toLowerCase() === RecordStatus.SUBMITTED.toLowerCase() && (
+                      <CreateWithdrawalRequestButton
+                        recordId={record.id}
+                        recordType="predict"
+                        onSuccess={() => fetchRecords(true)}
+                      />
+                    )}
+                  </TableCell>
                   <TableCell className="max-w-[200px] truncate" title={record.remark || ""}>
                     {record.remark || "-"}
                   </TableCell>
@@ -736,89 +718,18 @@ export default function PredictV2Page() {
                           </Button>
                         )}
                       </div>
-                    ) : record.status.toLowerCase() === RecordStatus.SUBMITTED.toLowerCase() ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
-                          className="h-8 px-2 py-0"
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          查看
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => openWithdrawalDialog(record.id)}
-                          className="h-8 px-2 py-0"
-                        >
-                          <RotateCcw className="h-4 w-4 mr-1" />
-                          撤回
-                        </Button>
-                      </div>
-                    ) : record.status.toLowerCase() === RecordStatus.PENDING_WITHDRAWAL.toLowerCase() ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
-                          className="h-8 px-2 py-0"
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          查看
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              // 调用API取消撤回
-                              const response = await fetch(`/api/funding/predict-v2/cancel-withdrawal/${record.id}`, {
-                                method: "POST",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                }
-                              });
-                              
-                              if (!response.ok) {
-                                const errorData = await response.json();
-                                throw new Error(errorData.error || "取消撤回失败");
-                              }
-                              
-                              // 显示成功提示
-                              toast({
-                                title: "取消撤回成功",
-                                description: "已取消撤回申请",
-                              });
-                              
-                              // 刷新页面
-                              fetchRecords(true);
-                            } catch (error) {
-                              console.error("取消撤回失败", error);
-                              toast({
-                                title: "取消撤回失败",
-                                description: error instanceof Error ? error.message : "取消撤回失败",
-                                variant: "destructive"
-                              });
-                            }
-                          }}
-                          className="h-8 px-2 py-0"
-                        >
-                          <XCircle className="h-4 w-4 mr-1" />
-                          取消撤回
-                        </Button>
-                      </div>
                     ) : (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
-                        className="h-8 px-2 py-0"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        查看
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
+                          className="h-8 px-2 py-0"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          查看
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
@@ -828,7 +739,7 @@ export default function PredictV2Page() {
         </Table>
       </div>
     )
-  }, [selectedRecords, handleRecordSelection, handleSelectAll, router, openWithdrawalDialog, openSubmitDialog])
+  }, [selectedRecords, handleRecordSelection, handleSelectAll, router, openSubmitDialog, fetchRecords])
 
   // 渲染分页控件
   const renderPagination = useCallback(() => {
@@ -1174,39 +1085,13 @@ export default function PredictV2Page() {
         </CardContent>
       </Card>
       
-      {/* 批量提交确认对话框 */}
-      <Dialog open={isBatchSubmitDialogOpen} onOpenChange={setIsBatchSubmitDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>确认批量提交</DialogTitle>
-            <DialogDescription>
-              提交后记录将不能再修改。确定要提交选中的 {selectedRecords.size} 条记录吗？
-            </DialogDescription>
-          </DialogHeader>
-          
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsBatchSubmitDialogOpen(false)}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={handleBatchSubmit}
-            >
-              确认提交
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      {/* 提交确认对话框 */}
+      {/* 提交对话框 */}
       <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认提交</DialogTitle>
+            <DialogTitle>提交确认</DialogTitle>
             <DialogDescription>
-              提交后记录将不能再修改。确定要提交吗？
+              提交后将无法修改，请确认信息无误。
             </DialogDescription>
           </DialogHeader>
           
@@ -1221,7 +1106,7 @@ export default function PredictV2Page() {
               取消
             </Button>
             <Button
-              onClick={handleSingleSubmit}
+              onClick={handleSubmitRecord}
             >
               确认提交
             </Button>
@@ -1229,46 +1114,37 @@ export default function PredictV2Page() {
         </DialogContent>
       </Dialog>
       
-      {/* 撤回对话框 */}
-      <Dialog open={isWithdrawalDialogOpen} onOpenChange={setIsWithdrawalDialogOpen}>
+      {/* 批量提交对话框 */}
+      <Dialog open={isBatchSubmitDialogOpen} onOpenChange={setIsBatchSubmitDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>申请撤回</DialogTitle>
+            <DialogTitle>批量提交确认</DialogTitle>
             <DialogDescription>
-              请填写撤回原因
+              提交后将无法修改，请确认信息无误。
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <Textarea
-              placeholder="请输入撤回原因"
-              value={withdrawalReason}
-              onChange={(e) => setWithdrawalReason(e.target.value)}
-            />
-          </div>
           
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
-                setIsWithdrawalDialogOpen(false)
-                setWithdrawalReason("")
+                setIsBatchSubmitDialogOpen(false)
               }}
             >
               取消
             </Button>
             <Button
-              onClick={handleWithdrawalRequest}
+              onClick={handleBatchSubmit}
             >
-              提交
+              确认提交
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       
-      {/* 创建填报记录对话框 */}
-      <CreateRecordsDialog
-        open={isCreateRecordsDialogOpen}
+      {/* 创建记录对话框 */}
+      <CreateRecordsDialog 
+        open={isCreateRecordsDialogOpen} 
         setOpen={setIsCreateRecordsDialogOpen}
         onSuccess={() => fetchRecords(true)}
       />

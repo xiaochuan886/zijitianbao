@@ -199,15 +199,19 @@ export default function ActualV2Page() {
     // 收集选中项目的信息
     const selectedItems = getSelectedItems();
     
-    // 检查是否有未填写的项目
-    const hasUnfilledProjects = selectedItems.some(item => 
-      item && item.status === ExtendedRecordStatus.UNFILLED
+    // 检查是否有未填写或无效的项目
+    const invalidProjects = selectedItems.filter(item => 
+      !item || 
+      !item.id || 
+      item.status === ExtendedRecordStatus.UNFILLED ||
+      item.status === RecordStatus.SUBMITTED ||
+      item.status === RecordStatus.PENDING_WITHDRAWAL
     );
     
-    if (hasUnfilledProjects) {
+    if (invalidProjects.length > 0) {
       toast({
         title: "警告",
-        description: "选中的子项目中包含未填写的项目，请先填报后再提交",
+        description: "选中的项目中包含无效或未填写的项目，请检查后重试",
         variant: "destructive"
       })
       return
@@ -291,4 +295,4 @@ export default function ActualV2Page() {
       />
     </div>
   )
-} 
+}

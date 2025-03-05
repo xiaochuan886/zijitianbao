@@ -17,6 +17,7 @@ import {
   FileType,
   ChevronRight,
   ChevronDown,
+  Undo2,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -86,6 +87,11 @@ const navigation = [
         title: "财务审核",
         href: "/funding/audit",
         icon: ClipboardCheck,
+      },
+      {
+        title: "撤回请求",
+        href: "/withdrawal-requests",
+        icon: Undo2,
       },
     ],
   },

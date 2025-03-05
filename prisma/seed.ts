@@ -54,6 +54,9 @@ async function main() {
     // 创建预测记录
     await createPredictRecords(subProjects, reporterUsers, detailedFundNeeds)
     
+    // 确保添加撤回配置
+    await seedWithdrawalConfigs()
+    
     console.log('种子数据生成完成！')
   } catch (error) {
     console.error('种子数据生成失败:', error)
@@ -488,6 +491,60 @@ async function createPredictRecords(subProjects: any[], users: any[], detailedFu
       }
     }
   }
+}
+
+// 确保添加撤回配置
+async function seedWithdrawalConfigs() {
+  console.log('Seeding withdrawal configs...');
+  
+  // 首先删除所有现有的撤回配置
+  await prisma.withdrawalConfig.deleteMany({});
+  
+  // 创建预测模块的撤回配置
+  await prisma.withdrawalConfig.create({
+    data: {
+      moduleType: 'predict',
+      allowedStatuses: JSON.stringify(['SUBMITTED']),
+      timeLimit: 24, // 24小时内可撤回
+      maxAttempts: 3, // 最多3次撤回机会
+      requireApproval: true, // 需要管理员审批
+    },
+  });
+  
+  // 创建用户实际填报模块的撤回配置
+  await prisma.withdrawalConfig.create({
+    data: {
+      moduleType: 'actual_user',
+      allowedStatuses: JSON.stringify(['SUBMITTED']),
+      timeLimit: 24,
+      maxAttempts: 3,
+      requireApproval: true,
+    },
+  });
+  
+  // 创建财务实际填报模块的撤回配置
+  await prisma.withdrawalConfig.create({
+    data: {
+      moduleType: 'actual_fin',
+      allowedStatuses: JSON.stringify(['SUBMITTED']),
+      timeLimit: 24,
+      maxAttempts: 3,
+      requireApproval: true,
+    },
+  });
+  
+  // 创建审计模块的撤回配置
+  await prisma.withdrawalConfig.create({
+    data: {
+      moduleType: 'audit',
+      allowedStatuses: JSON.stringify(['SUBMITTED']),
+      timeLimit: 24,
+      maxAttempts: 3,
+      requireApproval: true,
+    },
+  });
+  
+  console.log('Withdrawal configs seeded successfully');
 }
 
 main()

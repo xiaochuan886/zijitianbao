@@ -6,6 +6,7 @@ import { MainNav } from "@/components/main-nav"
 import { UserNav } from "@/components/user-nav"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useSession } from "next-auth/react"
+import { NotificationBadge } from "@/components/notification-badge"
 
 export default function MainLayout({
   children,
@@ -62,7 +63,10 @@ export default function MainLayout({
             {/* Top Bar */}
             <header className="sticky top-0 z-10 h-16 flex items-center gap-4 border-b bg-background/95 backdrop-blur px-6">
               <div className="flex-1" />
-              <UserNav />
+              <div className="flex items-center gap-2">
+                <NotificationBadge />
+                <UserNav />
+              </div>
             </header>
 
             {/* Page Content */}

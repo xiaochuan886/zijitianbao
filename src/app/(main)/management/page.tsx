@@ -7,7 +7,8 @@ import {
   Users,
   Settings,
   FileType,
-  ArrowRight
+  ArrowRight,
+  Undo2
 } from "lucide-react"
 
 interface ManagementCardProps {
@@ -64,6 +65,12 @@ export default function ManagementPage() {
       description: "管理系统用户及其权限配置",
       icon: Users,
       href: "/management/users"
+    },
+    {
+      title: "撤回配置",
+      description: "管理各模块的撤回功能配置",
+      icon: Undo2,
+      href: "/management/withdrawal-config"
     },
     {
       title: "系统设置",

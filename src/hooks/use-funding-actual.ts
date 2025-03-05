@@ -259,7 +259,8 @@ export function useFundingActual(isUserRole: boolean = true) {
           projectInfo: {
             tempRecords,
             nextMonth: nextMonth
-          }
+          },
+          isUserReport: isUserRole
         }),
       });
       
