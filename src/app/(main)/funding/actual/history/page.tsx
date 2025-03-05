@@ -92,8 +92,6 @@ const getStatusIcon = (status: string) => {
       return <XCircle className="h-4 w-4" />;
     case "UNFILLED":
       return <Clock className="h-4 w-4" />;
-    case "PENDING_WITHDRAWAL":
-      return <RotateCcw className="h-4 w-4" />;
     default:
       return <AlertCircle className="h-4 w-4" />;
   }
@@ -112,30 +110,8 @@ const getStatusVariant = (status: string) => {
       return "destructive";
     case "UNFILLED":
       return "outline";
-    case "PENDING_WITHDRAWAL":
-      return "secondary";
     default:
       return "outline";
-  }
-};
-
-// 获取状态中文名称
-const getStatusText = (status: string) => {
-  switch (status) {
-    case "DRAFT":
-      return "草稿";
-    case "SUBMITTED":
-      return "已提交";
-    case "APPROVED":
-      return "已审核";
-    case "REJECTED":
-      return "已拒绝";
-    case "UNFILLED":
-      return "未填写";
-    case "PENDING_WITHDRAWAL":
-      return "待撤回";
-    default:
-      return status;
   }
 };
 
@@ -145,6 +121,11 @@ interface DateRange {
   startMonth: number;
   endYear: number;
   endMonth: number;
+}
+
+// 扩展HistoryRecord接口
+interface ExtendedHistoryRecord extends HistoryRecord {
+  rawStatus?: string;
 }
 
 // 自定义组件，简化版的 PageHeader
@@ -164,6 +145,9 @@ export default function PredictHistoryPageV2() {
   
   // 视图模式
   const [viewMode, setViewMode] = useState<"table" | "group">("table")
+  
+  // 记录类型
+  const [recordType, setRecordType] = useState<"user" | "fin">("user")
   
   // 筛选器状态
   const [filters, setFilters] = useState<Filters>({
@@ -217,11 +201,11 @@ export default function PredictHistoryPageV2() {
   const [total, setTotal] = useState<number>(0)
   
   // 数据状态
-  const [records, setRecords] = useState<HistoryRecord[]>([])
+  const [records, setRecords] = useState<ExtendedHistoryRecord[]>([])
   const [loading, setLoading] = useState<boolean>(false)
   
   // 对话框状态
-  const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null)
+  const [selectedRecord, setSelectedRecord] = useState<ExtendedHistoryRecord | null>(null)
   const [dialogOpen, setDialogOpen] = useState<boolean>(false)
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState<boolean>(false)
   
@@ -236,7 +220,7 @@ export default function PredictHistoryPageV2() {
   // 获取元数据
   const fetchMetadata = useCallback(async () => {
     try {
-      const response = await fetch('/api/funding/predict-v2/meta')
+      const response = await fetch('/api/funding/actual/meta')
       if (!response.ok) {
         throw new Error('获取元数据失败')
       }
@@ -318,17 +302,21 @@ export default function PredictHistoryPageV2() {
       params.append("page", page.toString())
       params.append("pageSize", pageSize.toString())
       
+      // 添加记录类型
+      params.append("recordType", recordType)
+      
       // 输出日志，便于调试
       console.log("发送请求参数:", {
         filters,
         dateRange,
         page,
         pageSize,
-        url: `/api/funding/predict-v2/history?${params.toString()}`
+        recordType,
+        url: `/api/funding/actual/history?${params.toString()}`
       });
       
       // 发送请求
-      const response = await fetch(`/api/funding/predict-v2/history?${params.toString()}`, {
+      const response = await fetch(`/api/funding/actual/history?${params.toString()}`, {
         // 添加缓存控制头，确保不使用缓存
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -364,8 +352,8 @@ export default function PredictHistoryPageV2() {
         year: record.year,
         month: record.month,
         amount: record.amount,
-        status: getStatusText(record.status),
-        rawStatus: record.status,
+        status: formatStatus(record.status),
+        rawStatus: record.status || record.status,
         submittedAt: record.submittedAt,
         remark: record.remark || "",
         canWithdraw: record.canWithdraw,
@@ -383,7 +371,7 @@ export default function PredictHistoryPageV2() {
     } finally {
       setLoading(false)
     }
-  }, [filters, dateRange, page, pageSize, toast])
+  }, [filters, dateRange, page, pageSize, recordType, toast])
   
   // 处理日期范围变化
   const handleDateRangeChange = useCallback((range: DateRange) => {
@@ -426,13 +414,13 @@ export default function PredictHistoryPageV2() {
   }, [fetchHistory, getCurrentDateInfo, getStartDate]);
   
   // 处理查看记录
-  const handleViewRecord = (record: HistoryRecord) => {
+  const handleViewRecord = (record: ExtendedHistoryRecord) => {
     setSelectedRecord(record)
     setDialogOpen(true)
   }
   
   // 处理撤回申请
-  const handleWithdrawalRequest = (record: HistoryRecord) => {
+  const handleWithdrawalRequest = (record: ExtendedHistoryRecord) => {
     setSelectedRecord(record)
     setWithdrawalDialogOpen(true)
   }
@@ -443,7 +431,7 @@ export default function PredictHistoryPageV2() {
     
     try {
       // 发送撤回请求
-      const response = await fetch(`/api/funding/predict-v2/submit/${selectedRecord.id}`, {
+      const response = await fetch(`/api/funding/actual/submit/${selectedRecord.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -501,21 +489,52 @@ export default function PredictHistoryPageV2() {
     fetchHistory();
   }, [fetchMetadata, fetchHistory]);
   
-  // 当视图模式改变时，重置页码
+  // 当视图模式或记录类型改变时，重置页码
   useEffect(() => {
     setPage(1);
-  }, [viewMode]);
+  }, [viewMode, recordType]);
+  
+  // 获取状态中文名称
+  const formatStatus = (status: string) => {
+    switch (status) {
+      case "DRAFT":
+        return "草稿";
+      case "SUBMITTED":
+        return "已提交";
+      case "APPROVED":
+        return "已审核";
+      case "REJECTED":
+        return "已拒绝";
+      case "UNFILLED":
+        return "未填写";
+      case "PENDING_WITHDRAWAL":
+        return "待撤回";
+      default:
+        return status;
+    }
+  };
   
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.push("/funding/predict-v2")}>
+            <Button variant="outline" onClick={() => router.push("/funding/actual")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
           </Button>
-          <h1 className="text-3xl font-bold tracking-tight">资金需求预测历史记录</h1>
+          <h1 className="text-3xl font-bold tracking-tight">实际支出历史记录</h1>
+        </div>
+        
+        {/* 记录类型切换 */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">记录类型:</span>
+          <Tabs value={recordType} onValueChange={(value) => setRecordType(value as "user" | "fin")}>
+            <TabsList className="grid w-[200px] grid-cols-2">
+              <TabsTrigger value="user">用户填报</TabsTrigger>
+              <TabsTrigger value="fin">财务填报</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </div>
       
@@ -565,7 +584,7 @@ export default function PredictHistoryPageV2() {
           <CardContent className="p-6">
             <TabsContent value="table" className="mt-0">
               <HistoryTableView
-                records={records}
+                records={records as ExtendedHistoryRecord[]}
                 loading={loading}
                 total={total}
                 page={page}
@@ -646,9 +665,9 @@ export default function PredictHistoryPageV2() {
                   <div>
                     <div className="text-sm text-muted-foreground">状态</div>
                     <div>
-                      <Badge variant={getStatusVariant(selectedRecord.rawStatus || "")}>
+                      <Badge variant={getStatusVariant(selectedRecord.rawStatus || selectedRecord.status)}>
                         <span className="flex items-center gap-1">
-                          {getStatusIcon(selectedRecord.rawStatus || "")}
+                          {getStatusIcon(selectedRecord.rawStatus || selectedRecord.status)}
                           {selectedRecord.status}
                         </span>
                       </Badge>
@@ -720,9 +739,9 @@ export default function PredictHistoryPageV2() {
                   <div>
                     <div className="text-sm text-muted-foreground">状态</div>
                     <div>
-                      <Badge variant={getStatusVariant(selectedRecord.rawStatus || "")}>
+                      <Badge variant={getStatusVariant(selectedRecord.rawStatus || selectedRecord.status)}>
                         <span className="flex items-center gap-1">
-                          {getStatusIcon(selectedRecord.rawStatus || "")}
+                          {getStatusIcon(selectedRecord.rawStatus || selectedRecord.status)}
                           {selectedRecord.status}
                         </span>
                       </Badge>

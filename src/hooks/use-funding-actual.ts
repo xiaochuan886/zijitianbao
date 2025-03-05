@@ -1,579 +1,285 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useToast } from "@/components/ui/use-toast";
-import { debounce } from "lodash";
+import { useState, useCallback, useEffect, useRef } from "react"
+import { useToast } from "@/components/ui/use-toast"
+import { RecordStatus } from "@/lib/enums"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
-// 定义数据类型
-export interface FundRecord {
+// 通用的筛选条件类型
+export interface ProjectFilters {
+  recordType: "user" | "finance"; // 记录类型：用户或财务
+  organization: string;
+  department: string;
+  category?: string;
+  project: string;
+  subProject?: string;
+  fundType?: string;
+}
+
+// 实际支出记录类型
+export interface ActualRecord {
   id: string;
-  subProjectId: string;
-  subProjectName: string;
-  fundTypeId: string;
-  fundTypeName: string;
+  detailedFundNeedId: string;
   year: number;
   month: number;
-  predicted: number | null;
-  actualUser: number | null;
-  actualFinance: number | null;
-  status: string;
-  remark: string;
+  amount: number | null;
+  status: RecordStatus;
+  remark?: string;
+  submittedBy: string | null;
+  submittedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  detailedFundNeed: {
+    id: string;
+    subProject: {
+      id: string;
+      name: string;
+      project: {
+        id: string;
+        name: string;
+        category?: {
+          id: string;
+          name: string;
+        };
+      };
+    };
+    department: {
+      id: string;
+      name: string;
+    };
+    organization: {
+      id: string;
+      name: string;
+      code: string;
+    };
+    fundType: {
+      id: string;
+      name: string;
+    };
+  };
 }
 
-export interface FundType {
-  id: string;
-  name: string;
-  records: FundRecord[];
+// 分页响应类型
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
-export interface SubProject {
-  id: string;
-  name: string;
-  fundTypes: FundType[];
-}
-
-export interface Organization {
-  id: string;
-  name: string;
-  code: string;
-}
-
-export interface ProjectData {
-  id: string;
-  name: string;
-  status?: string;
-  userStatus?: string;
-  financeStatus?: string;
-  organization: Organization;
-  subProjects: SubProject[];
-}
-
+// 月份信息类型
 export interface MonthInfo {
   year: number;
   month: number;
+  label: string;
 }
 
-export interface TempRecord {
-  id: string;
-  subProjectId: string;
-  fundTypeId: string;
-  year: number;
-  month: number;
-  value: number | null;
-  remark: string;
-}
-
-export interface ProjectFilters {
-  organization: string;
-  department: string;
-  project: string;
-  status: string;
-}
-
-export interface ProjectMeta {
-  organizations: { id: string; name: string; code: string }[];
-  departments: { id: string; name: string }[];
-}
-
-// 获取当前月份的下一个月
-export const getNextMonth = (): MonthInfo => {
+// 获取当前月的函数
+export function getCurrentMonth(): MonthInfo {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 2; // +1 是下个月，+1 是因为 getMonth() 从 0 开始
-  return { year, month };
-};
+  let month = now.getMonth(); // 上个月 (0-11)
+  let year = now.getFullYear();
+  
+  // 如果是1月，则上个月是上一年的12月
+  if (month === 0) {
+    month = 12;
+    year -= 1;
+  }
+  
+  return {
+    year,
+    month,
+    label: `${year}年${month}月`
+  };
+}
 
-// 格式化金额
-export const formatCurrency = (amount: number | null): string => {
-  if (amount === null) return "";
-  return new Intl.NumberFormat("zh-CN", {
-    style: "currency",
-    currency: "CNY",
-  }).format(amount);
-};
-
-/**
- * 实际支付填报相关的Hook
- */
-export function useFundingActual(isUserRole: boolean = true) {
+// 实际支出填报钩子函数
+export function useFundingActual(
+  initialFilters: ProjectFilters = {
+    recordType: "user", // 默认为用户记录
+    organization: 'all',
+    department: 'all',
+    project: 'all',
+    fundType: 'all',
+    category: 'all',
+    subProject: 'all'
+  }
+) {
   const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [records, setRecords] = useState<ActualRecord[]>([]);
+  const [filters, setFilters] = useState<ProjectFilters>(initialFilters);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    totalPages: 0
+  });
+  const [organizations, setOrganizations] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [projectCategories, setProjectCategories] = useState<{ id: string; name: string }[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string; categoryId: string }[]>([]);
+  const [subProjects, setSubProjects] = useState<{ id: string; name: string; projectId: string }[]>([]);
+  const [fundTypes, setFundTypes] = useState<{ id: string; name: string }[]>([]);
+  const [currentMonth, setCurrentMonth] = useState<MonthInfo>(getCurrentMonth());
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // 状态管理
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [projects, setProjects] = useState<ProjectData[]>([]);
-  const [records, setRecords] = useState<Record<string, number | null>>({});
-  const [remarks, setRemarks] = useState<Record<string, string>>({});
-  const [originalRecords, setOriginalRecords] = useState<Record<string, number | null>>({});
-  const [originalRemarks, setOriginalRemarks] = useState<Record<string, string>>({});
-  const [hasChanges, setHasChanges] = useState(false);
-  const [nextMonth, setNextMonth] = useState<MonthInfo>(getNextMonth());
-  const [meta, setMeta] = useState<ProjectMeta>({ organizations: [], departments: [] });
+  // 使用useRef存储最新的状态，避免闭包问题
+  const filtersRef = useRef(filters);
+  const currentMonthRef = useRef(currentMonth);
+  const paginationRef = useRef(pagination);
+  const metaLoadedRef = useRef(false);
   
-  // 保存各种状态的引用，避免在依赖项中引起循环
-  const recordsRef = useRef(records);
-  const remarksRef = useRef(remarks);
-  const originalRecordsRef = useRef(originalRecords);
-  const originalRemarksRef = useRef(originalRemarks);
-  const hasChangesRef = useRef(hasChanges);
-  const projectsRef = useRef(projects);
-  const savingRef = useRef(saving);
+  // 获取当前用户信息，用于判断是否为管理员
+  const { user } = useCurrentUser();
   
-  // 更新引用
-  useEffect(() => { recordsRef.current = records; }, [records]);
-  useEffect(() => { remarksRef.current = remarks; }, [remarks]);
-  useEffect(() => { originalRecordsRef.current = originalRecords; }, [originalRecords]);
-  useEffect(() => { originalRemarksRef.current = originalRemarks; }, [originalRemarks]);
-  useEffect(() => { hasChangesRef.current = hasChanges; }, [hasChanges]);
-  useEffect(() => { projectsRef.current = projects; }, [projects]);
-  useEffect(() => { savingRef.current = saving; }, [saving]);
+  // 更新ref值
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
   
-  // 检查是否有变更
-  const checkForChanges = useCallback(() => {
-    const currentRecords = recordsRef.current;
-    const currentRemarks = remarksRef.current;
-    const currentOriginalRecords = originalRecordsRef.current;
-    const currentOriginalRemarks = originalRemarksRef.current;
-    
-    const hasRecordChanges = Object.keys(currentRecords).some(key => {
-      const original = currentOriginalRecords[key] === null ? null : currentOriginalRecords[key];
-      const current = currentRecords[key] === null ? null : currentRecords[key];
-      return original !== current;
-    });
-    
-    const hasRemarkChanges = Object.keys(currentRemarks).some(key => {
-      return currentOriginalRemarks[key] !== currentRemarks[key];
-    });
-    
-    return hasRecordChanges || hasRemarkChanges;
-  }, []);
+  useEffect(() => {
+    currentMonthRef.current = currentMonth;
+  }, [currentMonth]);
   
-  // 获取临时记录列表
-  const getTempRecords = useCallback((): TempRecord[] => {
-    const tempRecords: TempRecord[] = [];
-    
-    for (const recordId in recordsRef.current) {
-      if (recordId.startsWith('temp-')) {
-        const [_, subProjectId, fundTypeId, year, month] = recordId.split('-');
-        
-        if (subProjectId && fundTypeId && year && month) {
-          const amount = recordsRef.current[recordId];
-          const remark = remarksRef.current[recordId] || "";
-          
-          if (amount !== null) {
-            tempRecords.push({
-              id: recordId,
-              subProjectId,
-              fundTypeId,
-              year: parseInt(year),
-              month: parseInt(month),
-              value: amount,
-              remark
-            });
-          }
-        }
-      }
-    }
-    
-    return tempRecords;
-  }, []);
-  
-  // 处理输入变化
-  const handleInputChange = useCallback((recordId: string, value: string) => {
-    const numValue = value === "" ? null : parseFloat(value);
-    setRecords(prev => {
-      // 避免不必要的更新
-      if (prev[recordId] === numValue) return prev;
-      return { ...prev, [recordId]: numValue };
-    });
-  }, []);
-  
-  // 处理备注变化
-  const handleRemarkChange = useCallback((recordId: string, value: string) => {
-    setRemarks(prev => {
-      // 避免不必要的更新
-      if (prev[recordId] === value) return prev;
-      return { ...prev, [recordId]: value };
-    });
-  }, []);
-  
-  // 计算年度汇总
-  const calculateYearTotal = useCallback((subProjectId: string, fundTypeId: string, year: number = nextMonth.year) => {
-    let total = 0;
-    const currentProjects = projectsRef.current;
-    const currentRecords = recordsRef.current;
-    
-    currentProjects.forEach(project => {
-      project.subProjects.forEach(subProject => {
-        if (subProject.id === subProjectId) {
-          subProject.fundTypes.forEach(fundType => {
-            if (fundType.id === fundTypeId) {
-              fundType.records.forEach(record => {
-                // 根据角色获取相应的金额数据
-                const amount = isUserRole ? record.actualUser : record.actualFinance;
-                // 只计算有效的记录
-                if (amount !== null) {
-                  total += amount;
-                } else if (record.predicted !== null) {
-                  // 如果实际金额为空，但预测金额不为空，则使用预测金额
-                  total += record.predicted;
-                } else {
-                  // 对于当前月份的临时记录，从currentRecords中获取值
-                  const recordKey = record.id;
-                  if (currentRecords[recordKey] !== null && currentRecords[recordKey] !== undefined) {
-                    total += currentRecords[recordKey] as number;
-                  }
-                }
-              });
-            }
-          });
-        }
-      });
-    });
-    
-    return total;
-  }, [nextMonth.year, isUserRole]);
-  
-  // 保存草稿函数
-  const saveDraft = useCallback(async () => {
-    // 先检查是否有变更
-    const shouldSave = checkForChanges();
-    if (!shouldSave || savingRef.current) return;
-    
-    try {
-      setSaving(true);
-      
-      // 收集临时记录信息
-      const tempRecords = getTempRecords();
-      
-      // 调用API保存
-      const response = await fetch("/api/funding/actual/save", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          records: recordsRef.current,
-          remarks: remarksRef.current,
-          projectInfo: {
-            tempRecords,
-            nextMonth: nextMonth
-          },
-          isUserReport: isUserRole
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "保存草稿失败");
-      }
-      
-      // 更新原始记录
-      setOriginalRecords({...recordsRef.current});
-      setOriginalRemarks({...remarksRef.current});
-      setHasChanges(false);
-      
-      toast({
-        title: "已保存",
-        description: "草稿已自动保存",
-      });
-    } catch (error) {
-      console.error("保存草稿失败", error);
-      toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "保存草稿失败",
-        variant: "destructive"
-      });
-    } finally {
-      setSaving(false);
-    }
-  }, [toast, checkForChanges, nextMonth, getTempRecords]);
-  
-  // 创建防抖函数
-  const debouncedSaveDraft = useRef(
-    debounce(() => {
-      saveDraft();
-    }, 2000)
-  ).current;
-  
-  // 保存更改
-  const saveChanges = useCallback(async () => {
-    if (!hasChangesRef.current) {
-      toast({
-        title: "信息",
-        description: "没有需要保存的更改",
-      });
+  useEffect(() => {
+    paginationRef.current = pagination;
+  }, [pagination]);
+
+  // 获取元数据（机构、部门）
+  const fetchMetadata = useCallback(async () => {
+    // 如果已经加载过元数据，不再重复加载
+    if (metaLoadedRef.current) {
+      console.log('元数据已加载，跳过重复加载');
       return;
     }
     
-    if (savingRef.current) return;
-    
     try {
-      setSaving(true);
-      savingRef.current = true;
-      
-      // 获取所有已修改的记录
-      const changedRecords: Record<string, number | null> = {};
-      const changedRemarks: Record<string, string> = {};
-      
-      Object.keys(recordsRef.current).forEach((key) => {
-        if (recordsRef.current[key] !== originalRecordsRef.current[key]) {
-          changedRecords[key] = recordsRef.current[key];
+      console.log('开始获取元数据...');
+      const response = await fetch(`/api/funding/actual/meta`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         }
       });
       
-      Object.keys(remarksRef.current).forEach((key) => {
-        if (remarksRef.current[key] !== originalRemarksRef.current[key]) {
-          changedRemarks[key] = remarksRef.current[key];
-        }
-      });
-      
-      // 准备要提交的项目数据
-      const projectInfo = {
-        projectIds: projectsRef.current.map(p => p.id),
-        nextMonth: nextMonth,
-        tempRecords: getTempRecords(),
-      };
-      
-      // 调用API保存更改
-      const response = await fetch("/api/funding/actual/save", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          records: changedRecords,
-          remarks: changedRemarks,
-          projectInfo,
-          isUserReport: isUserRole
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "保存失败");
-      }
-      
-      const result = await response.json();
-      
-      // 更新原始记录，以便下次比较
-      setOriginalRecords({...recordsRef.current});
-      setOriginalRemarks({...remarksRef.current});
-      originalRecordsRef.current = {...recordsRef.current};
-      originalRemarksRef.current = {...remarksRef.current};
-      
-      // 重置变更标记
-      setHasChanges(false);
-      hasChangesRef.current = false;
-      
-      toast({
-        title: "保存成功",
-        description: `已保存 ${result.created + result.updated} 条记录`,
-      });
-      
-      return result;
-    } catch (error) {
-      console.error("保存失败", error);
-      toast({
-        title: "保存失败",
-        description: error instanceof Error ? error.message : "保存失败",
-        variant: "destructive"
-      });
-      throw error;
-    } finally {
-      setSaving(false);
-      savingRef.current = false;
-    }
-  }, [nextMonth, toast, isUserRole, getTempRecords]);
-  
-  // 提交项目
-  const submitProject = useCallback(async () => {
-    // 先保存所有更改
-    if (hasChangesRef.current) {
-      await saveChanges();
-    }
-    
-    try {
-      setSubmitting(true);
-      
-      // 准备要提交的项目数据
-      const projectInfo = {
-        projectIds: projectsRef.current.map(p => p.id),
-        nextMonth: nextMonth,
-        tempRecords: getTempRecords(),
-      };
-      
-      // 调用API提交实际支付
-      const response = await fetch("/api/funding/actual/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          records: recordsRef.current,
-          remarks: remarksRef.current,
-          projectInfo,
-          isUserReport: isUserRole
-        }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "提交失败");
-      }
-      
-      const result = await response.json();
-      
-      toast({
-        title: "提交成功",
-        description: `已提交 ${result.count} 条记录`,
-      });
-      
-      return result;
-    } catch (error) {
-      console.error("提交失败", error);
-      toast({
-        title: "提交失败",
-        description: error instanceof Error ? error.message : "提交失败",
-        variant: "destructive"
-      });
-      throw error;
-    } finally {
-      setSubmitting(false);
-    }
-  }, [saveChanges, nextMonth, getTempRecords, toast, isUserRole]);
-  
-  // 获取项目数据
-  const fetchProjectData = useCallback(async (params: {
-    id?: string;
-    ids?: string;
-    year?: string;
-    month?: string;
-    role?: string;
-  }) => {
-    try {
-      setLoading(true);
-      
-      const { id, ids, year = new Date().getFullYear().toString(), month = (new Date().getMonth() + 2).toString(), role = isUserRole ? 'user' : 'finance' } = params;
-      
-      setNextMonth({
-        year: parseInt(year),
-        month: parseInt(month)
-      });
-      
-      if (!ids && !id) {
+      if (response.ok) {
+        const data = await response.json();
+        console.log('获取到元数据:', {
+          organizations: data.organizations?.length || 0,
+          departments: data.departments?.length || 0,
+          projectCategories: data.projectCategories?.length || 0,
+          projects: data.projects?.length || 0,
+          subProjects: data.subProjects?.length || 0,
+          fundTypes: data.fundTypes?.length || 0,
+        });
+        
+        setOrganizations(data.organizations || []);
+        setDepartments(data.departments || []);
+        setProjectCategories(data.projectCategories || []);
+        setProjects(data.projects || []);
+        setSubProjects(data.subProjects || []);
+        setFundTypes(data.fundTypes || []);
+        metaLoadedRef.current = true;
+      } else {
+        console.error(`获取实际支出填报元数据失败`, await response.text());
         toast({
-          title: "错误",
-          description: "缺少必要的项目ID参数",
-          variant: "destructive"
+          title: "获取元数据失败",
+          description: "请刷新页面重试",
+          variant: "destructive",
         });
-        return null;
       }
-      
-      // 构造API请求URL
-      const url = ids 
-        ? `/api/funding/actual/batch?ids=${ids}&year=${year}&month=${month}&role=${role}` 
-        : `/api/funding/actual/${id}?year=${year}&month=${month}&role=${role}`;
-      
-      // 获取项目数据
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error("获取项目详情失败");
-      }
-      
-      const data = await response.json();
-      
-      // 处理批量和单个项目的数据结构差异
-      const projectsData = Array.isArray(data) ? data : [data];
-      setProjects(projectsData);
-      projectsRef.current = projectsData;
-      
-      // 初始化记录和备注
-      const initialRecords: Record<string, number | null> = {};
-      const initialRemarks: Record<string, string> = {};
-      
-      projectsData.forEach((project) => {
-        project.subProjects.forEach((subProject) => {
-          subProject.fundTypes.forEach((fundType) => {
-            if (fundType.records.length === 0) {
-              // 如果没有记录，创建临时记录
-              const tempId = `temp-${subProject.id}-${fundType.id}-${year}-${month}`;
-              initialRecords[tempId] = null;
-              initialRemarks[tempId] = "";
-            } else {
-              fundType.records.forEach((record: FundRecord) => {
-                // 根据角色获取对应的值
-                initialRecords[record.id] = isUserRole ? record.actualUser : record.actualFinance;
-                initialRemarks[record.id] = record.remark || "";
-              });
-            }
-          });
-        });
-      });
-      
-      setRecords(initialRecords);
-      setRemarks(initialRemarks);
-      setOriginalRecords({...initialRecords});
-      setOriginalRemarks({...initialRemarks});
-      
-      // 更新引用
-      recordsRef.current = initialRecords;
-      remarksRef.current = initialRemarks;
-      originalRecordsRef.current = {...initialRecords};
-      originalRemarksRef.current = {...initialRemarks};
-      
-      setLoading(false);
-      return projectsData;
     } catch (error) {
-      console.error("获取数据失败", error);
+      console.error(`获取实际支出填报元数据失败`, error);
       toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "获取数据失败",
-        variant: "destructive"
+        title: "获取元数据失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
       });
-      setLoading(false);
-      return null;
     }
-  }, [toast, isUserRole]);
-  
-  // 获取项目列表
-  const fetchProjectList = useCallback(async (filters: ProjectFilters, forceRefresh = false) => {
-    try {
+  }, [toast]);
+
+  // 构建查询参数
+  const buildQueryParams = useCallback(() => {
+    const params = new URLSearchParams();
+    const currentFilters = filtersRef.current;
+    const month = currentMonthRef.current;
+    const currentPagination = paginationRef.current;
+    
+    console.log('构建查询参数，当前筛选条件:', JSON.stringify(currentFilters, null, 2));
+    
+    // 添加记录类型
+    params.append("recordType", currentFilters.recordType);
+    console.log(`添加记录类型: ${currentFilters.recordType}`);
+    
+    if (currentFilters.organization && currentFilters.organization !== 'all') {
+      params.append("organizationId", currentFilters.organization);
+      console.log(`添加组织筛选条件: ${currentFilters.organization}`);
+    }
+    
+    if (currentFilters.department && currentFilters.department !== 'all') {
+      params.append("departmentId", currentFilters.department);
+      console.log(`添加部门筛选条件: ${currentFilters.department}`);
+    }
+    
+    if (currentFilters.category && currentFilters.category !== 'all') {
+      params.append("categoryId", currentFilters.category);
+      console.log(`添加项目分类筛选条件: ${currentFilters.category}`);
+    }
+    
+    if (currentFilters.project && currentFilters.project !== 'all') {
+      params.append("projectId", currentFilters.project);
+      console.log(`添加项目筛选条件: ${currentFilters.project}`);
+    }
+    
+    if (currentFilters.subProject && currentFilters.subProject !== 'all') {
+      params.append("subProjectId", currentFilters.subProject);
+      console.log(`添加子项目筛选条件: ${currentFilters.subProject}`);
+    }
+    
+    if (currentFilters.fundType && currentFilters.fundType !== 'all') {
+      params.append("fundTypeId", currentFilters.fundType);
+      console.log(`添加资金类型筛选条件: ${currentFilters.fundType}`);
+    }
+    
+    // 使用当前月份作为默认年月参数
+    params.append("year", month.year.toString());
+    console.log(`添加默认年份: ${month.year}`);
+    
+    params.append("month", month.month.toString());
+    console.log(`添加默认月份: ${month.month}`);
+    
+    // 添加分页参数
+    params.append("page", currentPagination.page.toString());
+    params.append("pageSize", currentPagination.pageSize.toString());
+    
+    const queryString = params.toString();
+    console.log('最终查询参数:', queryString);
+    
+    return queryString;
+  }, []);
+
+  // 获取实际支出记录列表
+  const fetchRecords = useCallback(async (showLoading = false) => {
+    if (showLoading) {
       setLoading(true);
+    }
+    
+    try {
+      console.log('开始获取实际支出记录列表...');
       
-      // 获取下个月
-      const nextMonthInfo = getNextMonth();
-      setNextMonth(nextMonthInfo);
+      // 调用API获取实际支出记录列表
+      const queryParams = buildQueryParams();
+      // 添加缓存控制参数
+      const cacheParam = `_t=${Date.now().toString()}`;
+      const fullQueryString = queryParams ? `${queryParams}&${cacheParam}` : cacheParam;
       
-      // 构建查询参数
-      const params = new URLSearchParams();
-      params.append("year", nextMonthInfo.year.toString());
-      params.append("month", nextMonthInfo.month.toString());
+      console.log(`请求API: /api/funding/actual?${fullQueryString}`);
       
-      if (filters.organization !== "all") {
-        params.append("organizationId", filters.organization);
-      }
-      
-      if (filters.department !== "all") {
-        params.append("departmentId", filters.department);
-      }
-      
-      if (filters.project) {
-        params.append("projectName", filters.project);
-      }
-      
-      if (filters.status !== "all") {
-        params.append("status", filters.status);
-      }
-      
-      // 添加缓存控制参数，避免浏览器缓存
-      params.append("_t", Date.now().toString());
-      
-      // 调用API获取项目列表
-      const response = await fetch(`/api/funding/actual?${params.toString()}`, {
-        // 添加缓存控制头，避免浏览器缓存
+      const response = await fetch(`/api/funding/actual?${fullQueryString}`, {
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
@@ -582,89 +288,342 @@ export function useFundingActual(isUserRole: boolean = true) {
       });
       
       if (!response.ok) {
-        throw new Error("获取项目列表失败");
+        const errorText = await response.text();
+        console.error(`API响应错误: ${response.status}`, errorText);
+        throw new Error(`获取实际支出记录列表失败: ${response.status} ${errorText}`);
+      }
+      
+      const data: PaginatedResponse<ActualRecord> & { warning?: string } = await response.json();
+      console.log(`获取到 ${data.items.length} 条记录，共 ${data.total} 条`);
+      
+      // 检查API是否返回了警告信息
+      if (data.warning) {
+        console.log(`API警告: ${data.warning}`);
+        // 显示警告信息
+        toast({
+          title: "筛选提示",
+          description: data.warning,
+          variant: "default",
+        });
+      }
+      
+      setRecords(data.items || []);
+      setPagination({
+        page: data.page,
+        pageSize: data.pageSize,
+        total: data.total,
+        totalPages: data.totalPages
+      });
+      
+      // 获取元数据
+      fetchMetadata();
+    } catch (error) {
+      console.error("获取实际支出记录列表失败", error);
+      toast({
+        title: "获取实际支出记录列表失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [buildQueryParams, fetchMetadata, toast]);
+
+  // 处理月份变更
+  const handleMonthChange = useCallback((year: number, month: number) => {
+    console.log(`月份变更: ${year}年${month}月`);
+    setCurrentMonth({
+      year,
+      month,
+      label: `${year}年${month}月`
+    });
+    
+    // 重置分页
+    setPagination(prev => ({ ...prev, page: 1 }));
+    
+    // 取消之前的请求
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+    
+    // 设置新的延迟请求
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchRecords(true);
+    }, 300);
+  }, [fetchRecords]);
+
+  // 处理筛选条件变化 - 添加防抖处理
+  const handleFilterChange = useCallback((key: keyof ProjectFilters, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    
+    // 重置分页
+    setPagination(prev => ({ ...prev, page: 1 }));
+    
+    // 取消之前的请求
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+    
+    // 设置新的延迟请求
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchRecords(true);
+    }, 300);
+  }, [fetchRecords]);
+
+  // 处理分页变化
+  const handlePageChange = useCallback((page: number) => {
+    setPagination(prev => ({ ...prev, page }));
+    
+    // 取消之前的请求
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+    
+    // 设置新的延迟请求
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchRecords(true);
+    }, 300);
+  }, [fetchRecords]);
+
+  // 保存实际支出记录
+  const saveRecords = useCallback(async (recordsToSave: {
+    id?: string;
+    detailedFundNeedId: string;
+    year: number;
+    month: number;
+    amount: number | null;
+    remark?: string;
+  }[]) => {
+    try {
+      const recordType = filtersRef.current.recordType;
+      const apiEndpoint = `/api/funding/actual/save?recordType=${recordType}`;
+      
+      const response = await fetch(apiEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: recordsToSave
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "保存实际支出记录失败");
+      }
+      
+      const result = await response.json();
+      
+      toast({
+        title: "保存成功",
+        description: `已成功保存 ${result.details.created + result.details.updated} 条记录`,
+      });
+      
+      // 刷新记录列表
+      fetchRecords(true);
+      
+      return result;
+    } catch (error) {
+      console.error("保存实际支出记录失败", error);
+      toast({
+        title: "保存失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  }, [fetchRecords, toast]);
+
+  // 提交实际支出记录
+  const submitRecords = useCallback(async (recordIds: string[]) => {
+    try {
+      const recordType = filtersRef.current.recordType;
+      const apiEndpoint = `/api/funding/actual/submit?recordType=${recordType}`;
+      
+      const response = await fetch(apiEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recordIds
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "提交实际支出记录失败");
+      }
+      
+      const result = await response.json();
+      
+      toast({
+        title: "提交成功",
+        description: `已成功提交 ${result.count} 条记录`,
+      });
+      
+      // 刷新记录列表
+      fetchRecords(true);
+      
+      return result;
+    } catch (error) {
+      console.error("提交实际支出记录失败", error);
+      toast({
+        title: "提交失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  }, [fetchRecords, toast]);
+
+  // 获取状态统计数据
+  const fetchStatusStats = useCallback(async () => {
+    try {
+      const queryParams = buildQueryParams();
+      const response = await fetch(`/api/funding/actual/stats?${queryParams}`, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`获取状态统计数据失败: ${response.status}`);
       }
       
       const data = await response.json();
+      return data.statusCounts || {};
+    } catch (error) {
+      console.error("获取状态统计数据失败", error);
+      return {};
+    }
+  }, [buildQueryParams]);
+
+  // 创建填报记录
+  const createRecords = useCallback(async (params: {
+    year: number;
+    month: number;
+    organizationId?: string;
+    departmentId?: string;
+    projectId?: string;
+    projectCategoryId?: string;
+    subProjectId?: string;
+    fundTypeId?: string;
+  }) => {
+    try {
+      const recordType = filtersRef.current.recordType;
+      const response = await fetch("/api/funding/actual/create-records", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recordType,
+          ...params
+        }),
+      });
       
-      // 首次加载时，获取所有机构和部门（不受筛选影响）
-      if (!meta.organizations.length || !meta.departments.length) {
-        try {
-          const metaResponse = await fetch(`/api/funding/actual/meta`, {
-            // 添加缓存控制头，避免浏览器缓存
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          });
-          if (metaResponse.ok) {
-            const metaData = await metaResponse.json();
-            setMeta({
-              organizations: metaData.organizations.map((org: any) => ({ 
-                id: org.id, 
-                name: org.name,
-                code: org.code
-              })),
-              departments: metaData.departments.map((dep: any) => ({ 
-                id: dep.id, 
-                name: dep.name 
-              }))
-            });
-          }
-        } catch (error) {
-          console.error("获取机构和部门列表失败", error);
-        }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "创建填报记录失败");
       }
       
-      setLoading(false);
-      return data;
-    } catch (error) {
-      console.error("获取项目列表失败", error);
+      const result = await response.json();
+      
       toast({
-        title: "错误",
-        description: "获取项目列表失败",
-        variant: "destructive"
+        title: "创建成功",
+        description: `已成功创建 ${result.created} 条填报记录`,
       });
-      setLoading(false);
-      return [];
+      
+      // 刷新记录列表
+      fetchRecords(true);
+      
+      return result;
+    } catch (error) {
+      console.error("创建填报记录失败", error);
+      toast({
+        title: "创建失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+      throw error;
     }
-  }, [toast, meta.organizations.length, meta.departments.length]);
-  
-  // 监听记录和备注变化，检查是否有变更并更新hasChanges状态
+  }, [fetchRecords, toast]);
+
+  // 申请撤回记录
+  const withdrawRecord = useCallback(async (recordId: string, reason: string) => {
+    try {
+      const recordType = filtersRef.current.recordType === "user" ? "actual_user" : "actual_fin";
+      
+      const response = await fetch("/api/funding/actual", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "withdrawal",
+          recordId,
+          reason,
+          recordType
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "申请撤回记录失败");
+      }
+      
+      const result = await response.json();
+      
+      toast({
+        title: "申请已提交",
+        description: result.message || "撤回申请已提交，等待管理员审核",
+      });
+      
+      // 刷新记录列表
+      fetchRecords(true);
+      
+      return result;
+    } catch (error) {
+      console.error("申请撤回记录失败", error);
+      toast({
+        title: "申请失败",
+        description: error instanceof Error ? error.message : "请稍后重试",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  }, [fetchRecords, toast]);
+
+  // 初始化加载
   useEffect(() => {
-    const hasChange = checkForChanges();
-    
-    // 只有在变化状态与当前不同时才更新状态
-    if (hasChange !== hasChanges) {
-      setHasChanges(hasChange);
-    }
-  }, [records, remarks, checkForChanges, hasChanges]);
-  
+    fetchRecords(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return {
-    // 状态
     loading,
-    saving,
-    submitting,
-    projects,
     records,
-    remarks,
-    hasChanges,
-    nextMonth,
-    meta,
-    
-    // 方法
-    setNextMonth,
-    handleInputChange,
-    handleRemarkChange,
-    calculateYearTotal,
-    saveDraft,
-    debouncedSaveDraft,
-    saveChanges,
-    submitProject,
-    fetchProjectData,
-    fetchProjectList,
-    formatCurrency,
-    getTempRecords
+    filters,
+    pagination,
+    organizations,
+    departments,
+    projectCategories,
+    projects,
+    subProjects,
+    fundTypes,
+    currentMonth,
+    fetchRecords,
+    handleFilterChange,
+    handleMonthChange,
+    handlePageChange,
+    saveRecords,
+    submitRecords,
+    fetchStatusStats,
+    createRecords,
+    withdrawRecord
   };
 }
