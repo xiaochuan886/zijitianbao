@@ -15,7 +15,6 @@ export interface FilterCardProps {
     project: string
     subProject?: string
     fundType?: string
-    status: string
   }
   organizations: { id: string; name: string }[]
   departments: { id: string; name: string }[]
@@ -30,7 +29,6 @@ export interface FilterCardProps {
   showProject?: boolean
   showSubProject?: boolean
   showFundType?: boolean
-  showStatus?: boolean
   onFilterChange: (filters: any) => void
   onReset: () => void
   onSearch: () => void
@@ -51,7 +49,6 @@ export function FilterCard({
   showProject = true,
   showSubProject = true,
   showFundType = true,
-  showStatus = true,
   onFilterChange,
   onReset,
   onSearch,
@@ -204,27 +201,6 @@ export function FilterCard({
                 value={filters.fundType || "all"}
                 onChange={(value) => handleFilterChange("fundType", value)}
                 placeholder="选择资金类型"
-              />
-            </div>
-          )}
-
-          {showStatus && (
-            <div>
-              <label className="text-sm font-medium">状态</label>
-              <Combobox
-                options={[
-                  { value: "all", label: "全部状态" },
-                  { value: "UNFILLED", label: "未填写" },
-                  { value: "DRAFT", label: "草稿" },
-                  { value: "SUBMITTED", label: "已提交" },
-                  { value: "APPROVED", label: "已通过" },
-                  { value: "REJECTED", label: "已拒绝" },
-                  { value: "PENDING_WITHDRAWAL", label: "待撤回" },
-                  { value: "WITHDRAWN", label: "已撤回" },
-                ]}
-                value={filters.status}
-                onChange={(value) => handleFilterChange("status", value)}
-                placeholder="选择状态"
               />
             </div>
           )}

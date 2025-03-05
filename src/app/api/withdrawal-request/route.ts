@@ -230,11 +230,12 @@ export async function POST(request: Request) {
     }
 
     // 检查记录状态是否允许撤回
-    const allowedStatuses = config?.allowedStatuses ? JSON.parse(config.allowedStatuses) : [];
+    const allowedStatuses = config?.allowedStatuses ? JSON.parse(config.allowedStatuses).map((status: string) => status.toLowerCase()) : [];
+    const recordStatus = record.status.toLowerCase();
     
-    console.log(`允许撤回的状态: ${allowedStatuses} 当前记录状态: ${record.status}`);
+    console.log(`允许撤回的状态: ${allowedStatuses} 当前记录状态: ${recordStatus}`);
     
-    if (!allowedStatuses.includes(record.status)) {
+    if (!allowedStatuses.includes(recordStatus)) {
       console.log("记录状态不允许撤回，返回错误响应");
       return NextResponse.json(
         { 
@@ -355,6 +356,29 @@ export async function POST(request: Request) {
 
     // 如果不需要审批，直接处理撤回
     if (!config.requireApproval) {
+      // 更新记录状态为APPROVED
+      if (recordType === "predict" && recordData.predictRecordId) {
+        await prisma.predictRecord.update({
+          where: { id: recordData.predictRecordId },
+          data: { status: "APPROVED" },
+        });
+      } else if (recordType === "actual_user" && recordData.actualUserRecordId) {
+        await prisma.actualUserRecord.update({
+          where: { id: recordData.actualUserRecordId },
+          data: { status: "APPROVED" },
+        });
+      } else if (recordType === "actual_fin" && recordData.actualFinRecordId) {
+        await prisma.actualFinRecord.update({
+          where: { id: recordData.actualFinRecordId },
+          data: { status: "APPROVED" },
+        });
+      } else if (recordType === "audit" && recordData.auditRecordId) {
+        await prisma.auditRecord.update({
+          where: { id: recordData.auditRecordId },
+          data: { status: "APPROVED" },
+        });
+      }
+      
       // 创建审计记录
       await prisma.recordAudit.create({
         data: {
@@ -366,7 +390,7 @@ export async function POST(request: Request) {
           action: "withdrawn",
           timestamp: new Date(),
           oldValue: JSON.stringify(record),
-          newValue: JSON.stringify({ ...record, status: "PENDING_WITHDRAWAL" }),
+          newValue: JSON.stringify({ ...record, status: "APPROVED" }),
           role: session.user.role,
           remarks: reason,
         },

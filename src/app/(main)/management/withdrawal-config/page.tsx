@@ -27,25 +27,33 @@ const statusOptions = {
     { value: "draft", label: "草稿" },
     { value: "submitted", label: "已提交" },
     { value: "approved", label: "已批准" },
-    { value: "rejected", label: "已拒绝" }
+    { value: "rejected", label: "已拒绝" },
+    { value: "pending_withdrawal", label: "待撤回" },
+    { value: "withdrawn", label: "已撤回" }
   ],
   actual_user: [
     { value: "draft", label: "草稿" },
     { value: "submitted", label: "已提交" },
     { value: "approved", label: "已批准" },
-    { value: "rejected", label: "已拒绝" }
+    { value: "rejected", label: "已拒绝" },
+    { value: "pending_withdrawal", label: "待撤回" },
+    { value: "withdrawn", label: "已撤回" }
   ],
   actual_fin: [
     { value: "draft", label: "草稿" },
     { value: "submitted", label: "已提交" },
     { value: "approved", label: "已批准" },
-    { value: "rejected", label: "已拒绝" }
+    { value: "rejected", label: "已拒绝" },
+    { value: "pending_withdrawal", label: "待撤回" },
+    { value: "withdrawn", label: "已撤回" }
   ],
   audit: [
     { value: "draft", label: "草稿" },
     { value: "submitted", label: "已提交" },
     { value: "approved", label: "已批准" },
-    { value: "rejected", label: "已拒绝" }
+    { value: "rejected", label: "已拒绝" },
+    { value: "pending_withdrawal", label: "待撤回" },
+    { value: "withdrawn", label: "已撤回" }
   ]
 }
 
@@ -210,10 +218,10 @@ export default function WithdrawalConfigPage() {
                       value: status.value,
                       label: status.label
                     }))}
-                    selected={configs[module.id]?.allowedStatuses.map(status => ({
+                    selected={configs[module.id]?.allowedStatuses?.map(status => ({
                       value: status,
                       label: statusOptions[module.id as keyof typeof statusOptions].find(s => s.value === status)?.label || status
-                    }))}
+                    })) || []}
                     onChange={(selected) => updateConfig('allowedStatuses', selected.map(s => s.value))}
                     placeholder="选择状态..."
                   />
@@ -270,4 +278,4 @@ export default function WithdrawalConfigPage() {
       </Tabs>
     </div>
   )
-} 
+}

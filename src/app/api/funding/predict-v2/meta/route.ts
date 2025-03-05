@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     });
 
     // 获取所有项目分类
-    const categories = await prisma.projectCategory.findMany({
+    const projectCategories = await prisma.projectCategory.findMany({
       select: {
         id: true,
         name: true
@@ -62,6 +62,13 @@ export async function GET(request: Request) {
         name: "asc"
       }
     });
+    
+    // 记录项目分类信息，用于调试
+    console.log(`获取到 ${projects.length} 个项目，其中 ${projects.filter(p => p.categoryId).length} 个有分类ID`);
+    if (projects.length > 0 && projects.some(p => p.categoryId)) {
+      const categoryIds = Array.from(new Set(projects.map(p => p.categoryId).filter(Boolean)));
+      console.log(`项目中存在的分类ID: ${categoryIds.join(', ')}`);
+    }
     
     // 获取所有子项目
     const subProjects = await prisma.subProject.findMany({
@@ -89,7 +96,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       organizations,
       departments,
-      categories,
+      projectCategories,
       projects,
       subProjects,
       fundTypes

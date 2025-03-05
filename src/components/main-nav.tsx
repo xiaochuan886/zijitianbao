@@ -57,6 +57,16 @@ const navigation = [
         icon: Users,
       },
       {
+        title: "撤回配置",
+        href: "/management/withdrawal-config",
+        icon: Undo2,
+      },
+      {
+        title: "撤回请求",
+        href: "/withdrawal-requests",
+        icon: Undo2,
+      },
+      {
         title: "系统设置",
         href: "/management/settings",
         icon: Settings,

@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
+import { prisma } from "@/lib/prisma";
 import { services } from '@/lib/services'
 import { ServiceError } from '@/lib/services/types'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
 import { Role } from '@/lib/enums'
 import { UserService } from '@/lib/services/user.service'
 
@@ -14,63 +14,51 @@ type Params = {
 }
 
 // GET /api/users/[id] - 获取用户详情
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // 1. 获取会话信息，校验权限
-    const session = await getServerSession(authOptions)
-    
-    if (!session || !session.user) {
-      return NextResponse.json(
-        {
-          code: 401,
-          message: '未授权访问',
-          timestamp: Date.now(),
-        },
-        { status: 401 }
-      )
+    // 获取会话信息
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
 
-    // 只有管理员可以获取用户详情
-    if (session.user.role !== Role.ADMIN) {
-      return NextResponse.json(
-        {
-          code: 403,
-          message: '权限不足',
-          timestamp: Date.now(),
-        },
-        { status: 403 }
-      )
+    const userId = params.id;
+    if (!userId) {
+      return NextResponse.json({ error: "缺少用户ID" }, { status: 400 });
     }
 
-    // 2. 获取用户ID
-    const userId = params.id
-
-    // 3. 调用服务
-    const result = await services.user.getUserById(userId)
-
-    // 4. 返回结果
-    return NextResponse.json(
-      {
-        code: 200,
-        message: '获取用户详情成功',
-        data: result,
-        timestamp: Date.now(),
+    // 查询用户信息
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
       },
-      { status: 200 }
-    )
-  } catch (error: any) {
-    console.error(`GET /api/users/${params.id} error:`, error)
-    const statusCode = error instanceof ServiceError ? error.statusCode : 500
-    const message = error instanceof ServiceError ? error.message : '服务器错误'
-    
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+
+    return NextResponse.json(user);
+  } catch (error) {
+    console.error("获取用户信息失败:", error);
     return NextResponse.json(
-      {
-        code: statusCode,
-        message: message,
-        timestamp: Date.now(),
-      },
-      { status: statusCode }
-    )
+      { error: "获取用户信息失败" },
+      { status: 500 }
+    );
   }
 }
 

@@ -8,6 +8,43 @@ class ApiBase {
   private baseUrl: string = "/api"
   // 最大重试次数
   private maxRetries: number = 1
+
+  /**
+   * GET 请求
+   */
+  async get(endpoint: string, options: { params?: Record<string, any> } = {}) {
+    const queryString = options.params
+      ? `?${new URLSearchParams(options.params).toString()}`
+      : ''
+    return this.request(`${endpoint}${queryString}`, { method: 'GET' })
+  }
+
+  /**
+   * POST 请求
+   */
+  async post(endpoint: string, data?: any) {
+    return this.request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  /**
+   * PUT 请求
+   */
+  async put(endpoint: string, data?: any) {
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  /**
+   * DELETE 请求
+   */
+  async delete(endpoint: string) {
+    return this.request(endpoint, { method: 'DELETE' })
+  }
   
   /**
    * 执行API请求并处理错误

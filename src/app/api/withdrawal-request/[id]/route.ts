@@ -194,10 +194,10 @@ export async function PUT(
         });
         
         if (record) {
-          // 更新记录状态
+          // 更新记录状态为APPROVED
           await prisma.predictRecord.update({
             where: { id: recordId },
-            data: { status: "PENDING_WITHDRAWAL" },
+            data: { status: "APPROVED" },
           });
           
           // 创建审计记录
@@ -208,7 +208,7 @@ export async function PUT(
               action: "withdrawn",
               timestamp: new Date(),
               oldValue: JSON.stringify(record),
-              newValue: JSON.stringify({ ...record, status: "PENDING_WITHDRAWAL" }),
+              newValue: JSON.stringify({ ...record, status: "APPROVED" }),
               role: session.user.role,
               remarks: `管理员批准撤回申请。${remarks || ""}`,
             },
@@ -224,10 +224,10 @@ export async function PUT(
         });
         
         if (record) {
-          // 更新记录状态
+          // 更新记录状态为APPROVED
           await prisma.actualUserRecord.update({
             where: { id: recordId },
-            data: { status: "PENDING_WITHDRAWAL" },
+            data: { status: "APPROVED" },
           });
           
           // 创建审计记录
@@ -238,7 +238,7 @@ export async function PUT(
               action: "withdrawn",
               timestamp: new Date(),
               oldValue: JSON.stringify(record),
-              newValue: JSON.stringify({ ...record, status: "PENDING_WITHDRAWAL" }),
+              newValue: JSON.stringify({ ...record, status: "APPROVED" }),
               role: session.user.role,
               remarks: `管理员批准撤回申请。${remarks || ""}`,
             },
@@ -254,10 +254,10 @@ export async function PUT(
         });
         
         if (record) {
-          // 更新记录状态
+          // 更新记录状态为APPROVED
           await prisma.actualFinRecord.update({
             where: { id: recordId },
-            data: { status: "PENDING_WITHDRAWAL" },
+            data: { status: "APPROVED" },
           });
           
           // 创建审计记录
@@ -268,7 +268,7 @@ export async function PUT(
               action: "withdrawn",
               timestamp: new Date(),
               oldValue: JSON.stringify(record),
-              newValue: JSON.stringify({ ...record, status: "PENDING_WITHDRAWAL" }),
+              newValue: JSON.stringify({ ...record, status: "APPROVED" }),
               role: session.user.role,
               remarks: `管理员批准撤回申请。${remarks || ""}`,
             },
@@ -284,10 +284,10 @@ export async function PUT(
         });
         
         if (record) {
-          // 更新记录状态
+          // 更新记录状态为APPROVED
           await prisma.auditRecord.update({
             where: { id: recordId },
-            data: { status: "PENDING_WITHDRAWAL" },
+            data: { status: "APPROVED" },
           });
           
           // 创建审计记录
@@ -298,7 +298,7 @@ export async function PUT(
               action: "withdrawn",
               timestamp: new Date(),
               oldValue: JSON.stringify(record),
-              newValue: JSON.stringify({ ...record, status: "PENDING_WITHDRAWAL" }),
+              newValue: JSON.stringify({ ...record, status: "APPROVED" }),
               role: session.user.role,
               remarks: `管理员批准撤回申请。${remarks || ""}`,
             },
@@ -321,6 +321,132 @@ export async function PUT(
         })
       ]);
     } else if (status === "rejected") {
+      // 更新记录状态为REJECTED
+      let recordId;
+      let recordType;
+
+      if (withdrawalRequest.predictRecordId) {
+        recordId = withdrawalRequest.predictRecordId;
+        recordType = "predict";
+        
+        // 获取记录当前状态
+        const record = await prisma.predictRecord.findUnique({
+          where: { id: recordId },
+        });
+        
+        if (record) {
+          // 更新记录状态为REJECTED
+          await prisma.predictRecord.update({
+            where: { id: recordId },
+            data: { status: "REJECTED" },
+          });
+          
+          // 创建审计记录
+          await prisma.recordAudit.create({
+            data: {
+              predictRecordId: recordId,
+              userId: session.user.id,
+              action: "withdrawal_rejected",
+              timestamp: new Date(),
+              oldValue: JSON.stringify(record),
+              newValue: JSON.stringify({ ...record, status: "REJECTED" }),
+              role: session.user.role,
+              remarks: `管理员拒绝撤回申请。${remarks || ""}`,
+            },
+          });
+        }
+      } else if (withdrawalRequest.actualUserRecordId) {
+        recordId = withdrawalRequest.actualUserRecordId;
+        recordType = "actual_user";
+        
+        // 获取记录当前状态
+        const record = await prisma.actualUserRecord.findUnique({
+          where: { id: recordId },
+        });
+        
+        if (record) {
+          // 更新记录状态为REJECTED
+          await prisma.actualUserRecord.update({
+            where: { id: recordId },
+            data: { status: "REJECTED" },
+          });
+          
+          // 创建审计记录
+          await prisma.recordAudit.create({
+            data: {
+              actualUserRecordId: recordId,
+              userId: session.user.id,
+              action: "withdrawal_rejected",
+              timestamp: new Date(),
+              oldValue: JSON.stringify(record),
+              newValue: JSON.stringify({ ...record, status: "REJECTED" }),
+              role: session.user.role,
+              remarks: `管理员拒绝撤回申请。${remarks || ""}`,
+            },
+          });
+        }
+      } else if (withdrawalRequest.actualFinRecordId) {
+        recordId = withdrawalRequest.actualFinRecordId;
+        recordType = "actual_fin";
+        
+        // 获取记录当前状态
+        const record = await prisma.actualFinRecord.findUnique({
+          where: { id: recordId },
+        });
+        
+        if (record) {
+          // 更新记录状态为REJECTED
+          await prisma.actualFinRecord.update({
+            where: { id: recordId },
+            data: { status: "REJECTED" },
+          });
+          
+          // 创建审计记录
+          await prisma.recordAudit.create({
+            data: {
+              actualFinRecordId: recordId,
+              userId: session.user.id,
+              action: "withdrawal_rejected",
+              timestamp: new Date(),
+              oldValue: JSON.stringify(record),
+              newValue: JSON.stringify({ ...record, status: "REJECTED" }),
+              role: session.user.role,
+              remarks: `管理员拒绝撤回申请。${remarks || ""}`,
+            },
+          });
+        }
+      } else if (withdrawalRequest.auditRecordId) {
+        recordId = withdrawalRequest.auditRecordId;
+        recordType = "audit";
+        
+        // 获取记录当前状态
+        const record = await prisma.auditRecord.findUnique({
+          where: { id: recordId },
+        });
+        
+        if (record) {
+          // 更新记录状态为REJECTED
+          await prisma.auditRecord.update({
+            where: { id: recordId },
+            data: { status: "REJECTED" },
+          });
+          
+          // 创建审计记录
+          await prisma.recordAudit.create({
+            data: {
+              auditRecordId: recordId,
+              userId: session.user.id,
+              action: "withdrawal_rejected",
+              timestamp: new Date(),
+              oldValue: JSON.stringify(record),
+              newValue: JSON.stringify({ ...record, status: "REJECTED" }),
+              role: session.user.role,
+              remarks: `管理员拒绝撤回申请。${remarks || ""}`,
+            },
+          });
+        }
+      }
+      
       // 发送通知给请求者
       await prisma.$transaction([
         prisma.notification.create({

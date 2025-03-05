@@ -20,7 +20,7 @@ export interface Option {
 
 interface MultiSelectProps {
   options: Option[]
-  selected: Option[]
+  selected?: Option[]
   onChange: (selected: Option[]) => void
   placeholder?: string
   className?: string
@@ -30,7 +30,7 @@ interface MultiSelectProps {
 
 export function MultiSelect({
   options,
-  selected,
+  selected = [],
   onChange,
   placeholder = "选择选项...",
   className,
@@ -76,8 +76,10 @@ export function MultiSelect({
                     className="mr-1 mb-1"
                   >
                     {option.label}
-                    <button
-                      className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           handleUnselect(option)
@@ -94,7 +96,7 @@ export function MultiSelect({
                       }}
                     >
                       <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                    </button>
+                    </span>
                   </Badge>
                 ))}
               </div>
@@ -142,4 +144,4 @@ export function MultiSelect({
       </PopoverContent>
     </Popover>
   )
-} 
+}

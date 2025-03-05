@@ -21,7 +21,10 @@ import {
   Building2,
   FileEdit,
   Eye,
-  XCircle
+  XCircle,
+  Wrench,
+  Plus,
+  History
 } from "lucide-react"
 import {
   Select,
@@ -57,6 +60,8 @@ import { FilterCard } from "@/components/funding/filter-card"
 import Link from "next/link"
 import { CreateWithdrawalRequestButton } from "@/components/create-withdrawal-request-button"
 import { CancelWithdrawalRequestButton } from "@/components/cancel-withdrawal-request-button"
+import { cn } from "@/lib/utils"
+import { RecordDetailDialog } from "@/components/record-detail-dialog"
 
 // 自定义组件，简化版的 FilterCard
 function SimpleFilterCard({ children }: { children: React.ReactNode }) {
@@ -72,12 +77,87 @@ function SimpleFilterCard({ children }: { children: React.ReactNode }) {
 // 自定义组件，简化版的 PageHeader
 function SimplePageHeader({ title, description }: { title: string; description?: string }) {
   return (
-    <div className="flex flex-col space-y-2">
-      <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-      {description && <p className="text-muted-foreground">{description}</p>}
+    <div>
+      <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
     </div>
   )
 }
+
+// 状态标签组件
+interface StatusTabsProps {
+  statusCounts: Record<string, number>;
+  activeStatus: string | null;
+  onStatusChange: (status: string | null) => void;
+}
+
+const StatusTabs: React.FC<StatusTabsProps> = ({ statusCounts, activeStatus, onStatusChange }) => {
+  // 状态显示名称映射
+  const statusDisplayNames: Record<string, string> = {
+    "unfilled": "未填写",
+    "draft": "草稿",
+    "submitted": "已提交",
+    "approved": "已审批",
+    "rejected": "已拒绝",
+    "pending_withdrawal": "待撤回",
+    "withdrawn": "已撤回"
+  };
+  
+  // 状态颜色映射
+  const statusColors: Record<string, string> = {
+    "unfilled": "bg-gray-200 text-gray-800",
+    "draft": "bg-blue-100 text-blue-800",
+    "submitted": "bg-yellow-100 text-yellow-800",
+    "approved": "bg-green-100 text-green-800",
+    "rejected": "bg-red-100 text-red-800",
+    "pending_withdrawal": "bg-purple-100 text-purple-800",
+    "withdrawn": "bg-orange-100 text-orange-800"
+  };
+  
+  // 计算总记录数
+  const totalCount = Object.values(statusCounts).reduce((sum, count) => sum + count, 0);
+  
+  // 按照指定顺序排序状态
+  const statusOrder = ["unfilled", "draft", "submitted", "approved", "rejected", "pending_withdrawal", "withdrawn"];
+  const sortedStatuses = Object.keys(statusCounts).sort((a, b) => {
+    const indexA = statusOrder.indexOf(a.toLowerCase());
+    const indexB = statusOrder.indexOf(b.toLowerCase());
+    return indexA - indexB;
+  });
+  
+  return (
+    <div className="flex flex-wrap gap-2 mb-4">
+      <Badge 
+        variant="outline" 
+        className={`cursor-pointer text-sm py-1 px-3 ${!activeStatus ? 'bg-primary/20 text-primary' : 'hover:bg-primary/10'}`}
+        onClick={() => onStatusChange(null)}
+      >
+        全部 ({totalCount})
+      </Badge>
+      
+      {sortedStatuses.map(status => {
+        const count = statusCounts[status] || 0;
+        if (count === 0) return null;
+        
+        const statusKey = status.toLowerCase();
+        const displayName = statusDisplayNames[statusKey] || status;
+        const colorClass = statusColors[statusKey] || "bg-gray-100 text-gray-800";
+        const isActive = activeStatus === statusKey;
+        
+        return (
+          <Badge 
+            key={status}
+            variant="outline"
+            className={`cursor-pointer text-sm py-1 px-3 ${isActive ? 'ring-2 ring-primary/50 ' + colorClass : colorClass + ' hover:ring-1 hover:ring-primary/30'}`}
+            onClick={() => onStatusChange(statusKey)}
+          >
+            {displayName} ({count})
+          </Badge>
+        );
+      })}
+    </div>
+  );
+};
 
 // 自定义组件，创建填报记录对话框
 function CreateRecordsDialog({ 
@@ -258,8 +338,8 @@ const ExtendedRecordStatus = {
 const statusMap: Record<string, { label: string; variant: "default" | "outline" | "secondary" | "destructive" }> = {
   [RecordStatus.DRAFT]: { label: "草稿", variant: "outline" },
   [RecordStatus.SUBMITTED]: { label: "已提交", variant: "secondary" },
-  [RecordStatus.PENDING_WITHDRAWAL]: { label: "待撤回", variant: "secondary" },
-  [ExtendedRecordStatus.APPROVED]: { label: "已审核", variant: "default" },
+  [RecordStatus.PENDING_WITHDRAWAL]: { label: "撤回审核中", variant: "secondary" },
+  [ExtendedRecordStatus.APPROVED]: { label: "已审核通过", variant: "default" },
   [ExtendedRecordStatus.REJECTED]: { label: "已拒绝", variant: "destructive" },
   [ExtendedRecordStatus.UNFILLED]: { label: "未填写", variant: "outline" },
 }
@@ -272,18 +352,13 @@ interface LocalFilters {
   project: string;
   subProject: string;
   fundType: string;
-  status: string;
 }
 
 export default function PredictV2Page() {
   const router = useRouter()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState("pending")
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set())
   const [isCreateRecordsDialogOpen, setIsCreateRecordsDialogOpen] = useState(false)
-  const [submitRecord, setSubmitRecord] = useState<string | null>(null)
-  const [isSubmitDialogOpen, setIsSubmitDialogOpen] = useState(false)
-  const [isBatchSubmitDialogOpen, setIsBatchSubmitDialogOpen] = useState(false)
   const { user, isLoading: userLoading } = useCurrentUser()
   const isAdmin = user?.role === Role.ADMIN
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -294,9 +369,13 @@ export default function PredictV2Page() {
     project: "all",
     subProject: "all",
     fundType: "all",
-    status: "all",
   })
   const filterTimeout = useRef<NodeJS.Timeout | null>(null)
+  const [activeStatus, setActiveStatus] = useState<string | null>(null)
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
+  const [selectedRecord, setSelectedRecord] = useState<typeof records[0] | null>(null)
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
+  const [withdrawalConfigs, setWithdrawalConfigs] = useState<Record<string, string[]>>({});
 
   // 使用新的预测填报钩子
   const {
@@ -313,47 +392,111 @@ export default function PredictV2Page() {
     fundTypes,
     currentMonth,
     handleFilterChange: apiHandleFilterChange,
-    handlePageChange,
+    handlePageChange: apiHandlePageChange,
     handleReset,
     fetchRecords,
     getProjectsByCategory,
     getSubProjectsByProject,
     getAllFundTypes,
-    handleMonthChange: apiHandleMonthChange
+    handleMonthChange: apiHandleMonthChange,
+    fetchStatusStats,
+    filterRecordsByStatus,
   } = useFundingPredictV2()
 
-  // 分离待处理和已处理的记录
-  const pendingRecords = useMemo(() => {
-    // 记录一下状态枚举值，以便调试
-    console.log('状态枚举值:', {
-      DRAFT: RecordStatus.DRAFT,
-      SUBMITTED: RecordStatus.SUBMITTED,
-      PENDING_WITHDRAWAL: RecordStatus.PENDING_WITHDRAWAL,
-      APPROVED: ExtendedRecordStatus.APPROVED,
-      REJECTED: ExtendedRecordStatus.REJECTED,
-      UNFILLED: ExtendedRecordStatus.UNFILLED
-    });
-    
-    return records.filter(r => {
-      // 确保比较时不区分大小写
-      const recordStatus = r.status.toLowerCase();
-      
-      return recordStatus === RecordStatus.DRAFT.toLowerCase() || 
-             recordStatus === ExtendedRecordStatus.REJECTED.toLowerCase() ||
-             recordStatus === ExtendedRecordStatus.UNFILLED.toLowerCase();
-    });
-  }, [records]);
+  // 获取状态统计数据
+  const loadStatusStats = useCallback(async () => {
+    const stats = await fetchStatusStats();
+    setStatusCounts(stats);
+  }, [fetchStatusStats]);
   
-  const processedRecords = useMemo(() => {
-    return records.filter(r => {
-      // 确保比较时不区分大小写
-      const recordStatus = r.status.toLowerCase();
+  // 初始加载和筛选条件变化时获取状态统计
+  useEffect(() => {
+    loadStatusStats();
+  }, [loadStatusStats, filters, currentMonth]);
+
+  // 处理状态标签点击
+  const handleStatusChange = useCallback((status: string | null) => {
+    setActiveStatus(status);
+    
+    // 使用API筛选记录
+    if (status) {
+      console.log(`使用API筛选状态: ${status}`);
+      filterRecordsByStatus(status);
+    } else {
+      console.log('重置状态筛选，获取所有记录');
+      fetchRecords(true);
+    }
+  }, [filterRecordsByStatus, fetchRecords]);
+
+  // 处理分页变化，保持状态筛选
+  const handlePageChange = useCallback((newPage: number) => {
+    if (activeStatus) {
+      // 如果有状态筛选，使用状态筛选API并传递页码
+      const params = new URLSearchParams();
+      params.append("year", currentMonth.year.toString());
+      params.append("month", currentMonth.month.toString());
+      params.append("page", newPage.toString());
+      params.append("pageSize", pagination.pageSize.toString());
+      params.append("status", activeStatus);
       
-      return recordStatus === RecordStatus.SUBMITTED.toLowerCase() || 
-             recordStatus === ExtendedRecordStatus.APPROVED.toLowerCase() || 
-             recordStatus === RecordStatus.PENDING_WITHDRAWAL.toLowerCase();
-    });
-  }, [records]);
+      // 添加其他筛选条件
+      Object.entries(apiFilters).forEach(([key, value]) => {
+        if (value && value !== 'all') {
+          const paramKey = key === 'organization' ? 'organizationId' :
+                          key === 'department' ? 'departmentId' :
+                          key === 'category' ? 'categoryId' :
+                          key === 'project' ? 'projectId' :
+                          key === 'subProject' ? 'subProjectId' :
+                          key === 'fundType' ? 'fundTypeId' : key;
+          params.append(paramKey, value);
+        }
+      });
+      
+      // 更新分页状态
+      setPagination(prev => ({ ...prev, page: newPage }));
+      
+      // 取消之前的请求
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+      
+      // 设置新的延迟请求，使用filterRecordsByStatus函数处理分页
+      fetchTimeoutRef.current = setTimeout(() => {
+        // 构建查询参数
+        const queryParams = new URLSearchParams();
+        queryParams.append("year", currentMonth.year.toString());
+        queryParams.append("month", currentMonth.month.toString());
+        queryParams.append("page", newPage.toString());
+        queryParams.append("pageSize", pagination.pageSize.toString());
+        queryParams.append("status", activeStatus);
+        
+        // 添加其他筛选条件
+        Object.entries(apiFilters).forEach(([key, value]) => {
+          if (value && value !== 'all') {
+            const paramKey = key === 'organization' ? 'organizationId' :
+                            key === 'department' ? 'departmentId' :
+                            key === 'category' ? 'categoryId' :
+                            key === 'project' ? 'projectId' :
+                            key === 'subProject' ? 'subProjectId' :
+                            key === 'fundType' ? 'fundTypeId' : key;
+            queryParams.append(paramKey, value);
+          }
+        });
+        
+        // 使用filterRecordsByStatus函数，但传递页码参数
+        filterRecordsByStatus(activeStatus, newPage);
+      }, 300);
+    } else {
+      // 如果没有状态筛选，使用默认分页方法
+      apiHandlePageChange(newPage);
+    }
+  }, [activeStatus, currentMonth, pagination.pageSize, apiFilters, setPagination, toast, apiHandlePageChange, filterRecordsByStatus]);
+
+  // 处理查看记录详情
+  const handleViewRecord = useCallback((record: typeof records[0]) => {
+    setSelectedRecord(record);
+    setIsDetailDialogOpen(true);
+  }, []);
 
   // 处理选中记录变化
   const handleRecordSelection = useCallback((recordId: string) => {
@@ -371,12 +514,11 @@ export default function PredictV2Page() {
   // 处理全选/取消全选
   const handleSelectAll = useCallback((selected: boolean) => {
     if (selected) {
-      const recordsToSelect = activeTab === "pending" ? pendingRecords : processedRecords
-      setSelectedRecords(new Set(recordsToSelect.map(r => r.id)))
+      setSelectedRecords(new Set(records.map(r => r.id)))
     } else {
       setSelectedRecords(new Set())
     }
-  }, [activeTab, pendingRecords, processedRecords])
+  }, [records])
 
   // 处理批量填报
   const handleBatchEdit = useCallback(() => {
@@ -391,9 +533,9 @@ export default function PredictV2Page() {
     // 检查是否所有选中的记录都可编辑（草稿、已拒绝或未填写状态）
     const hasNonEditableRecords = Array.from(selectedRecords).some(id => {
       const record = records.find(r => r.id === id)
-      return record && record.status !== RecordStatus.DRAFT && 
-             record.status !== ExtendedRecordStatus.REJECTED &&
-             record.status !== ExtendedRecordStatus.UNFILLED
+      return record && record.status.toLowerCase() !== RecordStatus.DRAFT.toLowerCase() && 
+             record.status.toLowerCase() !== ExtendedRecordStatus.REJECTED.toLowerCase() &&
+             record.status.toLowerCase() !== ExtendedRecordStatus.UNFILLED.toLowerCase()
     })
     
     if (hasNonEditableRecords) {
@@ -417,127 +559,10 @@ export default function PredictV2Page() {
     router.push(`/funding/predict-v2/edit?${queryParams.toString()}`)
   }, [selectedRecords, records, router, toast])
 
-  // 处理批量提交
-  const handleBatchSubmitClick = useCallback(() => {
-    if (selectedRecords.size === 0) {
-      toast({
-        title: "提示",
-        description: "请先选择记录",
-      })
-      return
-    }
-    
-    // 检查是否所有选中的记录都可提交（草稿、已拒绝或未填写状态）
-    const hasNonSubmittableRecords = Array.from(selectedRecords).some(id => {
-      const record = records.find(r => r.id === id)
-      return record && record.status !== RecordStatus.DRAFT && 
-             record.status !== ExtendedRecordStatus.REJECTED &&
-             record.status !== ExtendedRecordStatus.UNFILLED
-    })
-    
-    if (hasNonSubmittableRecords) {
-      toast({
-        title: "警告",
-        description: "只有草稿、已拒绝和未填写状态的记录才能提交",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    // 打开确认对话框
-    setIsBatchSubmitDialogOpen(true)
-  }, [selectedRecords, records, toast])
-  
-  const handleBatchSubmit = useCallback(async () => {
-    try {
-      // 准备要提交的记录
-      const recordsToSubmit = Array.from(selectedRecords).map(id => ({ id }))
-      
-      // 调用API提交记录
-      const response = await fetch('/api/funding/predict-v2/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ records: recordsToSubmit })
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || '批量提交失败')
-      }
-      
-      const result = await response.json()
-      
-      toast({
-        title: "提交成功",
-        description: result.message || `成功提交${result.count}条记录`,
-      })
-      
-      // 刷新记录列表
-      fetchRecords(true)
-      
-      // 关闭对话框
-      setIsBatchSubmitDialogOpen(false)
-      // 清空选中记录
-      setSelectedRecords(new Set())
-    } catch (error) {
-      console.error("批量提交失败", error)
-      toast({
-        title: "提交失败",
-        description: error instanceof Error ? error.message : "请稍后重试",
-        variant: "destructive"
-      })
-    }
-  }, [selectedRecords, toast, fetchRecords])
-
   // 跳转到提交历史页面
   const navigateToHistory = useCallback(() => {
     router.push("/funding/predict-v2/history")
   }, [router])
-
-  // 处理记录提交
-  const handleSubmitRecord = useCallback(async () => {
-    if (!submitRecord) return
-    
-    try {
-      // 调用API提交预测
-      const response = await fetch(`/api/funding/predict-v2/submit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          records: [{ id: submitRecord }]
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "提交失败");
-      }
-      
-      // 显示成功提示
-      toast({
-        title: "提交成功",
-        description: "记录已成功提交",
-      });
-      
-      // 刷新页面
-      fetchRecords(true);
-      
-      // 关闭对话框
-      setIsSubmitDialogOpen(false)
-      setSubmitRecord(null)
-    } catch (error) {
-      console.error("提交失败", error);
-      toast({
-        title: "提交失败",
-        description: error instanceof Error ? error.message : "提交失败",
-        variant: "destructive"
-      });
-    }
-  }, [submitRecord, toast, fetchRecords])
 
   // 创建项目-组织关联
   const handleCreateProjectOrgLinks = useCallback(async () => {
@@ -601,11 +626,45 @@ export default function PredictV2Page() {
     }
   }, [toast, fetchRecords, apiFilters, organizations]);
 
-  // 打开提交对话框
-  const openSubmitDialog = useCallback((recordId: string) => {
-    setSubmitRecord(recordId)
-    setIsSubmitDialogOpen(true)
-  }, [])
+  // 添加一个函数来获取撤回配置
+  const fetchWithdrawalConfigs = useCallback(async () => {
+    try {
+      const response = await fetch('/api/withdrawal-config');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          const configs: Record<string, string[]> = {};
+          data.data.forEach((config: any) => {
+            // 将状态值转换为小写，确保比较时不区分大小写
+            const allowedStatuses = JSON.parse(config.allowedStatuses).map((status: string) => status.toLowerCase());
+            configs[config.moduleType] = allowedStatuses;
+          });
+          console.log('获取到的撤回配置:', configs);
+          setWithdrawalConfigs(configs);
+        }
+      }
+    } catch (error) {
+      console.error('获取撤回配置失败:', error);
+    }
+  }, []);
+
+  // 在 useEffect 中调用获取撤回配置的函数
+  useEffect(() => {
+    fetchWithdrawalConfigs();
+  }, [fetchWithdrawalConfigs]);
+
+  // 添加一个函数来检查记录是否可以撤回
+  const canWithdraw = useCallback((record: typeof records[0]) => {
+    const predictConfig = withdrawalConfigs['predict'] || [];
+    const recordStatus = record.status.toLowerCase();
+    console.log('检查记录是否可以撤回:', {
+      recordId: record.id,
+      recordStatus,
+      allowedStatuses: predictConfig,
+      canWithdraw: predictConfig.includes(recordStatus)
+    });
+    return predictConfig.includes(recordStatus);
+  }, [withdrawalConfigs]);
 
   // 渲染记录表格
   const renderRecordsTable = useCallback((recordsToRender: typeof records) => {
@@ -631,7 +690,6 @@ export default function PredictV2Page() {
               <TableHead>年月</TableHead>
               <TableHead>金额</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead>撤回</TableHead>
               <TableHead>备注</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
@@ -639,7 +697,7 @@ export default function PredictV2Page() {
           <TableBody>
             {recordsToRender.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-24 text-center">
+                <TableCell colSpan={9} className="h-24 text-center">
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -681,30 +739,39 @@ export default function PredictV2Page() {
                       {statusMap[record.status.toLowerCase()]?.label || record.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    {record.status.toLowerCase() === RecordStatus.SUBMITTED.toLowerCase() && (
-                      <CreateWithdrawalRequestButton
-                        recordId={record.id}
-                        recordType="predict"
-                        onSuccess={() => fetchRecords(true)}
-                      />
-                    )}
-                    {record.status.toLowerCase() === RecordStatus.PENDING_WITHDRAWAL.toLowerCase() && (
-                      <CancelWithdrawalRequestButton
-                        recordId={record.id}
-                        recordType="predict"
-                        onSuccess={() => fetchRecords(true)}
-                      />
-                    )}
-                  </TableCell>
                   <TableCell className="max-w-[200px] truncate" title={record.remark || ""}>
                     {record.remark || "-"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {record.status.toLowerCase() === RecordStatus.DRAFT.toLowerCase() || 
-                     record.status.toLowerCase() === ExtendedRecordStatus.REJECTED.toLowerCase() || 
-                     record.status.toLowerCase() === ExtendedRecordStatus.UNFILLED.toLowerCase() ? (
-                      <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2">
+                      {/* 撤回按钮 - 只有符合 WithdrawalConfig 表 allowedStatuses 设置的记录显示 */}
+                      {canWithdraw(record) && (
+                        <CreateWithdrawalRequestButton
+                          recordId={record.id}
+                          recordType="predict"
+                          onSuccess={() => {
+                            fetchRecords(true);
+                            loadStatusStats();
+                          }}
+                        />
+                      )}
+                      
+                      {/* 取消撤回按钮 - 只有状态为 PENDING_WITHDRAWAL 的记录显示 */}
+                      {record.status.toLowerCase() === RecordStatus.PENDING_WITHDRAWAL.toLowerCase() && (
+                        <CancelWithdrawalRequestButton
+                          recordId={record.id}
+                          recordType="predict"
+                          onSuccess={() => {
+                            fetchRecords(true);
+                            loadStatusStats();
+                          }}
+                        />
+                      )}
+                      
+                      {/* 填报按钮 - 只有状态为 UNFILLED、DRAFT、APPROVED 的记录显示 */}
+                      {(record.status.toLowerCase() === ExtendedRecordStatus.UNFILLED.toLowerCase() || 
+                        record.status.toLowerCase() === RecordStatus.DRAFT.toLowerCase() || 
+                        record.status.toLowerCase() === ExtendedRecordStatus.APPROVED.toLowerCase()) && (
                         <Button 
                           variant="outline" 
                           size="sm"
@@ -714,31 +781,19 @@ export default function PredictV2Page() {
                           <FileEdit className="h-4 w-4 mr-1" />
                           填报
                         </Button>
-                        {record.status.toLowerCase() === RecordStatus.DRAFT.toLowerCase() && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openSubmitDialog(record.id)}
-                            className="h-8 px-2 py-0"
-                          >
-                            <Upload className="h-4 w-4 mr-1" />
-                            提交
-                          </Button>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-end gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => router.push(`/funding/predict-v2/detail/${record.id}`)}
-                          className="h-8 px-2 py-0"
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          查看
-                        </Button>
-                      </div>
-                    )}
+                      )}
+                      
+                      {/* 查看按钮 - 所有状态都显示 */}
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewRecord(record)}
+                        className="h-8 px-2 py-0"
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        查看
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -747,7 +802,7 @@ export default function PredictV2Page() {
         </Table>
       </div>
     )
-  }, [selectedRecords, handleRecordSelection, handleSelectAll, router, openSubmitDialog, fetchRecords])
+  }, [selectedRecords, handleRecordSelection, handleSelectAll, router, fetchRecords, loadStatusStats, handleViewRecord, canWithdraw])
 
   // 渲染分页控件
   const renderPagination = useCallback(() => {
@@ -805,7 +860,13 @@ export default function PredictV2Page() {
               
               // 设置新的延迟请求
               fetchTimeoutRef.current = setTimeout(() => {
-                fetchRecords(true);
+                if (activeStatus) {
+                  // 如果有状态筛选，使用状态筛选API
+                  filterRecordsByStatus(activeStatus);
+                } else {
+                  // 否则使用默认方法
+                  fetchRecords(true);
+                }
               }, 300);
             }}
           >
@@ -822,20 +883,7 @@ export default function PredictV2Page() {
         </div>
       </div>
     )
-  }, [pagination, handlePageChange])
-
-  // 检查组织筛选条件
-  const checkOrganizationFilter = useCallback(() => {
-    if (apiFilters.organization && apiFilters.organization !== 'all') {
-      const selectedOrg = organizations.find(org => org.id === apiFilters.organization);
-      const orgName = selectedOrg ? selectedOrg.name : '所选组织';
-      
-      toast({
-        title: "提示",
-        description: `当前正在查看 ${orgName} 的记录`,
-      })
-    }
-  }, [apiFilters.organization, organizations, toast])
+  }, [pagination, handlePageChange, setPagination, activeStatus, filterRecordsByStatus, fetchRecords])
 
   // 处理筛选条件变更
   const handleFilterChange = useCallback((newFilters: LocalFilters) => {
@@ -849,39 +897,60 @@ export default function PredictV2Page() {
 
     // 设置超时，防止频繁更新
     filterTimeout.current = setTimeout(() => {
-      // 遍历所有筛选条件并逐个更新
+      // 处理项目分类筛选器
+      if (newFilters.category !== filters.category) {
+        apiHandleFilterChange('category', newFilters.category);
+        
+        // 如果选择了特定分类，更新项目列表
+        if (newFilters.category !== 'all') {
+          const categoryProjects = getProjectsByCategory(newFilters.category);
+          console.log(`更新项目分类 ${newFilters.category} 的项目列表: ${categoryProjects.length} 个项目`);
+          
+          // 如果当前选择的项目不在这个分类下，重置项目选择
+          if (newFilters.project !== 'all') {
+            const projectInCategory = categoryProjects.some(p => p.id === newFilters.project);
+            if (!projectInCategory) {
+              newFilters.project = 'all';
+              newFilters.subProject = 'all';
+              console.log('重置项目和子项目选择，因为当前项目不在所选分类下');
+            }
+          }
+        }
+      }
+      
+      // 处理项目筛选器
+      if (newFilters.project !== filters.project) {
+        apiHandleFilterChange('project', newFilters.project);
+        
+        // 如果选择了特定项目，更新子项目列表
+        if (newFilters.project !== 'all') {
+          const projectSubProjects = getSubProjectsByProject(newFilters.project);
+          console.log(`更新项目 ${newFilters.project} 的子项目列表: ${projectSubProjects.length} 个子项目`);
+          
+          // 如果当前选择的子项目不属于这个项目，重置子项目选择
+          if (newFilters.subProject !== 'all') {
+            const subProjectInProject = projectSubProjects.some(sp => sp.id === newFilters.subProject);
+            if (!subProjectInProject) {
+              newFilters.subProject = 'all';
+              console.log('重置子项目选择，因为当前子项目不属于所选项目');
+            }
+          }
+        }
+      }
+      
+      // 处理其他筛选条件
       Object.entries(newFilters).forEach(([key, value]) => {
-        // 状态筛选直接使用原始值，不做额外处理
-        if (key === 'status') {
-          console.log(`应用状态筛选: ${value}`);
-          apiHandleFilterChange(key as keyof ProjectFilters, value);
-        } 
-        // 处理项目分类筛选器
-        else if (key === 'category') {
-          apiHandleFilterChange('category', value);
-          
-          // 如果选择了特定分类，更新项目列表
-          if (value !== 'all') {
-            const categoryProjects = getProjectsByCategory(value);
-            console.log(`更新项目分类 ${value} 的项目列表: ${categoryProjects.length}`);
-          }
-        }
-        // 处理项目筛选器 
-        else if (key === 'project') {
-          apiHandleFilterChange('project', value);
-          
-          // 如果选择了特定项目，更新子项目列表
-          if (value !== 'all') {
-            const projectSubProjects = getSubProjectsByProject(value);
-            console.log(`更新项目 ${value} 的子项目列表: ${projectSubProjects.length}`);
-          }
-        }
-        else {
+        if (key !== 'category' && key !== 'project') {
           apiHandleFilterChange(key as keyof ProjectFilters, value);
         }
       });
+      
+      // 添加延迟后刷新数据
+      setTimeout(() => {
+        fetchRecords(true);
+      }, 100);
     }, 300);
-  }, [apiHandleFilterChange, getProjectsByCategory, getSubProjectsByProject]);
+  }, [apiHandleFilterChange, getProjectsByCategory, getSubProjectsByProject, fetchRecords, filters]);
 
   // 重置筛选条件
   const handleResetFilters = useCallback(() => {
@@ -892,269 +961,95 @@ export default function PredictV2Page() {
       project: "all",
       subProject: "all",
       fundType: "all",
-      status: "all",
     }
     
     setFilters(initialFilters)
     handleReset()
   }, [handleReset])
 
-  // 处理月份变更
-  const handleMonthChange = useCallback((year: number, month: number) => {
-    // 直接调用API的月份变更函数
-    apiHandleMonthChange(year, month);
-  }, [apiHandleMonthChange])
-
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center mb-4">
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex items-center justify-between">
         <SimplePageHeader 
           title="资金需求预测填报 V2" 
-          description={`当前填报月份: ${currentMonth.label}`} 
+          description={`当前填报月份: ${currentMonth.year}年${currentMonth.month}月`}
         />
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => setIsCreateRecordsDialogOpen(true)}
-          >
-            <PlusIcon className="h-4 w-4 mr-2" />
-            创建填报记录
-          </Button>
-          <Button
-            variant="outline"
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
             onClick={navigateToHistory}
+            className="whitespace-nowrap"
           >
-            <HistoryIcon className="h-4 w-4 mr-2" />
+            <History className="h-4 w-4 mr-2" />
             提交历史
           </Button>
         </div>
       </div>
       
-      <FilterCard
-        filters={filters}
-        organizations={organizations}
-        departments={departments}
-        categories={projectCategories}
-        projects={projects}
-        subProjects={subProjects}
-        fundTypes={fundTypes}
-        loading={loading}
-        onFilterChange={handleFilterChange}
-        onReset={handleResetFilters}
-        onSearch={() => fetchRecords(true)}
-      />
+      <SimpleFilterCard>
+        <FilterCard
+          filters={filters}
+          organizations={organizations}
+          departments={departments}
+          categories={projectCategories}
+          projects={projects}
+          subProjects={subProjects}
+          fundTypes={fundTypes}
+          loading={loading}
+          onFilterChange={handleFilterChange}
+          onReset={handleResetFilters}
+          onSearch={() => fetchRecords(true)}
+        />
+      </SimpleFilterCard>
       
-      {/* 添加日期筛选器 */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col space-y-4">
-            <h3 className="text-lg font-medium">日期范围</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">年份</label>
-                <Select
-                  value={currentMonth.year.toString()}
-                  onValueChange={(value) => {
-                    const year = parseInt(value);
-                    handleMonthChange(year, currentMonth.month);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择年份" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i - 2).map((year) => (
-                      <SelectItem key={year} value={year.toString()}>
-                        {year}年
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">月份</label>
-                <Select
-                  value={currentMonth.month.toString()}
-                  onValueChange={(value) => {
-                    const month = parseInt(value);
-                    handleMonthChange(currentMonth.year, month);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择月份" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                      <SelectItem key={month} value={month.toString()}>
-                        {month}月
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  const now = new Date();
-                  let nextMonth = now.getMonth() + 2;
-                  let year = now.getFullYear();
-                  
-                  if (nextMonth > 12) {
-                    nextMonth = nextMonth - 12;
-                    year += 1;
-                  }
-                  
-                  handleMonthChange(year, nextMonth);
-                }}
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                重置为下月
-              </Button>
-            </div>
-          </div>
+          <StatusTabs 
+            statusCounts={statusCounts} 
+            activeStatus={activeStatus} 
+            onStatusChange={handleStatusChange} 
+          />
         </CardContent>
       </Card>
       
-      <Card>
-        <CardHeader className="p-4 pb-0">
-          <Tabs defaultValue="pending" value={activeTab} onValueChange={setActiveTab}>
-            <div className="flex justify-between items-center">
-              <TabsList>
-                <TabsTrigger value="pending">
-                  待处理
-                  {pendingRecords.length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {pagination.total > 0 && activeTab === "pending" ? pagination.total : pendingRecords.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="processed">
-                  已处理
-                  {processedRecords.length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {pagination.total > 0 && activeTab === "processed" ? pagination.total : processedRecords.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              </TabsList>
-              
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => fetchRecords(true)}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  刷新
-                </Button>
-              </div>
-            </div>
-            
-            <TabsContent value="pending" className="mt-4">
-              <div className="flex justify-between items-center mb-4">
-                <CardTitle>待处理记录</CardTitle>
-                <ActionButtonsGroup
-                  onEdit={handleBatchEdit}
-                  onSubmit={handleBatchSubmitClick}
-                  editDisabled={selectedRecords.size === 0}
-                  submitDisabled={selectedRecords.size === 0}
-                />
-              </div>
-              
-              <ScrollArea className="h-[calc(100vh-400px)]">
-                {loading ? (
-                  <div className="flex justify-center items-center h-32">
-                    <p>加载中...</p>
-                  </div>
-                ) : (
-                  renderRecordsTable(pendingRecords)
-                )}
-              </ScrollArea>
-            </TabsContent>
-            
-            <TabsContent value="processed" className="mt-4">
-              <div className="flex justify-between items-center mb-4">
-                <CardTitle>已处理记录</CardTitle>
-              </div>
-              
-              <ScrollArea className="h-[calc(100vh-400px)]">
-                {loading ? (
-                  <div className="flex justify-center items-center h-32">
-                    <p>加载中...</p>
-                  </div>
-                ) : (
-                  renderRecordsTable(processedRecords)
-                )}
-              </ScrollArea>
-            </TabsContent>
-          </Tabs>
-        </CardHeader>
-        
-        <CardContent className="p-4">
-          {renderPagination()}
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleBatchEdit}
+            disabled={selectedRecords.size === 0}
+            className="whitespace-nowrap"
+          >
+            <FileEdit className="h-4 w-4 mr-2" />
+            批量填报
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => fetchRecords(true)}
+            disabled={loading}
+          >
+            <RotateCcw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
       
-      {/* 提交对话框 */}
-      <Dialog open={isSubmitDialogOpen} onOpenChange={setIsSubmitDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>提交确认</DialogTitle>
-            <DialogDescription>
-              提交后将无法修改，请确认信息无误。
-            </DialogDescription>
-          </DialogHeader>
-          
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsSubmitDialogOpen(false)
-                setSubmitRecord(null)
-              }}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={handleSubmitRecord}
-            >
-              确认提交
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {renderRecordsTable(records)}
+      {renderPagination()}
       
-      {/* 批量提交对话框 */}
-      <Dialog open={isBatchSubmitDialogOpen} onOpenChange={setIsBatchSubmitDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>批量提交确认</DialogTitle>
-            <DialogDescription>
-              提交后将无法修改，请确认信息无误。
-            </DialogDescription>
-          </DialogHeader>
-          
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsBatchSubmitDialogOpen(false)
-              }}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={handleBatchSubmit}
-            >
-              确认提交
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      {/* 创建记录对话框 */}
       <CreateRecordsDialog 
         open={isCreateRecordsDialogOpen} 
         setOpen={setIsCreateRecordsDialogOpen}
         onSuccess={() => fetchRecords(true)}
+      />
+      
+      {/* 记录详情对话框 */}
+      <RecordDetailDialog 
+        record={selectedRecord} 
+        open={isDetailDialogOpen} 
+        onOpenChange={setIsDetailDialogOpen} 
       />
     </div>
   )

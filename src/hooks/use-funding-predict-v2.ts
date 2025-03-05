@@ -13,7 +13,6 @@ export interface ProjectFilters {
   project: string;
   subProject?: string;
   fundType?: string;
-  status: string;
 }
 
 // 预测记录类型
@@ -99,10 +98,9 @@ export function useFundingPredictV2(
     organization: 'all',
     department: 'all',
     project: 'all',
-    status: 'all',
+    fundType: 'all',
     category: 'all',
-    subProject: 'all',
-    fundType: 'all'
+    subProject: 'all'
   }
 ) {
   const { toast } = useToast();
@@ -272,13 +270,6 @@ export function useFundingPredictV2(
       console.log(`添加资金类型筛选条件: ${currentFilters.fundType}`);
     }
     
-    if (currentFilters.status && currentFilters.status !== 'all') {
-      // 直接使用状态值，不再转为小写（页面中已转为大写，与枚举匹配）
-      const statusValue = currentFilters.status;
-      params.append("status", statusValue);
-      console.log(`添加状态筛选条件: ${statusValue}`);
-    }
-    
     // 使用当前月份作为默认年月参数
     params.append("year", month.year.toString());
     console.log(`添加默认年份: ${month.year}`);
@@ -351,10 +342,9 @@ export function useFundingPredictV2(
         const hasProjectFilter = filters.project && filters.project !== 'all'; 
         const hasSubProjectFilter = filters.subProject && filters.subProject !== 'all';
         const hasFundTypeFilter = filters.fundType && filters.fundType !== 'all';
-        const hasStatusFilter = filters.status && filters.status !== 'all';
         
         const hasAnyFilter = hasOrganizationFilter || hasDepartmentFilter || hasProjectCategoryFilter || 
-                            hasProjectFilter || hasSubProjectFilter || hasFundTypeFilter || hasStatusFilter;
+                            hasProjectFilter || hasSubProjectFilter || hasFundTypeFilter;
         
         if (hasAnyFilter) {
           console.log('筛选结果为空，应用的筛选条件:', JSON.stringify(filters, null, 2));
@@ -382,28 +372,6 @@ export function useFundingPredictV2(
               description: `${warningMessage}这可能是因为该组织没有关联项目。${adminMessage}`,
               variant: "destructive",
               duration: 10000, // 延长显示时间，确保用户能看到
-            });
-          }
-          else if (hasStatusFilter && filters.status) {
-            const statusMap: Record<string, string> = {
-              'draft': '草稿',
-              'submitted': '已提交',
-              'pending_withdrawal': '待撤回',
-              'approved': '已审核',
-              'rejected': '已拒绝',
-              'unfilled': '未填写'
-            };
-            
-            const statusName = statusMap[filters.status.toLowerCase()] || filters.status;
-            
-            warningMessage = `未找到状态为"${statusName}"的填报记录。`;
-            console.log(`状态筛选警告: ${warningMessage}`);
-            
-            // 提示用户
-            toast({
-              title: "未找到记录",
-              description: warningMessage,
-              variant: "destructive",
             });
           }
           // 可以添加其他筛选条件的提示...
@@ -605,10 +573,16 @@ export function useFundingPredictV2(
       return projects;
     }
     
+    // 确保项目数据已加载
+    if (projects.length === 0) {
+      console.warn('警告: 项目数据尚未加载，返回空数组');
+      return [];
+    }
+    
     // 检查项目数据是否有正确的categoryId字段
     const hasValidProjectsWithCategory = projects.some(project => project.categoryId === categoryId);
     
-    // 如果没有任何项目匹配当前选择的分类ID，则检查项目数据是否有任何categoryId
+    // 如果没有任何项目匹配当前选择的分类ID，则记录警告
     if (!hasValidProjectsWithCategory) {
       console.warn(`警告: 没有项目匹配分类ID: ${categoryId}`);
       
@@ -616,8 +590,7 @@ export function useFundingPredictV2(
       const hasAnyCategoryId = projects.some(project => project.categoryId);
       
       if (!hasAnyCategoryId) {
-        console.warn('警告: 项目数据中没有任何项目包含categoryId字段，返回所有项目');
-        return projects;
+        console.warn('警告: 项目数据中没有任何项目包含categoryId字段');
       }
       
       // 记录所有项目的分类ID，帮助调试
@@ -625,30 +598,17 @@ export function useFundingPredictV2(
       console.log('项目中存在的分类ID:', categoryIds);
     }
     
-    // 确保项目数据已加载并且有 categoryId 字段
+    // 筛选匹配分类ID的项目
     const filteredProjects = projects.filter(project => {
-      // 特殊处理：如果项目没有分类ID但筛选器已选择了特定分类，仍然返回这些项目
-      // 这样可以确保即使数据不完整，用户仍能看到所有项目
+      // 如果项目没有分类ID，不包含在结果中
       if (!project.categoryId) {
-        // 返回true将无分类项目包含在结果中
-        // 设置为false则排除无分类项目
-        return false; 
+        return false;
       }
       
-      const match = project.categoryId === categoryId;
-      if (match) {
-        console.log('找到匹配的项目:', project);
-      }
-      return match;
+      return project.categoryId === categoryId;
     });
     
     console.log('筛选后的项目数量:', filteredProjects.length);
-    
-    // 如果没有找到匹配的项目，提供所有项目作为后备选项
-    if (filteredProjects.length === 0) {
-      console.warn(`警告: 分类ID ${categoryId} 下没有找到任何项目，返回所有项目`);
-      return projects;
-    }
     
     return filteredProjects;
   }, [projects]);
@@ -665,6 +625,179 @@ export function useFundingPredictV2(
   const getAllFundTypes = useCallback(() => {
     return fundTypes;
   }, [fundTypes]);
+
+  // 获取状态统计数据
+  const fetchStatusStats = useCallback(async () => {
+    try {
+      console.log('开始获取状态统计数据...');
+      
+      // 构建查询参数
+      const params = new URLSearchParams();
+      
+      // 使用当前月份作为默认年月参数
+      params.append("year", currentMonth.year.toString());
+      params.append("month", currentMonth.month.toString());
+      
+      // 添加筛选条件
+      const currentFilters = filtersRef.current;
+      
+      if (currentFilters.organization && currentFilters.organization !== 'all') {
+        params.append("organizationId", currentFilters.organization);
+      }
+      
+      if (currentFilters.department && currentFilters.department !== 'all') {
+        params.append("departmentId", currentFilters.department);
+      }
+      
+      if (currentFilters.category && currentFilters.category !== 'all') {
+        params.append("categoryId", currentFilters.category);
+      }
+      
+      if (currentFilters.project && currentFilters.project !== 'all') {
+        params.append("projectId", currentFilters.project);
+      }
+      
+      if (currentFilters.subProject && currentFilters.subProject !== 'all') {
+        params.append("subProjectId", currentFilters.subProject);
+      }
+      
+      if (currentFilters.fundType && currentFilters.fundType !== 'all') {
+        params.append("fundTypeId", currentFilters.fundType);
+      }
+      
+      const queryString = params.toString();
+      console.log('状态统计查询参数:', queryString);
+      
+      // 添加缓存控制参数
+      const cacheParam = `_t=${Date.now().toString()}`;
+      const fullQueryString = queryString ? `${queryString}&${cacheParam}` : cacheParam;
+      
+      const response = await fetch(`/api/funding/predict-v2/stats?${fullQueryString}`, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`状态统计API响应错误: ${response.status}`, errorText);
+        throw new Error(`获取状态统计数据失败: ${response.status} ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('获取到状态统计数据:', data);
+      
+      return data.statusCounts;
+    } catch (error) {
+      console.error('获取状态统计数据失败:', error);
+      toast({
+        title: "错误",
+        description: `获取状态统计数据失败: ${error instanceof Error ? error.message : String(error)}`,
+        variant: "destructive",
+      });
+      return {};
+    }
+  }, [currentMonth, toast]);
+
+  // 根据状态筛选记录
+  const filterRecordsByStatus = useCallback(async (status: string | null, page: number = 1) => {
+    try {
+      console.log(`开始按状态筛选记录: ${status || '全部'}, 页码: ${page}`);
+      
+      // 更新筛选条件
+      const currentFilters = filtersRef.current;
+      
+      // 构建查询参数
+      const params = new URLSearchParams();
+      
+      // 使用当前月份作为默认年月参数
+      params.append("year", currentMonth.year.toString());
+      params.append("month", currentMonth.month.toString());
+      
+      // 添加分页参数
+      params.append("page", page.toString()); // 使用传入的页码
+      params.append("pageSize", paginationRef.current.pageSize.toString());
+      
+      // 添加状态筛选条件
+      if (status) {
+        params.append("status", status);
+      }
+      
+      // 添加其他筛选条件
+      if (currentFilters.organization && currentFilters.organization !== 'all') {
+        params.append("organizationId", currentFilters.organization);
+      }
+      
+      if (currentFilters.department && currentFilters.department !== 'all') {
+        params.append("departmentId", currentFilters.department);
+      }
+      
+      if (currentFilters.category && currentFilters.category !== 'all') {
+        params.append("categoryId", currentFilters.category);
+      }
+      
+      if (currentFilters.project && currentFilters.project !== 'all') {
+        params.append("projectId", currentFilters.project);
+      }
+      
+      if (currentFilters.subProject && currentFilters.subProject !== 'all') {
+        params.append("subProjectId", currentFilters.subProject);
+      }
+      
+      if (currentFilters.fundType && currentFilters.fundType !== 'all') {
+        params.append("fundTypeId", currentFilters.fundType);
+      }
+      
+      const queryString = params.toString();
+      console.log('状态筛选查询参数:', queryString);
+      
+      // 添加缓存控制参数
+      const cacheParam = `_t=${Date.now().toString()}`;
+      const fullQueryString = queryString ? `${queryString}&${cacheParam}` : cacheParam;
+      
+      setLoading(true);
+      
+      const response = await fetch(`/api/funding/predict-v2?${fullQueryString}`, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`状态筛选API响应错误: ${response.status}`, errorText);
+        throw new Error(`按状态筛选记录失败: ${response.status} ${errorText}`);
+      }
+      
+      const data: PaginatedResponse<PredictRecord> = await response.json();
+      console.log(`按状态筛选获取到 ${data.items.length} 条记录，共 ${data.total} 条`);
+      
+      // 更新记录和分页信息
+      setRecords(data.items);
+      setPagination({
+        page: data.page,
+        pageSize: data.pageSize,
+        total: data.total,
+        totalPages: data.totalPages
+      });
+      
+      setLoading(false);
+      return data.items;
+    } catch (error) {
+      console.error('按状态筛选记录失败:', error);
+      toast({
+        title: "错误",
+        description: `按状态筛选记录失败: ${error instanceof Error ? error.message : String(error)}`,
+        variant: "destructive",
+      });
+      setLoading(false);
+      return [];
+    }
+  }, [currentMonth, toast]);
 
   // 初始加载数据
   useEffect(() => {
@@ -694,6 +827,8 @@ export function useFundingPredictV2(
     getProjectsByCategory,
     getSubProjectsByProject,
     getAllFundTypes,
-    handleMonthChange
+    handleMonthChange,
+    fetchStatusStats,
+    filterRecordsByStatus
   };
 } 
