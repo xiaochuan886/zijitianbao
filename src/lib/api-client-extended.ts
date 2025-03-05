@@ -25,12 +25,21 @@ class WithdrawalConfigApi extends ApiBase {
   async save(data: {
     id?: string;
     moduleType: string;
-    allowedStatuses: string;
+    allowedStatuses: string | string[];
     timeLimit: number;
     maxAttempts: number;
     requireApproval: boolean;
   }) {
-    return this.post('/withdrawal-config', data);
+    // 确保 allowedStatuses 是字符串
+    const formattedData = {
+      ...data,
+      allowedStatuses: typeof data.allowedStatuses === 'string' 
+        ? data.allowedStatuses 
+        : JSON.stringify(data.allowedStatuses)
+    };
+    
+    console.log("API客户端发送数据:", formattedData);
+    return this.post('/withdrawal-config', formattedData);
   }
 }
 

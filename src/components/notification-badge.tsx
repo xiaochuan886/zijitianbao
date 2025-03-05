@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { formatDate } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 type Notification = {
   id: string;
@@ -19,6 +20,8 @@ type Notification = {
   content: string;
   isRead: boolean;
   type: string;
+  relatedId?: string;
+  relatedType?: string;
   createdAt: string;
 };
 
@@ -26,8 +29,9 @@ export function NotificationBadge() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
-  // 获取通知
+  // 获取通知 - 在组件挂载时自动获取
   const fetchNotifications = async () => {
     try {
       const response = await fetch("/api/notifications");
@@ -39,6 +43,68 @@ export function NotificationBadge() {
       console.error("Failed to fetch notifications:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 组件挂载和定时刷新通知
+  useEffect(() => {
+    fetchNotifications();
+    
+    // 设置定时刷新 - 每30秒获取最新通知
+    const intervalId = setInterval(fetchNotifications, 30000);
+    
+    // 清理定时器
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // 标记通知为已读并导航到相关页面
+  const handleNotificationClick = async (notification: Notification) => {
+    try {
+      // 标记为已读
+      await markAsRead(notification.id);
+      
+      // 根据通知类型导航到相应页面
+      if (notification.type === "withdrawal_request") {
+        // 撤回请求的通知 - 导航到撤回请求列表
+        router.push(`/withdrawal-requests`);
+      } else if (notification.type === "withdrawal_approved") {
+        // 已批准的撤回请求通知 - 导航到撤回请求列表
+        router.push(`/withdrawal-requests`);
+      } else if (notification.type === "withdrawal_rejected") {
+        // 已拒绝的撤回请求通知 - 导航到撤回请求列表
+        router.push(`/withdrawal-requests`);
+      } else if (notification.relatedId && notification.relatedType) {
+        // 根据相关类型导航
+        switch (notification.relatedType) {
+          case "predict_record":
+            router.push(`/funding/predict-v2?recordId=${notification.relatedId}`);
+            break;
+          case "actual_user_record":
+            router.push(`/funding/actual-user?recordId=${notification.relatedId}`);
+            break;
+          case "actual_fin_record":
+            router.push(`/funding/actual-fin?recordId=${notification.relatedId}`);
+            break;
+          case "audit_record":
+            router.push(`/funding/audit?recordId=${notification.relatedId}`);
+            break;
+          case "withdrawal_request":
+            router.push(`/withdrawal-requests`);
+            break;
+          default:
+            // 默认不做导航
+            console.log(`未知的相关记录类型: ${notification.relatedType}`);
+            break;
+        }
+      } else {
+        // 没有明确相关类型的通知，记录日志但不导航
+        console.log("通知没有相关类型或ID:", notification);
+      }
+      
+      // 关闭弹出窗口
+      setOpen(false);
+    } catch (error) {
+      console.error("Failed to handle notification click:", error);
     }
   };
 
@@ -82,13 +148,6 @@ export function NotificationBadge() {
       console.error("Failed to mark all notifications as read:", error);
     }
   };
-
-  // 当弹出框打开时获取通知
-  useEffect(() => {
-    if (open) {
-      fetchNotifications();
-    }
-  }, [open]);
 
   // 获取未读通知数量
   const unreadCount = notifications.filter(
@@ -141,7 +200,7 @@ export function NotificationBadge() {
                   className={`p-4 hover:bg-muted/50 cursor-pointer ${
                     !notification.isRead ? "bg-muted/20" : ""
                   }`}
-                  onClick={() => markAsRead(notification.id)}
+                  onClick={() => handleNotificationClick(notification)}
                 >
                   <div className="flex justify-between items-start mb-1">
                     <h5 className="font-medium text-sm">{notification.title}</h5>

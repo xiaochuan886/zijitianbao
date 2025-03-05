@@ -59,17 +59,12 @@ const navigation = [
       {
         title: "撤回配置",
         href: "/management/withdrawal-config",
-        icon: Undo2,
+        icon: Settings,
       },
       {
         title: "撤回请求",
         href: "/withdrawal-requests",
         icon: Undo2,
-      },
-      {
-        title: "系统设置",
-        href: "/management/settings",
-        icon: Settings,
       },
       {
         title: "项目关联管理",
@@ -97,11 +92,6 @@ const navigation = [
         title: "财务审核",
         href: "/funding/audit",
         icon: ClipboardCheck,
-      },
-      {
-        title: "撤回请求",
-        href: "/withdrawal-requests",
-        icon: Undo2,
       },
     ],
   },

@@ -58,13 +58,84 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const body = await request.json();
+    // 判断请求类型并解析
+    const contentType = request.headers.get('content-type') || '';
+    let body: any = {};
     
-    const { moduleType, allowedStatuses, timeLimit, maxAttempts, requireApproval } = body;
+    // 处理不同格式的请求体
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      // 处理表单数据
+      const formData = await request.formData().catch(async () => {
+        // 如果formData解析失败，尝试手动解析
+        const text = await request.text();
+        console.log("原始表单数据:", text);
+        
+        const params = new URLSearchParams(text);
+        const result = new FormData();
+        params.forEach((value, key) => {
+          result.append(key, value);
+        });
+        return result;
+      });
+      
+      // 转换为普通对象
+      formData.forEach((value, key) => {
+        body[key] = value;
+      });
+      
+      console.log("表单数据解析结果:", body);
+    } else {
+      // 处理JSON请求
+      body = await request.json();
+      console.log("JSON数据解析结果:", body);
+    }
     
-    if (!moduleType || !allowedStatuses || !timeLimit || !maxAttempts) {
+    console.log("最终请求体:", JSON.stringify(body, null, 2));
+    
+    // 提取和转换必要字段
+    let moduleType = body.moduleType;
+    let allowedStatuses = body.allowedStatuses;
+    let timeLimit = parseInt(body.timeLimit as string) || 0;
+    let maxAttempts = parseInt(body.maxAttempts as string) || 0;
+    let requireApproval = body.requireApproval === 'true' || body.requireApproval === true;
+    
+    console.log("解析后的字段:", {
+      moduleType,
+      allowedStatuses,
+      timeLimit,
+      maxAttempts,
+      requireApproval
+    });
+    
+    // 验证必要字段
+    if (!moduleType) {
+      console.log("缺少必要参数: moduleType");
       return NextResponse.json(
-        { success: false, message: "缺少必要的参数" },
+        { success: false, message: "缺少必要的参数: moduleType" },
+        { status: 400 }
+      );
+    }
+    
+    if (!allowedStatuses) {
+      console.log("缺少必要参数: allowedStatuses");
+      return NextResponse.json(
+        { success: false, message: "缺少必要的参数: allowedStatuses" },
+        { status: 400 }
+      );
+    }
+    
+    if (!timeLimit) {
+      console.log("缺少必要参数: timeLimit");
+      return NextResponse.json(
+        { success: false, message: "缺少必要的参数: timeLimit" },
+        { status: 400 }
+      );
+    }
+    
+    if (!maxAttempts) {
+      console.log("缺少必要参数: maxAttempts");
+      return NextResponse.json(
+        { success: false, message: "缺少必要的参数: maxAttempts" },
         { status: 400 }
       );
     }

@@ -27,6 +27,7 @@ import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { useSession } from "next-auth/react";
 
 // 定义撤回请求类型
 type WithdrawalRequest = {
@@ -88,6 +89,7 @@ export function WithdrawalRequestList({ initialData, isAdmin }: WithdrawalReques
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const session = useSession();
 
   // 状态
   const [requests, setRequests] = useState<WithdrawalRequest[]>(initialData.requests);
@@ -202,8 +204,35 @@ export function WithdrawalRequestList({ initialData, isAdmin }: WithdrawalReques
           description: `撤回请求已${reviewStatus === "approved" ? "批准" : "拒绝"}`,
         });
         
-        // 更新列表
-        loadData(pagination.page, statusFilter, moduleTypeFilter);
+        // 根据当前筛选条件决定如何更新UI
+        if (statusFilter === "pending" || statusFilter === "all" || statusFilter === "") {
+          if (statusFilter === "pending") {
+            // 如果当前筛选是"待处理"，则从列表中移除此请求
+            setRequests(prevRequests => prevRequests.filter(req => req.id !== selectedRequest.id));
+          } else {
+            // 如果筛选是"全部"或空，则更新请求的状态
+            setRequests(prevRequests => prevRequests.map(req => 
+              req.id === selectedRequest.id 
+                ? { 
+                    ...req, 
+                    status: reviewStatus, 
+                    admin: { 
+                      id: session.data?.user?.id || "", 
+                      name: session.data?.user?.name || "当前用户", 
+                      email: session.data?.user?.email || "" 
+                    },
+                    reviewedAt: new Date().toISOString() 
+                  } 
+                : req
+            ));
+          }
+        }
+        
+        // 延迟一点后再重新加载数据，确保服务器数据已更新
+        setTimeout(() => {
+          loadData(pagination.page, statusFilter, moduleTypeFilter);
+        }, 300);
+        
         setIsReviewDialogOpen(false);
       } else {
         toast({

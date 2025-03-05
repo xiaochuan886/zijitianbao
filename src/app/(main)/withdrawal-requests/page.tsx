@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import dynamic from "next/dynamic";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 // 动态导入组件以避免找不到模块的错误
 const WithdrawalRequestList = dynamic(() => import("./withdrawal-request-list").then(mod => mod.WithdrawalRequestList), {
@@ -38,12 +39,22 @@ export default async function WithdrawalRequestsPage() {
   const initialRequests = data.success ? data.data : { requests: [], pagination: { total: 0 } };
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">撤回请求管理</h1>
       </div>
       
-      <WithdrawalRequestList initialData={initialRequests} isAdmin={session.user.role === "ADMIN"} />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle>撤回请求列表</CardTitle>
+          <CardDescription>
+            查看和管理系统中的撤回请求
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <WithdrawalRequestList initialData={initialRequests} isAdmin={session.user.role === "ADMIN"} />
+        </CardContent>
+      </Card>
     </div>
   );
 } 

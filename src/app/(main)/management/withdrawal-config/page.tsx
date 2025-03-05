@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { MultiSelect } from "@/components/ui/multi-select"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { Undo2, Save } from "lucide-react"
 import { extendedApiClient } from "@/lib/api-client-extended"
+import { CheckboxGroup } from "@/components/ui/checkbox-group"
 
 // 模块类型定义
 const moduleTypes = [
@@ -67,6 +67,13 @@ interface WithdrawalConfig {
   requireApproval: boolean
 }
 
+// API 响应接口
+interface ApiResponse<T> {
+  success: boolean
+  message?: string
+  data?: T
+}
+
 export default function WithdrawalConfigPage() {
   const [activeTab, setActiveTab] = useState("predict")
   const [loading, setLoading] = useState(true)
@@ -78,7 +85,7 @@ export default function WithdrawalConfigPage() {
     const fetchConfigs = async () => {
       setLoading(true)
       try {
-        const response = await extendedApiClient.withdrawalConfig.list()
+        const response = await extendedApiClient.withdrawalConfig.list() as { data: ApiResponse<WithdrawalConfig[]> }
         if (response.data && response.data.data) {
           const configsMap: Record<string, WithdrawalConfig> = {}
           
@@ -87,7 +94,7 @@ export default function WithdrawalConfigPage() {
             const parsedConfig = {
               ...config,
               allowedStatuses: typeof config.allowedStatuses === 'string' 
-                ? JSON.parse(config.allowedStatuses) 
+                ? JSON.parse(config.allowedStatuses as string) 
                 : config.allowedStatuses
             }
             configsMap[config.moduleType] = parsedConfig
@@ -134,37 +141,103 @@ export default function WithdrawalConfigPage() {
 
   // 保存配置
   const handleSave = async () => {
-    setSaving(true)
+    setSaving(true);
     try {
-      const configToSave = {
-        ...configs[activeTab],
-        allowedStatuses: JSON.stringify(configs[activeTab].allowedStatuses)
+      // 获取当前选中的模块和配置
+      const moduleType = activeTab;
+      console.log("当前activeTab:", moduleType);
+      
+      // 获取当前模块的配置
+      const currentConfig = configs[moduleType];
+      console.log("当前配置对象:", currentConfig);
+      
+      if (!moduleType || !currentConfig) {
+        toast.error("找不到当前模块配置");
+        return;
       }
       
-      const response = await extendedApiClient.withdrawalConfig.save(configToSave)
+      // 创建普通对象，确保所有字段都有值
+      const data = {
+        moduleType: moduleType,
+        id: currentConfig.id || undefined,
+        allowedStatuses: JSON.stringify(currentConfig.allowedStatuses || []),
+        timeLimit: currentConfig.timeLimit || 24,
+        maxAttempts: currentConfig.maxAttempts || 3,
+        requireApproval: currentConfig.requireApproval
+      };
       
-      if (response.data && response.data.success) {
-        toast.success("撤回配置保存成功")
-      } else {
-        toast.error("保存失败: " + (response.data?.message || "未知错误"))
+      console.log("准备发送的数据:", data);
+      
+      // 将对象转换为URLSearchParams (类似表单提交)
+      const params = new URLSearchParams();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined) {
+          params.append(key, String(value));
+        }
+      });
+      
+      // 打印最终发送的表单数据
+      console.log("最终URL编码的表单数据:");
+      console.log(params.toString());
+      
+      try {
+        // 使用表单数据格式发送请求
+        const response = await fetch('/api/withdrawal-config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params,
+        });
+        
+        const responseData = await response.json();
+        console.log("服务器响应:", responseData);
+        
+        if (!response.ok) {
+          throw new Error(`保存失败: ${responseData.message || '未知错误'}`);
+        }
+        
+        toast.success("撤回配置保存成功");
+      } catch (error) {
+        console.error("保存请求失败:", error);
+        toast.error(`保存撤回配置失败: ${error instanceof Error ? error.message : '未知错误'}`);
       }
     } catch (error) {
-      console.error("Failed to save withdrawal config:", error)
-      toast.error("保存撤回配置失败")
+      console.error("执行保存操作失败:", error);
+      toast.error("保存撤回配置失败");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   // 更新配置字段
   const updateConfig = (field: keyof WithdrawalConfig, value: any) => {
-    setConfigs(prev => ({
-      ...prev,
-      [activeTab]: {
-        ...prev[activeTab],
+    console.log(`更新配置字段 - 模块:${activeTab}, 字段:${field}, 值:`, value);
+    
+    setConfigs(prev => {
+      // 确保当前模块配置存在
+      const currentConfig = prev[activeTab] || {
+        moduleType: activeTab,
+        allowedStatuses: [],
+        timeLimit: 24,
+        maxAttempts: 3,
+        requireApproval: true
+      };
+      
+      // 创建更新后的配置
+      const updatedConfig = {
+        ...currentConfig,
         [field]: value
-      }
-    }))
+      };
+      
+      console.log(`更新后的${activeTab}模块配置:`, updatedConfig);
+      
+      // 返回更新后的状态
+      return {
+        ...prev,
+        [activeTab]: updatedConfig
+      };
+    });
   }
 
   if (loading) {
@@ -210,20 +283,17 @@ export default function WithdrawalConfigPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="space-y-2">
+                <div className="space-y-4">
                   <Label htmlFor={`allowed-statuses-${module.id}`}>允许撤回的状态</Label>
-                  <MultiSelect
+                  <CheckboxGroup
                     id={`allowed-statuses-${module.id}`}
-                    options={statusOptions[module.id as keyof typeof statusOptions].map(status => ({
-                      value: status.value,
-                      label: status.label
-                    }))}
-                    selected={configs[module.id]?.allowedStatuses?.map(status => ({
-                      value: status,
-                      label: statusOptions[module.id as keyof typeof statusOptions].find(s => s.value === status)?.label || status
-                    })) || []}
-                    onChange={(selected) => updateConfig('allowedStatuses', selected.map(s => s.value))}
-                    placeholder="选择状态..."
+                    options={statusOptions[module.id as keyof typeof statusOptions]}
+                    selected={configs[module.id]?.allowedStatuses || []}
+                    onChange={(selected) => {
+                      console.log(`${module.id}模块的状态选择变更:`, selected);
+                      updateConfig('allowedStatuses', selected);
+                    }}
+                    className="mt-2 border rounded-md p-4"
                   />
                   <p className="text-sm text-muted-foreground">
                     选择哪些状态下允许用户申请撤回
