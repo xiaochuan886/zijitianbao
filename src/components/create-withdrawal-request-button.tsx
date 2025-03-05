@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 
 type CreateWithdrawalRequestButtonProps = {
@@ -32,16 +32,14 @@ export function CreateWithdrawalRequestButton({
   variant = "outline",
   size = "sm",
 }: CreateWithdrawalRequestButtonProps) {
-  const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     if (!reason.trim()) {
-      toast({
-        title: "请输入撤回原因",
-        variant: "destructive",
+      toast.error("请输入撤回原因", {
+        duration: 5000,
       });
       return;
     }
@@ -49,6 +47,8 @@ export function CreateWithdrawalRequestButton({
     setIsSubmitting(true);
 
     try {
+      console.log("提交撤回请求:", { recordId, recordType, reason });
+      
       const response = await fetch("/api/withdrawal-request", {
         method: "POST",
         headers: {
@@ -65,45 +65,66 @@ export function CreateWithdrawalRequestButton({
       console.log("撤回请求响应:", data);
 
       if (response.ok && data.success) {
-        toast({
-          title: "撤回申请已提交",
+        toast.success("撤回申请已提交", {
           description: "您的撤回申请已成功提交，请等待审核",
+          duration: 5000,
         });
         setIsDialogOpen(false);
         setReason("");
         onSuccess?.();
       } else {
-        // 根据不同错误类型显示不同的错误提示
+        // 提取错误信息
         let errorMessage = "提交撤回申请失败";
+        let errorDescription = "";
         
-        if (data.error?.type === "time_limit_exceeded") {
-          errorMessage = "撤回时间已超过限制（提交后24小时内可撤回）";
-        } else if (data.error?.type === "max_attempts_exceeded") {
-          errorMessage = "已达到最大撤回次数限制";
-        } else if (data.error?.type === "invalid_status") {
-          errorMessage = "当前记录状态不允许撤回";
-        } else if (data.error?.type === "record_not_found") {
-          errorMessage = "记录不存在或已被删除";
-        } else if (data.error?.type === "already_pending") {
-          errorMessage = "已有待处理的撤回请求";
-        } else if (data.message) {
+        // 直接使用后端返回的message字段（如果存在）
+        if (data.message) {
           errorMessage = data.message;
         }
         
-        toast({
-          title: "撤回申请失败",
-          description: errorMessage,
-          variant: "destructive",
+        // 如果有error对象且包含type字段，根据类型提供更具体的错误信息
+        if (data.error) {
+          if (typeof data.error === 'object' && data.error.type) {
+            const errorType = data.error.type;
+            
+            if (errorType === "time_limit_exceeded") {
+              const timeLimit = data.error.timeLimit || 24;
+              const hoursPassed = data.error.hoursSinceSubmission ? Math.floor(data.error.hoursSinceSubmission) : "未知";
+              errorMessage = "撤回时间已超过限制";
+              errorDescription = `提交后${timeLimit}小时内可撤回，已过${hoursPassed}小时`;
+            } else if (errorType === "max_attempts_exceeded") {
+              errorMessage = "已达到最大撤回次数限制";
+              errorDescription = `最多可撤回${data.error.maxAttempts || 3}次`;
+            } else if (errorType === "invalid_status") {
+              errorMessage = "当前记录状态不允许撤回";
+              errorDescription = `当前状态: ${data.error.currentStatus || "未知"}`;
+            } else if (errorType === "record_not_found") {
+              errorMessage = "记录不存在或已被删除";
+            } else if (errorType === "already_pending") {
+              errorMessage = "已有待处理的撤回请求";
+              errorDescription = "请等待管理员处理您之前的撤回申请";
+            }
+          } else if (typeof data.error === 'string') {
+            errorDescription = data.error;
+          }
+        }
+        
+        // 确保显示错误提示
+        console.error("撤回申请失败:", errorMessage, errorDescription);
+        
+        toast.error(errorMessage, {
+          description: errorDescription,
+          duration: 5000, // 确保显示足够长的时间
         });
+        
         // 在错误情况下也关闭对话框
         setIsDialogOpen(false);
       }
     } catch (error) {
       console.error("撤回申请出错:", error);
-      toast({
-        title: "撤回申请失败",
+      toast.error("撤回申请失败", {
         description: "无法连接到服务器，请稍后再试",
-        variant: "destructive",
+        duration: 5000, // 确保显示足够长的时间
       });
       // 在错误情况下也关闭对话框
       setIsDialogOpen(false);
@@ -125,33 +146,30 @@ export function CreateWithdrawalRequestButton({
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>申请撤回</DialogTitle>
             <DialogDescription>
-              请填写撤回原因，管理员将审核您的撤回请求。
+              请输入您申请撤回的原因，管理员审核后将决定是否允许撤回。
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div>
-              <p className="text-sm font-medium mb-2">撤回原因</p>
-              <Textarea
-                placeholder="请详细说明您申请撤回的原因..."
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={5}
-              />
-            </div>
+          <div className="grid gap-4 py-4">
+            <Textarea
+              id="reason"
+              placeholder="请输入撤回原因..."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="min-h-[100px]"
+            />
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? <Spinner className="mr-2" size="sm" /> : null}
-              提交
+            <Button
+              type="submit"
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? <Spinner className="mr-2" /> : null}
+              提交申请
             </Button>
           </DialogFooter>
         </DialogContent>

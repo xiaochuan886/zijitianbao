@@ -229,6 +229,27 @@ export async function POST(request: Request) {
       );
     }
 
+    // 检查记录状态是否允许撤回
+    const allowedStatuses = config?.allowedStatuses ? JSON.parse(config.allowedStatuses) : [];
+    
+    console.log(`允许撤回的状态: ${allowedStatuses} 当前记录状态: ${record.status}`);
+    
+    if (!allowedStatuses.includes(record.status)) {
+      console.log("记录状态不允许撤回，返回错误响应");
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: `当前记录状态不允许撤回，当前状态: ${record.status}，允许状态: ${allowedStatuses.join(", ")}`,
+          error: {
+            type: "invalid_status",
+            currentStatus: record.status,
+            allowedStatuses
+          }
+        },
+        { status: 400 }
+      );
+    }
+
     // 检查是否超过时间限制
     if (recordData.submittedAt) {
       const submittedAt = new Date(recordData.submittedAt);
@@ -238,6 +259,7 @@ export async function POST(request: Request) {
       console.log(`提交时间: ${submittedAt} 已过时间(小时): ${hoursSinceSubmission} 时间限制(小时): ${config?.timeLimit}`);
       
       if (config?.timeLimit && hoursSinceSubmission > config.timeLimit) {
+        console.log("超过撤回时间限制，返回错误响应");
         return NextResponse.json(
           { 
             success: false, 
@@ -254,23 +276,17 @@ export async function POST(request: Request) {
     }
 
     // 检查是否超过最大撤回次数
-    const withdrawalCount = await prisma.withdrawalRequest.count({
-      where: {
-        ...(recordType === "predict" ? { predictRecordId: recordId } : {}),
-        ...(recordType === "actual_user" ? { actualUserRecordId: recordId } : {}),
-        ...(recordType === "actual_fin" ? { actualFinRecordId: recordId } : {}),
-        ...(recordType === "audit" ? { auditRecordId: recordId } : {}),
-      },
-    });
-
-    if (config?.maxAttempts && withdrawalCount >= config.maxAttempts) {
+    const attemptCount = await getWithdrawalAttemptCount(recordId, recordType);
+    console.log(`撤回尝试次数: ${attemptCount}, 最大次数: ${config.maxAttempts}`);
+    
+    if (attemptCount >= config.maxAttempts) {
       return NextResponse.json(
         { 
           success: false, 
           message: `已达到最大撤回次数(${config.maxAttempts}次)`,
           error: {
             type: "max_attempts_exceeded",
-            count: withdrawalCount,
+            attemptCount,
             maxAttempts: config.maxAttempts
           }
         },
@@ -278,51 +294,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // 检查记录状态是否允许撤回
-    const allowedStatuses = config?.allowedStatuses ? JSON.parse(config.allowedStatuses) : [];
-    
-    console.log(`允许撤回的状态: ${allowedStatuses} 当前记录状态: ${record.status}`);
-    
-    if (!allowedStatuses.includes(record.status)) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: `当前记录状态不允许撤回，当前状态: ${record.status}，允许状态: ${allowedStatuses.join(", ")}`,
-          error: {
-            type: "invalid_status",
-            currentStatus: record.status,
-            allowedStatuses
-          }
-        },
-        { status: 400 }
-      );
-    }
-
     // 检查是否已有待处理的撤回请求
-    const pendingRequest = await prisma.withdrawalRequest.findFirst({
-      where: {
-        ...(recordType === "predict" ? { predictRecordId: recordId } : {}),
-        ...(recordType === "actual_user" ? { actualUserRecordId: recordId } : {}),
-        ...(recordType === "actual_fin" ? { actualFinRecordId: recordId } : {}),
-        ...(recordType === "audit" ? { auditRecordId: recordId } : {}),
-        status: "pending",
-      },
-    });
-
-    console.log("已有的待处理撤回请求查询条件:", {
-      recordType,
-      recordId,
-      pendingRequestFound: !!pendingRequest
-    });
-
+    const pendingRequest = await checkPendingWithdrawalRequest(recordId, recordType);
+    
     if (pendingRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          message: "该记录已有待处理的撤回请求",
+          message: "已有待处理的撤回请求",
           error: {
             type: "already_pending",
-            requestId: pendingRequest.id
+            pendingRequestId: pendingRequest.id,
+            pendingRequestDate: pendingRequest.createdAt
           }
         },
         { status: 400 }
@@ -347,31 +330,31 @@ export async function POST(request: Request) {
       },
     });
 
+    // 更新记录状态为PENDING_WITHDRAWAL
+    if (recordType === "predict" && recordData.predictRecordId) {
+      await prisma.predictRecord.update({
+        where: { id: recordData.predictRecordId },
+        data: { status: "PENDING_WITHDRAWAL" },
+      });
+    } else if (recordType === "actual_user" && recordData.actualUserRecordId) {
+      await prisma.actualUserRecord.update({
+        where: { id: recordData.actualUserRecordId },
+        data: { status: "PENDING_WITHDRAWAL" },
+      });
+    } else if (recordType === "actual_fin" && recordData.actualFinRecordId) {
+      await prisma.actualFinRecord.update({
+        where: { id: recordData.actualFinRecordId },
+        data: { status: "PENDING_WITHDRAWAL" },
+      });
+    } else if (recordType === "audit" && recordData.auditRecordId) {
+      await prisma.auditRecord.update({
+        where: { id: recordData.auditRecordId },
+        data: { status: "PENDING_WITHDRAWAL" },
+      });
+    }
+
     // 如果不需要审批，直接处理撤回
     if (!config.requireApproval) {
-      // 更新记录状态
-      if (recordType === "predict" && recordData.predictRecordId) {
-        await prisma.predictRecord.update({
-          where: { id: recordData.predictRecordId },
-          data: { status: "PENDING_WITHDRAWAL" },
-        });
-      } else if (recordType === "actual_user" && recordData.actualUserRecordId) {
-        await prisma.actualUserRecord.update({
-          where: { id: recordData.actualUserRecordId },
-          data: { status: "PENDING_WITHDRAWAL" },
-        });
-      } else if (recordType === "actual_fin" && recordData.actualFinRecordId) {
-        await prisma.actualFinRecord.update({
-          where: { id: recordData.actualFinRecordId },
-          data: { status: "PENDING_WITHDRAWAL" },
-        });
-      } else if (recordType === "audit" && recordData.auditRecordId) {
-        await prisma.auditRecord.update({
-          where: { id: recordData.auditRecordId },
-          data: { status: "PENDING_WITHDRAWAL" },
-        });
-      }
-
       // 创建审计记录
       await prisma.recordAudit.create({
         data: {
@@ -383,7 +366,7 @@ export async function POST(request: Request) {
           action: "withdrawn",
           timestamp: new Date(),
           oldValue: JSON.stringify(record),
-          newValue: JSON.stringify({ ...record, status: "withdrawn" }),
+          newValue: JSON.stringify({ ...record, status: "PENDING_WITHDRAWAL" }),
           role: session.user.role,
           remarks: reason,
         },
@@ -394,27 +377,27 @@ export async function POST(request: Request) {
         where: { id: withdrawalRequest.id },
         data: { status: "approved" },
       });
-    } else {
-      // 需要审批，发送通知给管理员
-      const admins = await prisma.user.findMany({
-        where: {
-          role: "ADMIN",
+    }
+    
+    // 发送通知给管理员
+    const admins = await prisma.user.findMany({
+      where: {
+        role: "ADMIN",
+      },
+    });
+
+    // 创建通知
+    for (const admin of admins) {
+      await prisma.notification.create({
+        data: {
+          userId: admin.id,
+          title: "新的撤回申请",
+          content: `用户 ${session.user.name} 申请撤回记录，原因：${reason}`,
+          type: "withdrawal_request",
+          relatedId: withdrawalRequest.id,
+          relatedType: recordType,
         },
       });
-
-      // 创建通知
-      for (const admin of admins) {
-        await prisma.notification.create({
-          data: {
-            userId: admin.id,
-            title: "新的撤回申请",
-            content: `用户 ${session.user.name} 申请撤回记录，原因：${reason}`,
-            type: "withdrawal_request",
-            relatedId: withdrawalRequest.id,
-            relatedType: recordType,
-          },
-        });
-      }
     }
 
     return NextResponse.json({
@@ -428,4 +411,38 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+// 辅助函数：获取撤回尝试次数
+async function getWithdrawalAttemptCount(recordId: string, recordType: string) {
+  const count = await prisma.withdrawalRequest.count({
+    where: {
+      ...(recordType === "predict" ? { predictRecordId: recordId } : {}),
+      ...(recordType === "actual_user" ? { actualUserRecordId: recordId } : {}),
+      ...(recordType === "actual_fin" ? { actualFinRecordId: recordId } : {}),
+      ...(recordType === "audit" ? { auditRecordId: recordId } : {}),
+    },
+  });
+  return count;
+}
+
+// 辅助函数：检查是否有待处理的撤回请求
+async function checkPendingWithdrawalRequest(recordId: string, recordType: string) {
+  const pendingRequest = await prisma.withdrawalRequest.findFirst({
+    where: {
+      ...(recordType === "predict" ? { predictRecordId: recordId } : {}),
+      ...(recordType === "actual_user" ? { actualUserRecordId: recordId } : {}),
+      ...(recordType === "actual_fin" ? { actualFinRecordId: recordId } : {}),
+      ...(recordType === "audit" ? { auditRecordId: recordId } : {}),
+      status: "pending",
+    },
+  });
+  
+  console.log("已有的待处理撤回请求查询条件:", {
+    recordType,
+    recordId,
+    pendingRequestFound: !!pendingRequest
+  });
+  
+  return pendingRequest;
 } 

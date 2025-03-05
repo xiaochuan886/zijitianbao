@@ -173,9 +173,9 @@ export async function PUT(
       where: { id },
       data: {
         status,
-        adminId: session.user.id,
+        admin: { connect: { id: session.user.id } },
         reviewedAt: new Date(),
-        adminRemarks: remarks || null,
+        adminComment: remarks || null,
       },
     });
 

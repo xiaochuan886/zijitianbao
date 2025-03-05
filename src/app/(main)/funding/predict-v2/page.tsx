@@ -56,6 +56,7 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 import { FilterCard } from "@/components/funding/filter-card"
 import Link from "next/link"
 import { CreateWithdrawalRequestButton } from "@/components/create-withdrawal-request-button"
+import { CancelWithdrawalRequestButton } from "@/components/cancel-withdrawal-request-button"
 
 // 自定义组件，简化版的 FilterCard
 function SimpleFilterCard({ children }: { children: React.ReactNode }) {
@@ -683,6 +684,13 @@ export default function PredictV2Page() {
                   <TableCell>
                     {record.status.toLowerCase() === RecordStatus.SUBMITTED.toLowerCase() && (
                       <CreateWithdrawalRequestButton
+                        recordId={record.id}
+                        recordType="predict"
+                        onSuccess={() => fetchRecords(true)}
+                      />
+                    )}
+                    {record.status.toLowerCase() === RecordStatus.PENDING_WITHDRAWAL.toLowerCase() && (
+                      <CancelWithdrawalRequestButton
                         recordId={record.id}
                         recordType="predict"
                         onSuccess={() => fetchRecords(true)}
