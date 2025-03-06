@@ -10,15 +10,7 @@ import {
   TableRow 
 } from "@/components/ui/table"
 import { HistoryRecord } from "./history-table-view"
-import { 
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
+import { Pagination } from "@/components/ui/pagination"
 import React from "react"
 
 // 记录对象接口
@@ -77,170 +69,92 @@ export function HistoryGroupedView({
   // 计算总页数
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   
-  // 生成分页数字
-  const getPaginationItems = useCallback(() => {
-    const items = []
-    const maxVisiblePages = 5 // 最多显示的页码数量
-    
-    // 确保页码在有效范围内
-    let currentPage = Math.max(1, Math.min(page, totalPages))
-    
-    // 计算起始页和结束页
-    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2))
-    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
-    
-    // 调整起始页
-    if (endPage - startPage + 1 < maxVisiblePages) {
-      startPage = Math.max(1, endPage - maxVisiblePages + 1)
-    }
-    
-    // 添加第一页
-    if (startPage > 1) {
-      items.push(
-        <PaginationItem key="first">
-          <PaginationLink onClick={() => onPageChange(1)}>1</PaginationLink>
-        </PaginationItem>
-      )
-      
-      // 添加省略号
-      if (startPage > 2) {
-        items.push(
-          <PaginationItem key="ellipsis-start">
-            <PaginationEllipsis />
-          </PaginationItem>
-        )
-      }
-    }
-    
-    // 添加中间页码
-    for (let i = startPage; i <= endPage; i++) {
-      items.push(
-        <PaginationItem key={i}>
-          <PaginationLink 
-            isActive={i === currentPage}
-            onClick={() => onPageChange(i)}
-          >
-            {i}
-          </PaginationLink>
-        </PaginationItem>
-      )
-    }
-    
-    // 添加最后页
-    if (endPage < totalPages) {
-      // 添加省略号
-      if (endPage < totalPages - 1) {
-        items.push(
-          <PaginationItem key="ellipsis-end">
-            <PaginationEllipsis />
-          </PaginationItem>
-        )
-      }
-      
-      items.push(
-        <PaginationItem key="last">
-          <PaginationLink onClick={() => onPageChange(totalPages)}>
-            {totalPages}
-          </PaginationLink>
-        </PaginationItem>
-      )
-    }
-    
-    return items
-  }, [page, totalPages, pageSize, onPageChange])
+  // 渲染分组数据
+  const renderGroupedData = (
+    data: GroupedHistory[],
+    columns: {key: string, label: string}[],
+    formatAmount: (amount: number | null) => string
+  ) => {
+    return data.flatMap(org => (
+      org.departments.flatMap(dept => (
+        dept.categories.flatMap(category => (
+          category.projects.flatMap((proj, projIndex) => (
+            <React.Fragment key={`section-${org.organization}-${dept.name}-${category.name}-${proj.name}-${projIndex}`}>
+              <TableRow className="bg-muted/50">
+                <TableCell colSpan={columns.length + 2} className="font-medium">
+                  {org.organization} &gt; {dept.name} &gt; {category.name} &gt; {proj.name}
+                </TableCell>
+              </TableRow>
+              {proj.subProjects.flatMap((subProj, subProjIndex) => (
+                subProj.fundTypes.map((fundType, fundTypeIndex) => (
+                  <TableRow key={`data-${org.organization}-${dept.name}-${category.name}-${proj.name}-${subProj.name}-${fundType.name}-${subProjIndex}-${fundTypeIndex}`}>
+                    <TableCell className="font-medium">
+                      <div>{subProj.name}</div>
+                      <div className="text-sm text-muted-foreground">{fundType.name}</div>
+                    </TableCell>
+                    {columns.map(column => (
+                      <TableCell key={`cell-${column.key}`} className="text-center">
+                        {fundType.records[0]?.monthValues[column.key] !== undefined ? (
+                          formatAmount(fundType.records[0].monthValues[column.key])
+                        ) : "-"}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-sm text-center">
+                      {fundType.records[0]?.remark || "-"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              ))}
+            </React.Fragment>
+          ))
+        ))
+      ))
+    ));
+  };
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border overflow-hidden">
+      <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>子项目</TableHead>
-              <TableHead>资金类型</TableHead>
-              {monthColumns.map(column => (
-                <TableHead key={column.key}>{column.label}</TableHead>
+              <TableHead className="w-[250px]">项目信息</TableHead>
+              {monthColumns.map((col) => (
+                <TableHead key={col.key} className="text-center">
+                  {col.label}
+                </TableHead>
               ))}
+              <TableHead className="text-center">备注</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={2 + monthColumns.length} className="h-24 text-center">
-                  正在加载...
+                <TableCell colSpan={monthColumns.length + 2} className="h-24 text-center">
+                  加载中...
                 </TableCell>
               </TableRow>
             ) : groupedHistory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={2 + monthColumns.length} className="h-24 text-center">
-                  没有找到历史记录
+                <TableCell colSpan={monthColumns.length + 2} className="h-24 text-center">
+                  暂无数据
                 </TableCell>
               </TableRow>
             ) : (
-              groupedHistory.flatMap(org => (
-                org.departments.flatMap(dept => (
-                  dept.categories.flatMap(category => (
-                    category.projects.flatMap((proj, projIndex) => (
-                      <React.Fragment key={`section-${org.organization}-${dept.name}-${category.name}-${proj.name}-${projIndex}`}>
-                        <TableRow className="bg-muted/50">
-                          <TableCell colSpan={2 + monthColumns.length} className="font-medium">
-                            {org.organization} &gt; {dept.name} &gt; {category.name} &gt; {proj.name}
-                          </TableCell>
-                        </TableRow>
-                        {proj.subProjects.flatMap((subProj, subProjIndex) => (
-                          subProj.fundTypes.map((fundType, fundTypeIndex) => (
-                            <TableRow key={`data-${org.organization}-${dept.name}-${category.name}-${proj.name}-${subProj.name}-${fundType.name}-${subProjIndex}-${fundTypeIndex}`}>
-                              <TableCell>{subProj.name}</TableCell>
-                              <TableCell>{fundType.name}</TableCell>
-                              {monthColumns.map(column => (
-                                <TableCell key={`cell-${column.key}-${org.organization}-${dept.name}-${category.name}-${proj.name}-${subProj.name}-${fundType.name}`}>
-                                  {fundType.records[0].monthValues[column.key] !== undefined ? (
-                                    <div 
-                                      className="cursor-help" 
-                                      title={fundType.records[0].remark ? `备注: ${fundType.records[0].remark}` : "无备注"}
-                                    >
-                                      {formatCurrency(fundType.records[0].monthValues[column.key])}
-                                    </div>
-                                  ) : "-"}
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          ))
-                        ))}
-                      </React.Fragment>
-                    ))
-                  ))
-                ))
-              ))
+              renderGroupedData(groupedHistory, monthColumns, formatCurrency)
             )}
           </TableBody>
         </Table>
       </div>
       
-      {/* 分页控件 */}
-      {!loading && groupedHistory.length > 0 && (
-        <div className="flex justify-between items-center py-4">
-          <div className="text-sm text-muted-foreground">
-            共 {total} 条记录，第 {page} / {totalPages} 页
-          </div>
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious 
-                  onClick={() => onPageChange(Math.max(1, page - 1))}
-                  className={page <= 1 ? "pointer-events-none opacity-50" : ""}
-                />
-              </PaginationItem>
-              
-              {getPaginationItems()}
-              
-              <PaginationItem>
-                <PaginationNext 
-                  onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-                  className={page >= totalPages ? "pointer-events-none opacity-50" : ""}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+      {totalPages > 1 && (
+        <div className="flex justify-center mt-4">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={onPageChange}
+            siblingCount={1}
+          />
         </div>
       )}
     </div>

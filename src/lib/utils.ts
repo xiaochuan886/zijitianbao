@@ -18,36 +18,61 @@ export function getCurrentMonth() {
 }
 
 /**
- * 格式化日期为本地字符串
- * @param dateString 日期字符串或Date对象
- * @param options 格式化选项
- * @returns 格式化后的日期字符串
+ * 格式化货币显示
+ * @param value 数值
+ * @param currency 货币符号，默认为¥
+ * @param decimals 小数位数，默认为2
+ * @returns 格式化后的货币字符串
  */
-export function formatDate(
-  dateString: string | Date,
-  options: Intl.DateTimeFormatOptions = {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }
+export function formatCurrency(
+  value: number | undefined | null,
+  currency: string = "¥",
+  decimals: number = 2
 ): string {
-  const date = typeof dateString === "string" ? new Date(dateString) : dateString;
-  return date.toLocaleString("zh-CN", options);
+  if (value === undefined || value === null) {
+    return `${currency}0.00`;
+  }
+
+  const formatter = new Intl.NumberFormat("zh-CN", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+  return `${currency}${formatter.format(value)}`;
 }
 
 /**
- * 格式化金额为人民币格式
- * @param amount 金额数值
- * @returns 格式化后的金额字符串
+ * 格式化日期显示
+ * @param date 日期对象或日期字符串
+ * @param format 格式化模式，默认为'yyyy-MM-dd'
+ * @returns 格式化后的日期字符串
  */
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("zh-CN", {
-    style: "currency",
-    currency: "CNY",
-    minimumFractionDigits: 2,
-  }).format(amount);
+export function formatDate(
+  date: Date | string | undefined | null,
+  format: string = "yyyy-MM-dd"
+): string {
+  if (!date) return "";
+
+  const d = typeof date === "string" ? new Date(date) : date;
+  
+  if (!(d instanceof Date) || isNaN(d.getTime())) {
+    return "";
+  }
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const seconds = String(d.getSeconds()).padStart(2, "0");
+
+  return format
+    .replace("yyyy", String(year))
+    .replace("MM", month)
+    .replace("dd", day)
+    .replace("HH", hours)
+    .replace("mm", minutes)
+    .replace("ss", seconds);
 }
 
 /**

@@ -44,11 +44,24 @@ export async function GET(request: NextRequest) {
 
     // 获取查询参数
     const searchParams = request.nextUrl.searchParams
-    const year = parseInt(searchParams.get("year") || "0")
-    const month = parseInt(searchParams.get("month") || "0")
+    const yearParam = searchParams.get("year")
+    const monthParam = searchParams.get("month")
+    
+    let year: number, month: number;
+    
+    if (yearParam && monthParam) {
+      year = parseInt(yearParam)
+      month = parseInt(monthParam)
+    } else {
+      // 默认使用上个月
+      const now = new Date()
+      const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth()
+      year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+      month = prevMonth + 1 // 月份从1开始
+    }
 
     if (!year || !month) {
-      return NextResponse.json({ error: "缺少年份或月份参数" }, { status: 400 })
+      return NextResponse.json({ error: "无效的年份或月份参数" }, { status: 400 })
     }
 
     // 查询已提交状态的用户填报记录

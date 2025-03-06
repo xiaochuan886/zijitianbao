@@ -384,19 +384,10 @@ async function linkSubProjectsToFundTypes(subProjects: any[], fundTypes: any[], 
       continue
     }
     
-    // 随机选择一个组织
+    // 获取所有组织
     const allOrganizations = await prisma.organization.findMany();
     if (allOrganizations.length === 0) {
       console.log(`警告: 没有组织数据，跳过创建关联`);
-      continue;
-    }
-    
-    // 随机选择一个组织
-    const randomOrg = allOrganizations[Math.floor(Math.random() * allOrganizations.length)];
-    
-    const orgDepartments = departments.filter(d => d.organizationId === randomOrg.id);
-    if (orgDepartments.length === 0) {
-      console.log(`警告: 组织 ${randomOrg.id} 没有部门，跳过创建关联`);
       continue;
     }
     
@@ -412,6 +403,15 @@ async function linkSubProjectsToFundTypes(subProjects: any[], fundTypes: any[], 
       
       usedTypeIndexes.add(randomTypeIndex)
       const fundType = fundTypes[randomTypeIndex]
+      
+      // 只选择一个组织，而不是为每个子项目关联所有组织
+      const randomOrg = allOrganizations[Math.floor(Math.random() * allOrganizations.length)];
+      const orgDepartments = departments.filter(d => d.organizationId === randomOrg.id);
+      
+      if (orgDepartments.length === 0) {
+        console.log(`警告: 组织 ${randomOrg.id} 没有部门，跳过创建关联`);
+        continue;
+      }
       
       // 随机选择1-2个部门
       const deptCount = Math.floor(Math.random() * 2) + 1 // 1-2个部门
@@ -472,9 +472,6 @@ async function createPredictRecords(subProjects: any[], users: any[], detailedFu
         await prisma.predictRecord.create({
           data: {
             detailedFundNeedId: detailedFundNeed.id,
-            subProjectId: detailedFundNeed.subProjectId,
-            fundTypeId: detailedFundNeed.fundTypeId,
-            departmentId: detailedFundNeed.departmentId,
             year,
             month,
             amount: Math.floor(Math.random() * 1000000) / 100, // 随机金额

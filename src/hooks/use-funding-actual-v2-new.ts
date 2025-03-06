@@ -392,23 +392,55 @@ export function useFundingActual(
       const params = new URLSearchParams();
       const month = currentMonthRef.current;
       const currentRecordType = recordTypeRef.current;
+      const currentFilters = filtersRef.current;
       
       params.append("recordType", currentRecordType);
       params.append("year", month.year.toString());
       params.append("month", month.month.toString());
       
+      // 添加筛选参数 - 这是关键修复
+      if (currentFilters.organization && currentFilters.organization !== 'all') {
+        params.append("organizationId", currentFilters.organization);
+      }
+      
+      if (currentFilters.department && currentFilters.department !== 'all') {
+        params.append("departmentId", currentFilters.department);
+      }
+      
+      if (currentFilters.category && currentFilters.category !== 'all') {
+        params.append("categoryId", currentFilters.category);
+      }
+      
+      if (currentFilters.project && currentFilters.project !== 'all') {
+        params.append("projectId", currentFilters.project);
+      }
+      
+      if (currentFilters.subProject && currentFilters.subProject !== 'all') {
+        params.append("subProjectId", currentFilters.subProject);
+      }
+      
+      if (currentFilters.fundType && currentFilters.fundType !== 'all') {
+        params.append("fundTypeId", currentFilters.fundType);
+      }
+      
       const timestamp = new Date().getTime();
       params.append("_t", timestamp.toString());
+      
+      console.log(`获取状态统计, 参数: ${params.toString()}`);
       
       // 请求状态统计
       const response = await fetch(`/api/funding/actual/stats?${params.toString()}`);
       
       if (!response.ok) {
+        console.error(`获取状态统计失败: HTTP ${response.status}`);
+        const errorText = await response.text();
+        console.error(`错误详情: ${errorText}`);
         throw new Error(`获取状态统计失败: ${response.status}`);
       }
       
       const data = await response.json();
-      return data.counts || {};
+      console.log(`获取到状态统计: ${JSON.stringify(data)}`);
+      return data.statusCounts || {};
     } catch (error) {
       console.error('获取状态统计失败', error);
       toast({
@@ -427,11 +459,10 @@ export function useFundingActual(
     try {
       // 构建查询参数
       const params = buildQueryParams();
-      const currentRecordType = recordTypeRef.current;
       
       // 添加状态参数
       if (status) {
-        params.append("status", status);
+        params.set("status", status);
       }
       
       // 更新页码
@@ -440,14 +471,20 @@ export function useFundingActual(
       const timestamp = new Date().getTime();
       params.append("_t", timestamp.toString());
       
+      console.log(`筛选状态记录, 参数: ${params.toString()}`);
+      
       // 请求记录
       const response = await fetch(`/api/funding/actual?${params.toString()}`);
       
       if (!response.ok) {
+        console.error(`筛选记录失败: HTTP ${response.status}`);
+        const errorText = await response.text();
+        console.error(`错误详情: ${errorText}`);
         throw new Error(`筛选记录失败: ${response.status}`);
       }
       
       const data: PaginatedResponse<ActualRecord> = await response.json();
+      console.log(`筛选得到记录: ${data.items.length}条, 总计: ${data.total}`);
       
       // 更新记录和分页信息
       setRecords(data.items);

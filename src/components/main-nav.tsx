@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ChevronDown,
   Undo2,
+  CheckSquare,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -66,12 +67,6 @@ const navigation = [
         href: "/withdrawal-requests",
         icon: Undo2,
       },
-      {
-        title: "项目关联管理",
-        href: "/admin/project-links",
-        icon: Building2,
-        adminOnly: true,
-      },
     ],
   },
   {
@@ -90,8 +85,9 @@ const navigation = [
       },
       {
         title: "财务审核",
-        href: "/funding/audit",
-        icon: ClipboardCheck,
+        href: "/admin/audit",
+        icon: CheckSquare,
+        adminOnly: true,
       },
     ],
   },

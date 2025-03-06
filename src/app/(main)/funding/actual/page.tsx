@@ -452,8 +452,14 @@ export default function ActualPage() {
 
   // 获取状态统计数据
   const loadStatusStats = useCallback(async () => {
-    const stats = await fetchStatusStats();
-    setStatusCounts(stats);
+    try {
+      const stats = await fetchStatusStats();
+      console.log("获取到状态统计:", stats);
+      setStatusCounts(stats);
+    } catch (error) {
+      console.error("获取状态统计出错:", error);
+      setStatusCounts({});
+    }
   }, [fetchStatusStats]);
   
   // 初始加载和筛选条件变化时获取状态统计
@@ -463,6 +469,7 @@ export default function ActualPage() {
 
   // 处理状态标签点击
   const handleStatusChange = useCallback((status: string | null) => {
+    console.log(`状态变更为: ${status}`);
     setActiveStatus(status);
     
     // 使用API筛选记录
