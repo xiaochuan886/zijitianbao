@@ -73,7 +73,7 @@ interface AuditData {
   };
 }
 
-type SortField = 'departmentName' | 'projectName' | 'subProjectName' | 'fundTypeName' | 'userAmount' | 'financeAmount';
+type SortField = 'departmentName' | 'projectName' | 'subProjectName' | 'fundTypeName' | 'userAmount' | 'financeAmount' | 'difference';
 type SortDirection = 'asc' | 'desc';
 
 export default function OrganizationAuditPage({ params }: { params: { id: string } }) {
@@ -107,7 +107,7 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
 
         const processedRecords = data.data.records.map((record: AuditRecord) => {
           const hasDifference = record.userAmount !== record.financeAmount;
-          const auditResult = hasDifference ? "" : record.financeAmount.toString();
+          const auditResult = hasDifference ? "" : record.financeAmount?.toString();
           
           return {
             ...record,
@@ -131,7 +131,7 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
         const initialResults: Record<string, string> = {};
         processedRecords.forEach((record: AuditRecord) => {
           if (!record.hasDifference) {
-            initialResults[record.id] = record.financeAmount.toString();
+            initialResults[record.id] = record.financeAmount?.toString() || '';
           }
         });
         setAuditResults(initialResults);
@@ -343,6 +343,17 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
     let result = auditData.records.filter(record => {
       return Object.entries(filters).every(([field, value]) => {
         if (!value) return true;
+        
+        if (field === 'difference') {
+          // 特殊处理差异列的筛选
+          if (value === 'inconsistent') {
+            return record.hasDifference === true;
+          } else if (value === 'consistent') {
+            return record.hasDifference === false;
+          }
+          return true;
+        }
+        
         const recordValue = record[field as keyof AuditRecord];
         return String(recordValue).toLowerCase().includes(value.toLowerCase());
       });
@@ -350,6 +361,13 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
 
     if (sortField) {
       result = [...result].sort((a, b) => {
+        // 特殊处理差异列的排序
+        if (sortField === 'difference') {
+          const aValue = a.hasDifference ? 1 : 0;
+          const bValue = b.hasDifference ? 1 : 0;
+          return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+        }
+        
         const aValue = a[sortField];
         const bValue = b[sortField];
         
@@ -375,14 +393,28 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
   const recordsToDisplay = useMemo(() => {
     if (!auditData?.records) return [];
     
-    // 如果选择显示所有记录，直接返回过滤排序后的记录
-    if (showAllRecords) {
-      return filteredAndSortedRecords;
+    // 初始筛选后的记录
+    let filtered = filteredAndSortedRecords;
+    
+    // 如果不是显示所有记录模式，只显示需要审核的记录
+    if (!showAllRecords) {
+      filtered = filtered.filter(record => record.needsAudit);
     }
     
-    // 否则只显示需要审核的记录
-    return filteredAndSortedRecords.filter(record => record.needsAudit);
+    return filtered;
   }, [filteredAndSortedRecords, showAllRecords, auditData]);
+
+  // 计算不同类型记录的数量，用于显示
+  const recordCounts = useMemo(() => {
+    if (!auditData?.records) return { total: 0, auditable: 0, submitted: 0, needsAudit: 0 };
+    
+    const total = auditData.records.length;
+    const auditable = auditData.records.filter(r => r.financeRecordId).length;
+    const submitted = auditData.records.filter(r => r.auditStatus === "APPROVED").length;
+    const needsAudit = auditData.records.filter(r => r.needsAudit).length;
+    
+    return { total, auditable, submitted, needsAudit };
+  }, [auditData]);
 
   if (loading) {
     return (
@@ -451,24 +483,43 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
           <span className="sr-only">筛选 {label}</span>
-          <Filter className="h-4 w-4" />
+          <Filter className={`h-4 w-4 ${filters[field] ? "text-primary" : ""}`} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>筛选 {label}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <div className="p-2">
-          <Input
-            placeholder={`输入${label}...`}
-            value={filters[field] || ''}
-            onChange={(e) => handleFilter(field, e.target.value)}
-            className="h-8 w-full"
-          />
-        </div>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => handleFilter(field, '')}>
-          清除筛选
-        </DropdownMenuItem>
+        
+        {field === 'difference' ? (
+          // 针对差异列的特殊筛选选项
+          <>
+            <DropdownMenuItem onClick={() => handleFilter(field, '')}>
+              全部
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleFilter(field, 'consistent')}>
+              相同
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleFilter(field, 'inconsistent')}>
+              不一致
+            </DropdownMenuItem>
+          </>
+        ) : (
+          // 其他列的通用筛选
+          <>
+            <div className="p-2">
+              <Input
+                placeholder={`输入${label}...`}
+                value={filters[field] || ''}
+                onChange={(e) => handleFilter(field, e.target.value)}
+                className="h-8 w-full"
+              />
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => handleFilter(field, '')}>
+              清除筛选
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -520,8 +571,8 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
               <Badge variant="secondary">{stats.audited}</Badge>
             </div>
             <div className="flex items-center">
-              <span className="text-sm text-gray-500 mr-2">不可审核:</span>
-              <Badge variant="destructive">{stats.notAuditable || 0}</Badge>
+              <span className="text-sm text-gray-500 mr-2">不一致记录:</span>
+              <Badge variant="destructive">{stats.inconsistent || 0}</Badge>
             </div>
           </div>
         </CardContent>
@@ -546,7 +597,7 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
             </Button>
             
             <Button 
-              variant="outline" 
+              variant={showAllRecords ? "default" : "outline"}
               onClick={() => setShowAllRecords(!showAllRecords)}
             >
               {showAllRecords ? '只显示待审核' : '显示所有记录'}
@@ -610,13 +661,13 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
       {recordsToDisplay.length === 0 ? (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-700">
           {showAllRecords ? '当前没有任何记录' : '当前没有需要审核的记录'}
-          {!showAllRecords && stats.total > 0 && (
+          {!showAllRecords && recordCounts.total > 0 && (
             <Button 
               variant="link" 
               onClick={() => setShowAllRecords(true)}
               className="ml-2 p-0 h-auto text-blue-600"
             >
-              显示所有记录
+              显示所有记录 ({recordCounts.total})
             </Button>
           )}
         </div>
@@ -668,7 +719,11 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
                     财务金额
                     {renderSortButton('financeAmount', '财务金额')}
                   </TableHead>
-                  <TableHead className="whitespace-nowrap">差异</TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    差异
+                    {renderFilterDropdown('difference', '差异')}
+                    {renderSortButton('difference', '差异')}
+                  </TableHead>
                   <TableHead className="whitespace-nowrap">审核结果</TableHead>
                 </TableRow>
               </TableHeader>
@@ -676,16 +731,20 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
                 {recordsToDisplay.map((record) => {
                   const hasDifference = record.userAmount !== record.financeAmount;
                   const hasAuditResult = auditResults[record.id] !== undefined && auditResults[record.id] !== "";
+                  const isSubmitted = record.auditStatus === "APPROVED";
+                  const noFinanceRecord = !record.financeRecordId;
                   
                   return (
                     <TableRow 
                       key={record.id} 
                       className={
-                        !record.needsAudit 
+                        isSubmitted
                           ? "bg-gray-50" 
-                          : hasDifference && !hasAuditResult
+                          : hasDifference && !hasAuditResult && record.needsAudit
                             ? "border-2 border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"
-                            : ""
+                            : noFinanceRecord
+                              ? "bg-yellow-50"
+                              : ""
                       }
                     >
                       {hasRecordsToAudit && (
@@ -693,7 +752,7 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
                           <Checkbox 
                             checked={selectedRecords.has(record.id)}
                             onCheckedChange={(checked) => handleSelectRecord(record.id, !!checked)}
-                            disabled={!record.needsAudit}
+                            disabled={!record.needsAudit || isSubmitted || noFinanceRecord}
                           />
                         </TableCell>
                       )}
@@ -718,7 +777,7 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
                         )}
                       </TableCell>
                       <TableCell>
-                        {record.auditStatus === "APPROVED" ? (
+                        {isSubmitted ? (
                           <div className="font-mono">{formatCurrency(record.auditAmount || 0)}</div>
                         ) : record.needsAudit ? (
                           <Input
@@ -729,9 +788,12 @@ export default function OrganizationAuditPage({ params }: { params: { id: string
                             value={auditResults[record.id] || ''}
                             onChange={(e) => handleAuditResultChange(record.id, e.target.value)}
                             placeholder={hasDifference ? "请输入" : record.financeAmount?.toString()}
+                            disabled={isSubmitted || noFinanceRecord} // 已提交或没有财务记录的禁用输入框
                           />
                         ) : (
-                          <Badge variant="outline">无需审核</Badge>
+                          <Badge variant="outline">
+                            {noFinanceRecord ? "无财务记录" : "无需审核"}
+                          </Badge>
                         )}
                       </TableCell>
                     </TableRow>

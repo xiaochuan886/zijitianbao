@@ -149,7 +149,7 @@ export default function AuditPage() {
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">填报人报表:</span>
+                        <span className="text-sm text-gray-500">填报人进度:</span>
                         <Badge variant={userProgressPercent === 100 ? "secondary" : "outline"}>
                           {org.userRecordsCount}/{org.activeRecordsCount}
                         </Badge>
@@ -159,7 +159,7 @@ export default function AuditPage() {
                     
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">财务报表:</span>
+                        <span className="text-sm text-gray-500">财务填报进度:</span>
                         <Badge variant={financeProgressPercent === 100 ? "secondary" : "outline"}>
                           {org.financeRecordsCount}/{org.activeRecordsCount}
                         </Badge>
@@ -169,7 +169,7 @@ export default function AuditPage() {
                     
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">已审核:</span>
+                        <span className="text-sm text-gray-500">审核进度:</span>
                         <Badge variant={auditProgressPercent === 100 ? "secondary" : "outline"}>
                           {org.auditedRecordsCount}/{org.financeRecordsCount || org.activeRecordsCount}
                         </Badge>

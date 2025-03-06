@@ -215,12 +215,18 @@ export async function GET(
     const notAuditableCount = recordsForAudit.filter(record => 
       !record.financeRecordId
     ).length;
+    
+    // 计算不一致记录数（用户填报金额与财务金额不一致的记录）
+    const inconsistentCount = recordsForAudit.filter(record => 
+      record.financeRecordId && record.userAmount !== record.financeAmount
+    ).length;
 
     const response = {
       success: true,
       data: {
         organization,
-        records: pendingRecords,
+        // 返回所有记录，而不仅仅是待审核的记录，客户端可以自行筛选
+        records: recordsForAudit,
         currentPeriod: {
           year: targetYear,
           month: targetMonth,
@@ -229,14 +235,16 @@ export async function GET(
           total: recordsForAudit.length,
           pending: pendingRecords.length,
           audited: actuallyAuditedCount,
-          notAuditable: notAuditableCount
+          notAuditable: notAuditableCount,
+          inconsistent: inconsistentCount
         },
       }
     };
 
     console.log("返回的响应统计:", {
       organization: organization.name,
-      recordsCount: pendingRecords.length,
+      recordsCount: recordsForAudit.length, // 更新为总记录数
+      pendingCount: pendingRecords.length,
       currentPeriod: response.data.currentPeriod,
       stats: response.data.stats
     });
