@@ -48,14 +48,22 @@ export function NotificationBadge() {
 
   // 组件挂载和定时刷新通知
   useEffect(() => {
+    // 只在组件挂载时获取一次通知
     fetchNotifications();
     
-    // 设置定时刷新 - 每30秒获取最新通知
-    const intervalId = setInterval(fetchNotifications, 30000);
+    // 设置定时刷新 - 改为每5分钟获取一次最新通知
+    const intervalId = setInterval(fetchNotifications, 5 * 60 * 1000);
     
     // 清理定时器
     return () => clearInterval(intervalId);
   }, []);
+  
+  // 当弹出窗口打开时，刷新通知
+  useEffect(() => {
+    if (open) {
+      fetchNotifications();
+    }
+  }, [open]);
 
   // 标记通知为已读并导航到相关页面
   const handleNotificationClick = async (notification: Notification) => {

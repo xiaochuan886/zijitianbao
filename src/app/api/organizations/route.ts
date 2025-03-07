@@ -36,13 +36,17 @@ export async function GET(req: NextRequest) {
       }
     } : {}
     
-    // 查询组织列表，包含部门
+    // 查询组织列表
     const organizations = await prisma.organization.findMany({
       where,
       include: {
         departments: {
           where: {
             isDeleted: false
+          },
+          select: {
+            id: true,
+            name: true
           }
         }
       },
@@ -51,6 +55,7 @@ export async function GET(req: NextRequest) {
       }
     })
     
+    // 返回数据
     return NextResponse.json(organizations)
   } catch (error) {
     console.error('获取组织列表失败:', error)

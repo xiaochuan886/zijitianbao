@@ -15,18 +15,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import { Organization } from "@prisma/client"
 import { User } from "./page"
-import { apiClient } from "@/lib/api-client"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { X } from 'lucide-react'
 import { Role } from "@/lib/enums"
 
 // 角色标签映射
@@ -91,9 +83,8 @@ interface UserFormProps {
 
 // 用户表单组件
 export function UserForm({ open, onOpenChange, onSubmit, initialData, isLoading = false }: UserFormProps) {
-  const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedOrganizations, setSelectedOrganizations] = useState<Organization[]>([])
+  const [organizations, setOrganizations] = useState<any[]>([])
+  const [selectedOrganizationIds, setSelectedOrganizationIds] = useState<string[]>([])
   
   // 编辑模式
   const editMode = !!initialData
@@ -141,7 +132,7 @@ export function UserForm({ open, onOpenChange, onSubmit, initialData, isLoading 
         organizationIds: [],
       })
     }
-    setSelectedOrganizations([])
+    setSelectedOrganizationIds([])
   }
   
   // 当对话框关闭时重置表单
@@ -162,122 +153,63 @@ export function UserForm({ open, onOpenChange, onSubmit, initialData, isLoading 
         active: initialData.active !== undefined ? initialData.active : true,
       })
       
-      // 加载选中的组织
-      if (initialData.organizationIds && initialData.organizationIds.length > 0) {
-        const selectedOrgs = organizations.filter(org => 
-          initialData.organizationIds?.includes(org.id)
-        )
-        setSelectedOrganizations(selectedOrgs)
+      // 设置选中的组织ID
+      if (initialData.organizationIds && Array.isArray(initialData.organizationIds)) {
+        setSelectedOrganizationIds(initialData.organizationIds)
       } else {
-        setSelectedOrganizations([])
+        setSelectedOrganizationIds([])
       }
     }
-  }, [initialData, editMode, organizations])
+  }, [initialData, editMode])
   
   // 加载组织列表
   useEffect(() => {
-    const loadOrganizations = async () => {
+    const fetchOrganizations = async () => {
       try {
-        const response = await apiClient.organizations.list();
-        console.log("API返回的组织数据:", response);
-        const organizationsData = response && response.items ? response.items : 
-                                 (response && Array.isArray(response) ? response : []);
-        
-        console.log("处理后的组织数据:", organizationsData);
-        
-        const validatedOrgs = organizationsData.filter((org: any) => org && typeof org === 'object');
-        console.log("有效的组织数据:", validatedOrgs);
-        setOrganizations(validatedOrgs);
+        const response = await fetch('/api/organizations')
+        if (!response.ok) {
+          throw new Error('Failed to fetch organizations')
+        }
+        const data = await response.json()
+        setOrganizations(data)
       } catch (error) {
-        console.error("加载组织失败", error);
+        console.error('加载组织失败', error)
       }
-    };
+    }
 
     if (open) {
-      loadOrganizations();
+      fetchOrganizations()
     }
-  }, [open]);
+  }, [open])
   
-  // 筛选组织 - 确保搜索功能正常工作
-  const filteredOrganizations = searchTerm.trim() === "" 
-    ? organizations 
-    : organizations.filter((org: Organization) => {
-        if (!org || typeof org !== 'object') return false;
-        
-        const term = searchTerm.trim().toLowerCase();
-        const name = (org.name || "").toLowerCase();
-        const code = (org.code || "").toLowerCase();
-        
-        const nameMatch = name.includes(term);
-        const codeMatch = code.includes(term);
-        
-        console.log(`组织 ${org.name} (${org.code}): 名称匹配=${nameMatch}, 编码匹配=${codeMatch}`);
-        
-        return nameMatch || codeMatch;
-      });
+  // 获取已选组织
+  const selectedOrganizations = organizations.filter(org => 
+    selectedOrganizationIds.includes(org.id)
+  )
   
-  // 添加调试日志
-  useEffect(() => {
-    console.log("过滤后的组织:", filteredOrganizations);
-    if (searchTerm.trim() !== "") {
-      console.log("搜索词:", searchTerm);
-      console.log("组织总数:", organizations.length);
-      console.log("过滤后组织数:", filteredOrganizations.length);
-    }
-  }, [searchTerm, organizations, filteredOrganizations]);
-  
-  // 处理组织选择
-  const handleOrganizationSelect = (organizationId: string) => {
-    console.log(`选择组织ID: ${organizationId}`); // 添加调试信息
-    if (organizationId === "none") {
-      setSelectedOrganizations([]);
-      if (editMode) {
-        editForm.setValue("organizationIds", []);
-      } else {
-        createForm.setValue("organizationIds", []);
-      }
-      return;
-    }
+  // 处理组织选择变更
+  const handleOrganizationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const options = event.target.options
+    const selectedIds: string[] = []
     
-    const organization = organizations.find(org => org.id === organizationId);
-    if (!organization) return;
-    
-    // 检查是否已选择该组织
-    if (!selectedOrganizations.some(org => org.id === organizationId)) {
-      const newSelectedOrgs = [...selectedOrganizations, organization];
-      setSelectedOrganizations(newSelectedOrgs);
-      
-      // 更新表单值 - 确保没有空值
-      const orgIds = newSelectedOrgs.map(org => org.id).filter(id => id !== null && id !== undefined && id !== '');
-      if (editMode) {
-        editForm.setValue("organizationIds", orgIds);
-      } else {
-        createForm.setValue("organizationIds", orgIds);
+    for (let i = 0; i < options.length; i++) {
+      if (options[i].selected) {
+        selectedIds.push(options[i].value)
       }
     }
-  };
-  
-  // 移除选中的组织
-  const removeOrganization = (organizationId: string) => {
-    const newSelectedOrgs = selectedOrganizations.filter(org => org.id !== organizationId)
-    setSelectedOrganizations(newSelectedOrgs)
+    
+    setSelectedOrganizationIds(selectedIds)
     
     // 更新表单值
-    const orgIds = newSelectedOrgs.map(org => org.id)
     if (editMode) {
-      editForm.setValue("organizationIds", orgIds)
+      editForm.setValue('organizationIds', selectedIds)
     } else {
-      createForm.setValue("organizationIds", orgIds)
+      createForm.setValue('organizationIds', selectedIds)
     }
   }
   
   // 提交表单
   const onFormSubmit = (data: CreateUserFormValues | EditUserFormValues) => {
-    // 确保organizationIds中没有null或空值
-    if ('organizationIds' in data && Array.isArray(data.organizationIds)) {
-      data.organizationIds = data.organizationIds.filter(id => id !== null && id !== undefined && id !== '');
-    }
-    
     onSubmit(editMode, data, initialData?.id)
   }
 
@@ -352,80 +284,35 @@ export function UserForm({ open, onOpenChange, onSubmit, initialData, isLoading 
               
               <div className="space-y-2">
                 <FormLabel>所属组织</FormLabel>
-                
-                {/* 已选组织标签 */}
+                  
+                {/* 已选组织展示 */}
                 {selectedOrganizations.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
                     {selectedOrganizations.map((org) => (
-                      <Badge key={org.id} variant="secondary" className="flex items-center gap-1">
+                      <Badge key={org.id} variant="secondary" className="py-1 px-2">
                         {org.name}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-4 w-4 p-0"
-                          onClick={() => removeOrganization(org.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
                       </Badge>
                     ))}
                   </div>
                 )}
                 
-                {/* 使用Command组件实现实时搜索 */}
+                {/* 使用简单的多选下拉替代Command组件 */}
                 <div className="relative">
-                  <Command className="rounded-lg border shadow-md">
-                    <CommandInput 
-                      placeholder="搜索组织..." 
-                      value={searchTerm}
-                      onValueChange={(value) => {
-                        console.log("用户输入搜索词:", value);
-                        setSearchTerm(value);
-                      }}
-                      autoFocus
-                    />
-                    <CommandList>
-                      <CommandEmpty>未找到匹配组织</CommandEmpty>
-                      <CommandGroup heading="可用组织">
-                        <CommandItem
-                          key="none"
-                          value="none"
-                          onSelect={() => handleOrganizationSelect("none")}
-                        >
-                          无组织
-                        </CommandItem>
-                        <ScrollArea className="h-[200px]">
-                          {organizations.length === 0 ? (
-                            <div className="py-2 px-2 text-sm text-muted-foreground">
-                              加载组织列表中...
-                            </div>
-                          ) : filteredOrganizations.length > 0 ? (
-                            filteredOrganizations.map((org) => {
-                              console.log(`渲染组织: ${org.name} (${org.code})`);
-                              console.log(`组织ID: ${org.id}`);
-                              return (
-                                <CommandItem
-                                  key={org.id}
-                                  value={org.id}
-                                  onSelect={() => handleOrganizationSelect(org.id)}
-                                >
-                                  {org.name} {org.code && `(${org.code})`}
-                                </CommandItem>
-                              );
-                            })
-                          ) : searchTerm.trim() !== "" ? (
-                            <div className="py-2 px-2 text-sm text-muted-foreground">
-                              没有找到匹配 "{searchTerm}" 的组织
-                            </div>
-                          ) : (
-                            <div className="py-2 px-2 text-sm text-muted-foreground">
-                              请输入关键词搜索组织
-                            </div>
-                          )}
-                        </ScrollArea>
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
+                  <select 
+                    multiple 
+                    className="w-full h-[200px] rounded-md border border-input px-3 py-2"
+                    value={selectedOrganizationIds}
+                    onChange={handleOrganizationChange}
+                  >
+                    {organizations.map(org => (
+                      <option key={org.id} value={org.id}>
+                        {org.name} {org.code ? `(${org.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    按住 Ctrl 键(Mac 上为 Command 键)可以选择多个组织
+                  </p>
                 </div>
               </div>
               
@@ -535,80 +422,35 @@ export function UserForm({ open, onOpenChange, onSubmit, initialData, isLoading 
               
               <div className="space-y-2">
                 <FormLabel>所属组织</FormLabel>
-                
-                {/* 已选组织标签 */}
+                  
+                {/* 已选组织展示 */}
                 {selectedOrganizations.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
                     {selectedOrganizations.map((org) => (
-                      <Badge key={org.id} variant="secondary" className="flex items-center gap-1">
+                      <Badge key={org.id} variant="secondary" className="py-1 px-2">
                         {org.name}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-4 w-4 p-0"
-                          onClick={() => removeOrganization(org.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
                       </Badge>
                     ))}
                   </div>
                 )}
                 
-                {/* 使用Command组件实现实时搜索 */}
+                {/* 使用简单的多选下拉替代Command组件 */}
                 <div className="relative">
-                  <Command className="rounded-lg border shadow-md">
-                    <CommandInput 
-                      placeholder="搜索组织..." 
-                      value={searchTerm}
-                      onValueChange={(value) => {
-                        console.log("用户输入搜索词:", value);
-                        setSearchTerm(value);
-                      }}
-                      autoFocus
-                    />
-                    <CommandList>
-                      <CommandEmpty>未找到匹配组织</CommandEmpty>
-                      <CommandGroup heading="可用组织">
-                        <CommandItem
-                          key="none"
-                          value="none"
-                          onSelect={() => handleOrganizationSelect("none")}
-                        >
-                          无组织
-                        </CommandItem>
-                        <ScrollArea className="h-[200px]">
-                          {organizations.length === 0 ? (
-                            <div className="py-2 px-2 text-sm text-muted-foreground">
-                              加载组织列表中...
-                            </div>
-                          ) : filteredOrganizations.length > 0 ? (
-                            filteredOrganizations.map((org) => {
-                              console.log(`渲染组织: ${org.name} (${org.code})`);
-                              console.log(`组织ID: ${org.id}`);
-                              return (
-                                <CommandItem
-                                  key={org.id}
-                                  value={org.id}
-                                  onSelect={() => handleOrganizationSelect(org.id)}
-                                >
-                                  {org.name} {org.code && `(${org.code})`}
-                                </CommandItem>
-                              );
-                            })
-                          ) : searchTerm.trim() !== "" ? (
-                            <div className="py-2 px-2 text-sm text-muted-foreground">
-                              没有找到匹配 "{searchTerm}" 的组织
-                            </div>
-                          ) : (
-                            <div className="py-2 px-2 text-sm text-muted-foreground">
-                              请输入关键词搜索组织
-                            </div>
-                          )}
-                        </ScrollArea>
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
+                  <select 
+                    multiple 
+                    className="w-full h-[200px] rounded-md border border-input px-3 py-2"
+                    value={selectedOrganizationIds}
+                    onChange={handleOrganizationChange}
+                  >
+                    {organizations.map(org => (
+                      <option key={org.id} value={org.id}>
+                        {org.name} {org.code ? `(${org.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    按住 Ctrl 键(Mac 上为 Command 键)可以选择多个组织
+                  </p>
                 </div>
               </div>
               
